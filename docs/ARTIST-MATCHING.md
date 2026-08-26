@@ -15,7 +15,7 @@ So the interesting problem is not splitting. It is knowing **when not to**.
 
 Splitting is separated into three pieces that can each be reasoned about
 alone. The first two are pure functions over strings, which is why they are
-covered by 40 unit tests with no database in sight.
+covered by 49 unit tests with no database in sight.
 
 ### 1. Normalisation — `domain/text/normalize.dart`
 
@@ -88,28 +88,79 @@ not notice for months. Asking is cheap.
 For ambiguous separators, the resolver looks at the **whole library** rather
 than the file in front of it. This is the part that makes it feel smart.
 
-Indexing runs in two phases. Phase one reads every credit string and counts how
-often each candidate name appears **standalone** versus **as part of a
-composite**. Phase two resolves, with those counts available.
+Indexing runs in two phases. Phase one reads every credit string and counts, for
+each candidate name, how often it appears:
 
-That single fact separates the two cases that look identical by shape:
+- **standalone** - as an entire credit string;
+- **confirmed** - as a segment of a credit split on an *unambiguous* separator;
+- **ambiguous** - as a segment of an ambiguous split (weak; it may just be a
+  word inside a band name).
 
-| Credit string | Parts seen alone elsewhere? | Verdict |
+Phase two resolves with those counts in hand. A name is *attested* if it is
+standalone or confirmed.
+
+The confirmed bucket matters more than it looks, and leaving it out is what
+makes a naive implementation fail on the exact case this feature exists for.
+Running against a real collection:
+
+> `Camellia x Nanahira` was kept whole. Neither "Camellia" nor "Nanahira" ever
+> headlines a track in that library - each is only ever seen inside
+> `Camellia VS Kobaryo` and `t+pazolite | Nanahira`. Both of those used
+> trustworthy separators, so both had already *proven* the names are real. That
+> proof was being thrown away.
+
+Counting confirmed segments as attestation fixes it, and the two shapes that
+are identical to a regex now separate cleanly:
+
+| Credit string | Parts attested? | Verdict |
 |---|---|---|
-| `Camellia x Nanahira` | yes — both headline their own tracks | **split** |
-| `Earth, Wind & Fire` | no — "Earth", "Wind", "Fire" never appear alone | **keep whole** |
+| `Camellia x Nanahira` | yes - both proven by trustworthy splits elsewhere | **split** |
+| `Earth, Wind & Fire` | no - "Earth", "Wind", "Fire" appear nowhere else | **keep whole** |
 
 Neither needed an artist row to exist beforehand, and neither needed a
 hard-coded list of band names. The collection answers the question about
 itself.
 
-Two further signals:
+### Weighing the parts against the whole
 
-- **Comma lists vs. band names.** `Alice, Bob, Carol` splits — three
-  comma-separated parts reads as a list. `Alice, Bob & Carol` does not: comma
+A real band name recurs. A one-off collaboration credit does not. So when one
+part is well attested and the full string has been seen at most once, it is a
+collaboration:
+
+> `Grand Thaw & Rigel Theatre`, seen once, where `Rigel Theatre` has 195
+> tracks -> **split**.
+
+The rule reverses correctly too: if the whole string also recurs, it wins even
+when one of its words is a known artist, and the resolver asks rather than
+splitting.
+
+### Two further signals
+
+- **Comma lists vs. band names.** `Alice, Bob, Carol` splits - three
+  comma-separated parts reads as a list. `Alice, Bob & Carol` does not: a comma
   list terminated by a conjunction is the classic English band-name shape.
-- **Majority attestation.** If two of three parts are known artists, that is
-  enough to split and create the third.
+- **Majority attestation.** If two of three parts are known, that is enough to
+  split and create the third.
+
+## Script pairs are one artist, not two
+
+A slash between a Latin name and a native-script one is how people write a name
+beside its romanisation, not a collaboration:
+
+```
+PinocchioP / native-script spelling   ->   one artist, the other as an alias
+```
+
+Splitting that would produce two half-populated artist pages for one person;
+keeping it whole would produce an artist whose name is two names. Neither is
+right, so this gets its own outcome, and the alias falls out for free - which is
+precisely what makes a native-script artist reachable from a Latin keyboard.
+
+The detection is deliberately narrow: **only the slash**, and only when exactly
+one side contains CJK. A genuine cross-script collaboration is written with a
+multiplication sign, `feat.` or a comma, and all of those stay splits. If one
+spelling is already a known artist, that one becomes canonical. The behaviour
+can be turned off in settings.
 
 ## Learning
 
@@ -141,6 +192,10 @@ page" is not a feature that needs building — it falls out of the schema.
   built-ins, without losing your own additions.
 - **Whole-name evidence threshold** (default 2) — how many standalone
   sightings of a full string are enough to conclude it is a real name.
+- **Strong attestation threshold** (default 2) — how well attested one part
+  must be before it outweighs a rarely-seen whole.
+- **Detect script pairs** (default on) — treat a Latin/native-script slash pair
+  as one artist with an alias.
 
 ## Testing
 
@@ -160,6 +215,23 @@ t+pazolite | Nanahira  Camellia VS Kobaryo
 PinocchioP, Hatsune Miku feat. Kasane Teto
 ```
 
+and the pair that must become one artist plus an alias, rather than either:
+
+```
+PinocchioP / native-script spelling
+```
+
 Fixtures carrying exactly these tags live in the music library under
 `_marmelade_fixtures/`, generated by ffmpeg, so the same cases can be run
 end-to-end through a real scan.
+
+`tool/index_dry_run.dart` runs the whole pipeline over a folder and reports
+every decision with its reason, without touching a database:
+
+```bash
+dart run tool/index_dry_run.dart "<your music folder>"
+```
+
+Every rule above beyond the first draft came from reading that output against a
+real collection. It is the fastest way to find a tagging convention the
+separator list does not cover yet.

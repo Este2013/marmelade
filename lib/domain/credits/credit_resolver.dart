@@ -42,9 +42,28 @@ abstract interface class CreditEvidence {
   /// How many times [key] appeared as an entire, unsplit credit string.
   int standaloneCount(String key);
 
-  /// How many distinct credit strings contain [key] as one of several
-  /// segments.
-  int compositeCount(String key);
+  /// How many times [key] appeared as a segment of a credit that was split on
+  /// an *unambiguous* separator.
+  ///
+  /// This is strong evidence that [key] is a real artist name, and it is the
+  /// difference between working and not working on a real collection. If the
+  /// library contains "Camellia VS Kobaryo" and "t+pazolite | Nanahira", then
+  /// "Camellia" and "Nanahira" are both proven names even though neither ever
+  /// headlines a track on its own - which is exactly what is needed to decide
+  /// that "Camellia x Nanahira" is two people.
+  int confirmedSegmentCount(String key);
+
+  /// How many times [key] appeared as a segment of an *ambiguous* split.
+  ///
+  /// Weak evidence: it may just be a word inside a band name.
+  int ambiguousSegmentCount(String key);
+}
+
+/// Convenience view over [CreditEvidence].
+extension CreditEvidenceAttestation on CreditEvidence {
+  /// How strongly the library believes [key] is a real artist name.
+  int attestedCount(String key) =>
+      standaloneCount(key) + confirmedSegmentCount(key);
 }
 
 /// A vocabulary that knows nothing. Useful for tests and first-run scans.
@@ -64,7 +83,9 @@ class EmptyCreditEvidence implements CreditEvidence {
   @override
   int standaloneCount(String key) => 0;
   @override
-  int compositeCount(String key) => 0;
+  int confirmedSegmentCount(String key) => 0;
+  @override
+  int ambiguousSegmentCount(String key) => 0;
 }
 
 /// An in-memory vocabulary, built from name/alias pairs.
@@ -97,32 +118,46 @@ class MapCreditEvidence implements CreditEvidence {
   MapCreditEvidence();
 
   final _standalone = <String, int>{};
-  final _composite = <String, int>{};
+  final _confirmed = <String, int>{};
+  final _ambiguous = <String, int>{};
 
-  /// Records that [raw] appeared as a whole credit string once.
+  /// Records one credit string from the library.
   ///
-  /// Call this for every credit string in the library during the gathering
-  /// pass, before resolving anything.
+  /// Call this for every credit string during the gathering pass, before
+  /// resolving anything. The counts it builds are what let the resolver reason
+  /// about the collection as a whole rather than one file at a time.
   void observe(String raw, CreditTokenizer tokenizer) {
     final tokens = tokenizer.tokenize(raw);
     if (tokens.segments.isEmpty) return;
-    if (tokens.segments.length == 1) {
-      final key = tokens.segments.single.key;
-      _standalone[key] = (_standalone[key] ?? 0) + 1;
-    } else {
-      // The unsplit form is itself a candidate name.
-      final wholeKey = normalizeKey(raw);
-      _standalone[wholeKey] = (_standalone[wholeKey] ?? 0) + 1;
-      for (final segment in tokens.segments) {
-        _composite[segment.key] = (_composite[segment.key] ?? 0) + 1;
-      }
+
+    if (!tokens.didSplit) {
+      _bump(_standalone, tokens.segments.single.key);
+      return;
     }
+
+    final trusted = tokens.separatorsUsed.any((s) => !s.isAmbiguous);
+    if (!trusted) {
+      // Only an ambiguously-split string is a plausible single name, so only
+      // that form is worth counting as a standalone candidate. Counting
+      // "Camellia VS Kobaryo" as a candidate name would be nonsense.
+      _bump(_standalone, normalizeKey(raw));
+    }
+    for (final segment in tokens.segments) {
+      _bump(trusted ? _confirmed : _ambiguous, segment.key);
+    }
+  }
+
+  static void _bump(Map<String, int> into, String key) {
+    if (key.isEmpty) return;
+    into[key] = (into[key] ?? 0) + 1;
   }
 
   @override
   int standaloneCount(String key) => _standalone[key] ?? 0;
   @override
-  int compositeCount(String key) => _composite[key] ?? 0;
+  int confirmedSegmentCount(String key) => _confirmed[key] ?? 0;
+  @override
+  int ambiguousSegmentCount(String key) => _ambiguous[key] ?? 0;
 }
 
 /// What the resolver decided to do with a credit string.
@@ -141,6 +176,10 @@ enum ResolutionOutcome {
   /// with [CreditResolution.alternative] holding the split that was declined.
   needsReview,
 
+  /// The two halves name the same artist in different scripts, so one artist
+  /// was produced carrying the other spelling as an alias.
+  aliasPair,
+
   /// The string is a compilation marker such as "Various Artists", not an
   /// artist at all.
   compilation,
@@ -156,6 +195,7 @@ class ResolvedCredit {
     required this.key,
     required this.role,
     required this.candidateArtistIds,
+    this.aliases = const [],
   });
 
   /// The spelling used in the file, preserved for `credited_as`.
@@ -176,6 +216,12 @@ class ResolvedCredit {
   /// ambiguous.
   int? get artistId =>
       candidateArtistIds.length == 1 ? candidateArtistIds.single : null;
+
+  /// Extra spellings to register against this artist.
+  ///
+  /// Populated when a credit string turned out to name one artist twice, such
+  /// as a romanisation beside its native form.
+  final List<String> aliases;
 
   bool get isNew => candidateArtistIds.isEmpty;
   bool get isAmbiguous => candidateArtistIds.length > 1;
@@ -219,7 +265,8 @@ class CreditResolution {
   bool get isActionable =>
       outcome == ResolutionOutcome.single ||
       outcome == ResolutionOutcome.split ||
-      outcome == ResolutionOutcome.keptWhole;
+      outcome == ResolutionOutcome.keptWhole ||
+      outcome == ResolutionOutcome.aliasPair;
 
   @override
   String toString() =>
@@ -232,6 +279,8 @@ class ResolverOptions {
   const ResolverOptions({
     this.aggressiveSplitting = false,
     this.wholeNameEvidenceThreshold = 2,
+    this.strongAttestationThreshold = 2,
+    this.detectAliasPairs = true,
   });
 
   /// When true, ambiguous separators are acted on without corroborating
@@ -242,6 +291,23 @@ class ResolverOptions {
   /// How many standalone appearances of the whole string are enough to
   /// conclude it is a real single name rather than an unsplit list.
   final int wholeNameEvidenceThreshold;
+
+  /// How well attested one part must be before it outweighs a rarely-seen
+  /// whole. Two sightings is enough: a real band name recurs, a one-off
+  /// collaboration credit does not.
+  final int strongAttestationThreshold;
+
+  /// Whether to treat "Latin / native-script" pairs as one artist with an
+  /// alias rather than two artists.
+  final bool detectAliasPairs;
+
+  /// Separators that join two spellings of the same name.
+  ///
+  /// Deliberately just the slash. It is the established convention for name
+  /// variants, whereas a cross-script collaboration would be written with
+  /// "x", a multiplication sign, "feat." or a comma - all of which stay
+  /// genuine splits.
+  static const aliasPairSeparators = {'/', '／'};
 }
 
 /// Turns raw credit strings into artist credits.
@@ -396,6 +462,10 @@ class CreditResolver {
     CreditTokenization tokens,
     List<ResolvedCredit> split,
   ) {
+    // Two spellings of one name, not two artists.
+    final aliasPair = _tryAliasPair(raw, tokens, split);
+    if (aliasPair != null) return aliasPair;
+
     if (options.aggressiveSplitting) {
       return CreditResolution(
         raw: raw,
@@ -406,24 +476,45 @@ class CreditResolver {
       );
     }
 
-    final supported = split
-        .where((c) => !c.isNew || evidence.standaloneCount(c.key) > 0)
-        .length;
+    /// How strongly the library vouches for one part being a real name.
+    int strength(ResolvedCredit c) =>
+        c.isNew ? evidence.attestedCount(c.key) : 1 + evidence.attestedCount(c.key);
+
+    final supported = split.where((c) => strength(c) > 0).length;
     final total = split.length;
+    final wholeEvidence = evidence.standaloneCount(wholeKey);
 
     // Every part is independently attested. This is the "Camellia x Nanahira"
-    // case and it is the common one in a real collection.
+    // case, and it is the common one in a real collection.
     if (supported == total) {
       return CreditResolution(
         raw: raw,
         outcome: ResolutionOutcome.split,
         credits: split,
         confidence: 0.9,
-        reason: 'every part is a known artist or appears alone elsewhere',
+        reason: 'every part is a known artist or is attested elsewhere in the '
+            'library',
       );
     }
 
-    final wholeEvidence = evidence.standaloneCount(wholeKey);
+    // Weigh the parts against the whole. A real band name recurs; a one-off
+    // collaboration credit does not. So a well-established artist appearing
+    // beside an unknown name, in a string seen only once, is a collaboration.
+    final strongest = split.fold(0, (m, c) => strength(c) > m ? strength(c) : m);
+    if (strongest >= options.strongAttestationThreshold &&
+        wholeEvidence <= 1 &&
+        supported >= 1) {
+      return CreditResolution(
+        raw: raw,
+        outcome: ResolutionOutcome.split,
+        credits: split,
+        confidence: 0.8,
+        reason: 'one part is well attested ($strongest sightings) while the '
+            'whole string appears only $wholeEvidence time'
+            '${wholeEvidence == 1 ? "" : "s"}, so this reads as a '
+            'collaboration rather than a name',
+      );
+    }
 
     // The unsplit string keeps turning up on its own, and its parts do not.
     // That is what a real name looks like.
@@ -435,8 +526,8 @@ class CreditResolver {
         ids: const [],
         confidence: 0.85,
         reason: 'the whole string appears $wholeEvidence times as a credit of '
-            'its own while none of its parts appear alone, so it reads as one '
-            'name',
+            'its own while none of its parts appear elsewhere, so it reads as '
+            'one name',
         outcome: ResolutionOutcome.keptWhole,
         alternative: split,
       );
@@ -449,7 +540,7 @@ class CreditResolver {
         outcome: ResolutionOutcome.split,
         credits: split,
         confidence: 0.75,
-        reason: '$supported of $total parts are known artists or appear alone '
+        reason: '$supported of $total parts are known artists or are attested '
             'elsewhere',
       );
     }
@@ -485,6 +576,64 @@ class CreditResolver {
       reason: 'separator ${_describe(tokens.separatorsUsed)} also occurs inside '
           'real names, and nothing corroborates a split here '
           '($supported of $total parts attested)',
+      alternative: split,
+    );
+  }
+
+  /// Recognises "Latin / native-script" as one artist under two spellings.
+  ///
+  /// A slash between a Latin name and a CJK one is the established way of
+  /// writing a name and its romanisation, not a collaboration - a real
+  /// collaboration would use "x", a multiplication sign, "feat." or a comma,
+  /// all of which are handled as splits before this is ever reached.
+  ///
+  /// Resolving it this way is what makes a native-script artist reachable from
+  /// a Latin keyboard for free, instead of producing two half-populated artist
+  /// pages for the same person.
+  CreditResolution? _tryAliasPair(
+    String raw,
+    CreditTokenization tokens,
+    List<ResolvedCredit> split,
+  ) {
+    if (!options.detectAliasPairs) return null;
+    if (split.length != 2) return null;
+    if (split.any((c) => c.role != SegmentRole.main)) return null;
+    if (!tokens.separatorsUsed
+        .every((s) => ResolverOptions.aliasPairSeparators.contains(s.token))) {
+      return null;
+    }
+
+    final first = split.first;
+    final second = split.last;
+    // Exactly one side must be native-script for this to be a spelling pair.
+    if (containsCjk(first.creditedAs) == containsCjk(second.creditedAs)) {
+      return null;
+    }
+
+    // If one spelling is already a known artist, that one is canonical.
+    final primary = !first.isNew
+        ? first
+        : !second.isNew
+            ? second
+            : first;
+    final secondary = primary == first ? second : first;
+
+    return CreditResolution(
+      raw: raw,
+      outcome: ResolutionOutcome.aliasPair,
+      credits: [
+        ResolvedCredit(
+          creditedAs: primary.creditedAs,
+          key: primary.key,
+          role: SegmentRole.main,
+          candidateArtistIds: primary.candidateArtistIds,
+          aliases: [secondary.creditedAs],
+        ),
+      ],
+      confidence: 0.75,
+      reason: 'a slash between a Latin and a native-script name reads as one '
+          'artist under two spellings, so "${secondary.creditedAs}" becomes an '
+          'alias of "${primary.creditedAs}"',
       alternative: split,
     );
   }

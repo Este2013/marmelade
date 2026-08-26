@@ -332,7 +332,7 @@ void main() {
       ]);
       final r = resolver.resolve('Camellia x Nanahira');
       expect(r.outcome, ResolutionOutcome.split);
-      expect(r.reason, contains('appears alone'));
+      expect(r.reason, contains('attested elsewhere'));
     });
 
     test('keeps a band name whole when no part is ever attested alone', () {
@@ -356,6 +356,65 @@ void main() {
       expect(r.outcome, ResolutionOutcome.needsReview);
     });
 
+    test('a name proven by an unambiguous split counts as evidence', () {
+      // The flagship case, and the one a naive implementation gets wrong.
+      // Neither "Camellia" nor "Nanahira" ever headlines a track here; each is
+      // only ever known from a collaboration that used a trustworthy
+      // separator. That is still proof the names are real, so the ambiguous
+      // " x " collaboration must split.
+      final resolver = withCorpus([
+        'Camellia VS Kobaryo',
+        't+pazolite | Nanahira',
+        'Camellia x Nanahira',
+        'Camellia x Nanahira',
+      ]);
+      final r = resolver.resolve('Camellia x Nanahira');
+      expect(r.outcome, ResolutionOutcome.split);
+      expect(r.credits.map((c) => c.creditedAs), ['Camellia', 'Nanahira']);
+    });
+
+    test('an unambiguous split does not make the whole string a name', () {
+      // "Camellia VS Kobaryo" must never be counted as a candidate single
+      // name, or it could later be defended as one.
+      final ev = MapCreditEvidence();
+      ev.observe('Camellia VS Kobaryo', tokenizer);
+      expect(ev.standaloneCount(normalizeKey('Camellia VS Kobaryo')), 0);
+      expect(ev.confirmedSegmentCount('camellia'), 1);
+      expect(ev.confirmedSegmentCount('kobaryo'), 1);
+
+      // An ambiguous one, by contrast, is a plausible name and is counted.
+      ev.observe('Earth, Wind & Fire', tokenizer);
+      expect(ev.standaloneCount('earth wind fire'), 1);
+      expect(ev.ambiguousSegmentCount('earth'), 1);
+      expect(ev.confirmedSegmentCount('earth'), 0);
+    });
+
+    test('one well-attested part outweighs a whole seen only once', () {
+      // A real band name recurs; a one-off collaboration credit does not. So a
+      // heavily-used artist beside an unknown name, in a string seen once, is
+      // a collaboration.
+      final resolver = withCorpus([
+        for (var i = 0; i < 12; i++) 'Rigel Theatre',
+        'Grand Thaw & Rigel Theatre',
+      ]);
+      final r = resolver.resolve('Grand Thaw & Rigel Theatre');
+      expect(r.outcome, ResolutionOutcome.split);
+      expect(r.reason, contains('well attested'));
+      expect(r.credits.map((c) => c.creditedAs),
+          ['Grand Thaw', 'Rigel Theatre']);
+    });
+
+    test('a recurring whole still wins over a well-attested part', () {
+      // If the full string keeps appearing, it is a name even when one of its
+      // words happens to be a known artist.
+      final resolver = withCorpus([
+        for (var i = 0; i < 6; i++) 'Fire',
+        for (var i = 0; i < 4; i++) 'Earth, Wind & Fire',
+      ]);
+      final r = resolver.resolve('Earth, Wind & Fire');
+      expect(r.outcome, isNot(ResolutionOutcome.split));
+    });
+
     test('distinguishes a comma list from a comma-and-conjunction name', () {
       final resolver = CreditResolver(tokenizer: tokenizer);
       // Three plain comma-separated parts reads as a list.
@@ -369,6 +428,58 @@ void main() {
         resolver.resolve('Alice, Bob & Carol').outcome,
         ResolutionOutcome.needsReview,
       );
+    });
+  });
+
+  group('script pairs are one artist, not two', () {
+    final resolver = CreditResolver(tokenizer: tokenizer);
+
+    test('a slash between Latin and native script becomes name plus alias', () {
+      final r = resolver.resolve('PinocchioP / ピノキオピー');
+      expect(r.outcome, ResolutionOutcome.aliasPair);
+      expect(r.credits, hasLength(1));
+      expect(r.credits.single.creditedAs, 'PinocchioP');
+      expect(r.credits.single.aliases, ['ピノキオピー']);
+      // Applied, not merely suggested - this is the common case and getting it
+      // right is what makes the artist reachable from a Latin keyboard.
+      expect(r.isActionable, isTrue);
+    });
+
+    test('the known spelling becomes canonical when there is one', () {
+      final vocab = MapArtistVocabulary()..add('ピノキオピー', 42);
+      final withKnown =
+          CreditResolver(tokenizer: tokenizer, vocabulary: vocab);
+      final r = withKnown.resolve('PinocchioP / ピノキオピー');
+      expect(r.outcome, ResolutionOutcome.aliasPair);
+      expect(r.credits.single.artistId, 42);
+      expect(r.credits.single.aliases, ['PinocchioP']);
+    });
+
+    test('two same-script names on a slash stay a normal split decision', () {
+      final r = resolver.resolve('Camellia / Nanahira');
+      expect(r.outcome, isNot(ResolutionOutcome.aliasPair));
+    });
+
+    test('a cross-script collaboration marker is still a split', () {
+      // Only the slash reads as a spelling variant. Everything else is a
+      // genuine collaboration, including across scripts.
+      for (final raw in const [
+        'REOL ✕ ピノキオピー',
+        'Giga feat. 初音ミク',
+        'Giga、初音ミク',
+      ]) {
+        expect(resolver.resolve(raw).outcome, ResolutionOutcome.split,
+            reason: raw);
+      }
+    });
+
+    test('detection can be turned off', () {
+      final off = CreditResolver(
+        tokenizer: tokenizer,
+        options: const ResolverOptions(detectAliasPairs: false),
+      );
+      expect(off.resolve('PinocchioP / ピノキオピー').outcome,
+          isNot(ResolutionOutcome.aliasPair));
     });
   });
 
