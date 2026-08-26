@@ -21,7 +21,7 @@ class QueueItems extends Table {
       textEnum<QueueSource>().withDefault(const Constant('user'))();
 
   /// Id of whatever the track came from - an album, playlist, artist or tag -
-  /// so the UI can show "from <album>" and jump back to it.
+  /// so the UI can show "from `<album>`" and jump back to it.
   IntColumn get sourceRefId => integer().nullable()();
 
   /// Ordering before the last shuffle, so a shuffle can be undone.

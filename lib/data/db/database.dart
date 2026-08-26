@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../domain/credits/separator.dart';
 import 'enums.dart';
 import 'tables/catalog.dart';
 import 'tables/images.dart';
@@ -250,19 +251,17 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
         ),
       ]);
 
-      b.insertAll(
-        separatorTokens,
-        [
-          for (final d in defaultSeparators)
-            SeparatorTokensCompanion.insert(
-              token: d.token,
-              kind: Value(d.kind),
-              requiresSpaces: Value(d.requiresSpaces),
-              isBuiltIn: const Value(true),
-              sortOrder: Value(defaultSeparators.indexOf(d)),
-            ),
-        ],
-      );
+      b.insertAll(separatorTokens, [
+        for (var i = 0; i < defaultSeparators.length; i++)
+          SeparatorTokensCompanion.insert(
+            token: defaultSeparators[i].token,
+            kind: Value(defaultSeparators[i].kind),
+            requiresSpaces: Value(defaultSeparators[i].requiresSpaces),
+            isAmbiguous: Value(defaultSeparators[i].isAmbiguous),
+            isBuiltIn: const Value(true),
+            sortOrder: Value(i),
+          ),
+      ]);
     });
   }
 }
@@ -272,61 +271,3 @@ const systemTagCategoryGenre = 'genre';
 
 /// Reserved slug of the tag category the indexer writes languages into.
 const systemTagCategoryLanguage = 'language';
-
-/// A separator shipped with the app.
-class DefaultSeparator {
-  const DefaultSeparator(
-    this.token,
-    this.kind, {
-    this.requiresSpaces = false,
-  });
-
-  final String token;
-  final SeparatorKind kind;
-
-  /// Whether the token must be surrounded by whitespace to count.
-  ///
-  /// This is the difference between splitting "Camellia x Nanahira" and
-  /// mangling "Maxence"; between splitting "A / B" and destroying "AC/DC";
-  /// between splitting "A + B" and destroying "t+pazolite".
-  final bool requiresSpaces;
-}
-
-/// The default separator set.
-///
-/// Ordered longest-first within each kind so that "feat." is tried before
-/// "feat", and "vs." before "vs".
-const defaultSeparators = <DefaultSeparator>[
-  // Unambiguous collaboration marks. These essentially never occur inside a
-  // real artist name, so they do not need surrounding spaces.
-  DefaultSeparator('×', SeparatorKind.split), // ×
-  DefaultSeparator('✕', SeparatorKind.split), // ✕
-  DefaultSeparator('✖', SeparatorKind.split), // ✖
-  DefaultSeparator('、', SeparatorKind.split), // 、 ideographic comma
-  DefaultSeparator('，', SeparatorKind.split), // ，fullwidth comma
-  DefaultSeparator('＆', SeparatorKind.split), // ＆ fullwidth ampersand
-  DefaultSeparator('|', SeparatorKind.split),
-  DefaultSeparator(';', SeparatorKind.split),
-
-  // Ambiguous: real names contain these. Whitespace-delimited only, and the
-  // resolver additionally weighs corpus evidence before acting on them.
-  DefaultSeparator(',', SeparatorKind.split),
-  DefaultSeparator('x', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('&', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('+', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('/', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('and', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('vs.', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('vs', SeparatorKind.split, requiresSpaces: true),
-  DefaultSeparator('versus', SeparatorKind.split, requiresSpaces: true),
-
-  // Everything after these is a featured credit rather than a co-lead.
-  DefaultSeparator('feat.', SeparatorKind.featured, requiresSpaces: true),
-  DefaultSeparator('feat', SeparatorKind.featured, requiresSpaces: true),
-  DefaultSeparator('featuring', SeparatorKind.featured, requiresSpaces: true),
-  DefaultSeparator('ft.', SeparatorKind.featured, requiresSpaces: true),
-  DefaultSeparator('ft', SeparatorKind.featured, requiresSpaces: true),
-  DefaultSeparator('with', SeparatorKind.featured, requiresSpaces: true),
-
-  DefaultSeparator('remixed by', SeparatorKind.remix, requiresSpaces: true),
-];

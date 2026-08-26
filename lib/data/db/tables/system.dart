@@ -104,6 +104,11 @@ class SeparatorTokens extends Table {
   BoolColumn get requiresSpaces =>
       boolean().withDefault(const Constant(false))();
 
+  /// When true, real artist names are known to contain this token, so the
+  /// resolver requires corroborating evidence before splitting on it.
+  BoolColumn get isAmbiguous =>
+      boolean().withDefault(const Constant(false))();
+
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
 
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();

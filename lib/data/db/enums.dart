@@ -4,6 +4,10 @@
 /// change. Add new values at the end and never reuse a removed name.
 library;
 
+// Separators are domain knowledge, not storage detail; re-exported here so
+// table definitions keep a single enum import.
+export '../../domain/credits/separator.dart' show SeparatorKind;
+
 /// What kind of entity an artist row represents.
 ///
 /// Groups are artists too: a group can be credited on a track or album exactly
@@ -228,16 +232,4 @@ enum ScanIssueKind {
   duplicateContent,
   artworkFailed,
   permissionDenied,
-}
-
-/// How a separator token behaves when splitting a credit string.
-enum SeparatorKind {
-  /// Splits into co-equal main artists ("A x B", "A, B").
-  split,
-
-  /// Everything after it is a featured artist ("A feat. B").
-  featured,
-
-  /// Everything after it is a remixer ("A (B remix)").
-  remix,
 }

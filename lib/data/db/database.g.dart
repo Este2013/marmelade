@@ -13833,7 +13833,7 @@ class QueueItem extends DataClass implements Insertable<QueueItem> {
   final QueueSource source;
 
   /// Id of whatever the track came from - an album, playlist, artist or tag -
-  /// so the UI can show "from <album>" and jump back to it.
+  /// so the UI can show "from `<album>`" and jump back to it.
   final int? sourceRefId;
 
   /// Ordering before the last shuffle, so a shuffle can be undone.
@@ -16868,6 +16868,21 @@ class $SeparatorTokensTable extends SeparatorTokens
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isAmbiguousMeta = const VerificationMeta(
+    'isAmbiguous',
+  );
+  @override
+  late final GeneratedColumn<bool> isAmbiguous = GeneratedColumn<bool>(
+    'is_ambiguous',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_ambiguous" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _enabledMeta = const VerificationMeta(
     'enabled',
   );
@@ -16916,6 +16931,7 @@ class $SeparatorTokensTable extends SeparatorTokens
     token,
     kind,
     requiresSpaces,
+    isAmbiguous,
     enabled,
     sortOrder,
     isBuiltIn,
@@ -16949,6 +16965,15 @@ class $SeparatorTokensTable extends SeparatorTokens
         requiresSpaces.isAcceptableOrUnknown(
           data['requires_spaces']!,
           _requiresSpacesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_ambiguous')) {
+      context.handle(
+        _isAmbiguousMeta,
+        isAmbiguous.isAcceptableOrUnknown(
+          data['is_ambiguous']!,
+          _isAmbiguousMeta,
         ),
       );
     }
@@ -16997,6 +17022,10 @@ class $SeparatorTokensTable extends SeparatorTokens
         DriftSqlType.bool,
         data['${effectivePrefix}requires_spaces'],
       )!,
+      isAmbiguous: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_ambiguous'],
+      )!,
       enabled: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}enabled'],
@@ -17031,6 +17060,10 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
   /// When true, the token only counts as a separator if surrounded by
   /// whitespace or string boundaries.
   final bool requiresSpaces;
+
+  /// When true, real artist names are known to contain this token, so the
+  /// resolver requires corroborating evidence before splitting on it.
+  final bool isAmbiguous;
   final bool enabled;
   final int sortOrder;
 
@@ -17042,6 +17075,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
     required this.token,
     required this.kind,
     required this.requiresSpaces,
+    required this.isAmbiguous,
     required this.enabled,
     required this.sortOrder,
     required this.isBuiltIn,
@@ -17057,6 +17091,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
       );
     }
     map['requires_spaces'] = Variable<bool>(requiresSpaces);
+    map['is_ambiguous'] = Variable<bool>(isAmbiguous);
     map['enabled'] = Variable<bool>(enabled);
     map['sort_order'] = Variable<int>(sortOrder);
     map['is_built_in'] = Variable<bool>(isBuiltIn);
@@ -17069,6 +17104,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
       token: Value(token),
       kind: Value(kind),
       requiresSpaces: Value(requiresSpaces),
+      isAmbiguous: Value(isAmbiguous),
       enabled: Value(enabled),
       sortOrder: Value(sortOrder),
       isBuiltIn: Value(isBuiltIn),
@@ -17087,6 +17123,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
         serializer.fromJson<String>(json['kind']),
       ),
       requiresSpaces: serializer.fromJson<bool>(json['requiresSpaces']),
+      isAmbiguous: serializer.fromJson<bool>(json['isAmbiguous']),
       enabled: serializer.fromJson<bool>(json['enabled']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       isBuiltIn: serializer.fromJson<bool>(json['isBuiltIn']),
@@ -17102,6 +17139,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
         $SeparatorTokensTable.$converterkind.toJson(kind),
       ),
       'requiresSpaces': serializer.toJson<bool>(requiresSpaces),
+      'isAmbiguous': serializer.toJson<bool>(isAmbiguous),
       'enabled': serializer.toJson<bool>(enabled),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'isBuiltIn': serializer.toJson<bool>(isBuiltIn),
@@ -17113,6 +17151,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
     String? token,
     SeparatorKind? kind,
     bool? requiresSpaces,
+    bool? isAmbiguous,
     bool? enabled,
     int? sortOrder,
     bool? isBuiltIn,
@@ -17121,6 +17160,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
     token: token ?? this.token,
     kind: kind ?? this.kind,
     requiresSpaces: requiresSpaces ?? this.requiresSpaces,
+    isAmbiguous: isAmbiguous ?? this.isAmbiguous,
     enabled: enabled ?? this.enabled,
     sortOrder: sortOrder ?? this.sortOrder,
     isBuiltIn: isBuiltIn ?? this.isBuiltIn,
@@ -17133,6 +17173,9 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
       requiresSpaces: data.requiresSpaces.present
           ? data.requiresSpaces.value
           : this.requiresSpaces,
+      isAmbiguous: data.isAmbiguous.present
+          ? data.isAmbiguous.value
+          : this.isAmbiguous,
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       isBuiltIn: data.isBuiltIn.present ? data.isBuiltIn.value : this.isBuiltIn,
@@ -17146,6 +17189,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
           ..write('token: $token, ')
           ..write('kind: $kind, ')
           ..write('requiresSpaces: $requiresSpaces, ')
+          ..write('isAmbiguous: $isAmbiguous, ')
           ..write('enabled: $enabled, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('isBuiltIn: $isBuiltIn')
@@ -17159,6 +17203,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
     token,
     kind,
     requiresSpaces,
+    isAmbiguous,
     enabled,
     sortOrder,
     isBuiltIn,
@@ -17171,6 +17216,7 @@ class SeparatorToken extends DataClass implements Insertable<SeparatorToken> {
           other.token == this.token &&
           other.kind == this.kind &&
           other.requiresSpaces == this.requiresSpaces &&
+          other.isAmbiguous == this.isAmbiguous &&
           other.enabled == this.enabled &&
           other.sortOrder == this.sortOrder &&
           other.isBuiltIn == this.isBuiltIn);
@@ -17181,6 +17227,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
   final Value<String> token;
   final Value<SeparatorKind> kind;
   final Value<bool> requiresSpaces;
+  final Value<bool> isAmbiguous;
   final Value<bool> enabled;
   final Value<int> sortOrder;
   final Value<bool> isBuiltIn;
@@ -17189,6 +17236,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
     this.token = const Value.absent(),
     this.kind = const Value.absent(),
     this.requiresSpaces = const Value.absent(),
+    this.isAmbiguous = const Value.absent(),
     this.enabled = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.isBuiltIn = const Value.absent(),
@@ -17198,6 +17246,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
     required String token,
     this.kind = const Value.absent(),
     this.requiresSpaces = const Value.absent(),
+    this.isAmbiguous = const Value.absent(),
     this.enabled = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.isBuiltIn = const Value.absent(),
@@ -17207,6 +17256,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
     Expression<String>? token,
     Expression<String>? kind,
     Expression<bool>? requiresSpaces,
+    Expression<bool>? isAmbiguous,
     Expression<bool>? enabled,
     Expression<int>? sortOrder,
     Expression<bool>? isBuiltIn,
@@ -17216,6 +17266,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
       if (token != null) 'token': token,
       if (kind != null) 'kind': kind,
       if (requiresSpaces != null) 'requires_spaces': requiresSpaces,
+      if (isAmbiguous != null) 'is_ambiguous': isAmbiguous,
       if (enabled != null) 'enabled': enabled,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (isBuiltIn != null) 'is_built_in': isBuiltIn,
@@ -17227,6 +17278,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
     Value<String>? token,
     Value<SeparatorKind>? kind,
     Value<bool>? requiresSpaces,
+    Value<bool>? isAmbiguous,
     Value<bool>? enabled,
     Value<int>? sortOrder,
     Value<bool>? isBuiltIn,
@@ -17236,6 +17288,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
       token: token ?? this.token,
       kind: kind ?? this.kind,
       requiresSpaces: requiresSpaces ?? this.requiresSpaces,
+      isAmbiguous: isAmbiguous ?? this.isAmbiguous,
       enabled: enabled ?? this.enabled,
       sortOrder: sortOrder ?? this.sortOrder,
       isBuiltIn: isBuiltIn ?? this.isBuiltIn,
@@ -17259,6 +17312,9 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
     if (requiresSpaces.present) {
       map['requires_spaces'] = Variable<bool>(requiresSpaces.value);
     }
+    if (isAmbiguous.present) {
+      map['is_ambiguous'] = Variable<bool>(isAmbiguous.value);
+    }
     if (enabled.present) {
       map['enabled'] = Variable<bool>(enabled.value);
     }
@@ -17278,6 +17334,7 @@ class SeparatorTokensCompanion extends UpdateCompanion<SeparatorToken> {
           ..write('token: $token, ')
           ..write('kind: $kind, ')
           ..write('requiresSpaces: $requiresSpaces, ')
+          ..write('isAmbiguous: $isAmbiguous, ')
           ..write('enabled: $enabled, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('isBuiltIn: $isBuiltIn')
@@ -34421,6 +34478,7 @@ typedef $$SeparatorTokensTableCreateCompanionBuilder =
       required String token,
       Value<SeparatorKind> kind,
       Value<bool> requiresSpaces,
+      Value<bool> isAmbiguous,
       Value<bool> enabled,
       Value<int> sortOrder,
       Value<bool> isBuiltIn,
@@ -34431,6 +34489,7 @@ typedef $$SeparatorTokensTableUpdateCompanionBuilder =
       Value<String> token,
       Value<SeparatorKind> kind,
       Value<bool> requiresSpaces,
+      Value<bool> isAmbiguous,
       Value<bool> enabled,
       Value<int> sortOrder,
       Value<bool> isBuiltIn,
@@ -34463,6 +34522,11 @@ class $$SeparatorTokensTableFilterComposer
 
   ColumnFilters<bool> get requiresSpaces => $composableBuilder(
     column: $table.requiresSpaces,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isAmbiguous => $composableBuilder(
+    column: $table.isAmbiguous,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -34511,6 +34575,11 @@ class $$SeparatorTokensTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isAmbiguous => $composableBuilder(
+    column: $table.isAmbiguous,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get enabled => $composableBuilder(
     column: $table.enabled,
     builder: (column) => ColumnOrderings(column),
@@ -34547,6 +34616,11 @@ class $$SeparatorTokensTableAnnotationComposer
 
   GeneratedColumn<bool> get requiresSpaces => $composableBuilder(
     column: $table.requiresSpaces,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isAmbiguous => $composableBuilder(
+    column: $table.isAmbiguous,
     builder: (column) => column,
   );
 
@@ -34601,6 +34675,7 @@ class $$SeparatorTokensTableTableManager
                 Value<String> token = const Value.absent(),
                 Value<SeparatorKind> kind = const Value.absent(),
                 Value<bool> requiresSpaces = const Value.absent(),
+                Value<bool> isAmbiguous = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<bool> isBuiltIn = const Value.absent(),
@@ -34609,6 +34684,7 @@ class $$SeparatorTokensTableTableManager
                 token: token,
                 kind: kind,
                 requiresSpaces: requiresSpaces,
+                isAmbiguous: isAmbiguous,
                 enabled: enabled,
                 sortOrder: sortOrder,
                 isBuiltIn: isBuiltIn,
@@ -34619,6 +34695,7 @@ class $$SeparatorTokensTableTableManager
                 required String token,
                 Value<SeparatorKind> kind = const Value.absent(),
                 Value<bool> requiresSpaces = const Value.absent(),
+                Value<bool> isAmbiguous = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<bool> isBuiltIn = const Value.absent(),
@@ -34627,6 +34704,7 @@ class $$SeparatorTokensTableTableManager
                 token: token,
                 kind: kind,
                 requiresSpaces: requiresSpaces,
+                isAmbiguous: isAmbiguous,
                 enabled: enabled,
                 sortOrder: sortOrder,
                 isBuiltIn: isBuiltIn,
