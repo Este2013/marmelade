@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../domain/credits/separator.dart';
 import 'enums.dart';
@@ -97,11 +96,15 @@ abstract final class SearchEntity {
 class MarmeladeDatabase extends _$MarmeladeDatabase {
   MarmeladeDatabase(super.e);
 
-  /// Opens the database file under the app's support directory.
+  /// Opens the database at [path], creating its directory if needed.
   ///
   /// Runs on a background isolate so a long query cannot stall a frame.
-  static Future<MarmeladeDatabase> open({String? overridePath}) async {
-    final path = overridePath ?? await defaultDatabasePath();
+  ///
+  /// The path is supplied by the caller rather than resolved here: keeping
+  /// `path_provider` - and therefore Flutter - out of the data layer is what
+  /// lets the indexer and its command-line tools run under plain `dart run`,
+  /// and keeps tests from needing a Flutter binding. See `app/storage_paths.dart`.
+  static Future<MarmeladeDatabase> open(String path) async {
     await Directory(p.dirname(path)).create(recursive: true);
     return MarmeladeDatabase(
       NativeDatabase.createInBackground(File(path)),
@@ -111,11 +114,6 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
   /// An in-memory database, for tests.
   static MarmeladeDatabase memory({bool logStatements = false}) =>
       MarmeladeDatabase(NativeDatabase.memory(logStatements: logStatements));
-
-  static Future<String> defaultDatabasePath() async {
-    final dir = await getApplicationSupportDirectory();
-    return p.join(dir.path, 'marmelade.db');
-  }
 
   @override
   int get schemaVersion => 1;

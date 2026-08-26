@@ -4,6 +4,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:path/path.dart' as p;
 
 import '../db/enums.dart';
+import '../fs/vorbis_comments.dart';
 import 'track_metadata.dart';
 
 /// Audio file extensions the library indexes.
@@ -49,7 +50,13 @@ class TagReader {
 
     return switch (tag) {
       Mp3Metadata m => _fromMp3(m, extension),
-      VorbisMetadata m => _fromVorbis(m, extension),
+      // FLAC text fields are re-read from the raw comment block; see
+      // _fromVorbis for why.
+      VorbisMetadata m => _fromVorbis(
+          m,
+          extension,
+          comments: extension == 'flac' ? FlacVorbisReader.read(file) : null,
+        ),
       RiffMetadata m => _fromRiff(m, extension),
       ApeMetadata m => _fromApe(m, extension),
       Mp4Metadata m => _fromMp4(m, extension),
@@ -149,14 +156,57 @@ class TagReader {
 
   // ------------------------------------------------------- Vorbis / FLAC, OGG
 
-  TrackFileMetadata _fromVorbis(VorbisMetadata m, String extension) {
+  /// Maps Vorbis comments, preferring the raw block when one could be read.
+  ///
+  /// The package's parser folds `ALBUMARTIST` into the same list as `ARTIST`.
+  /// That has two consequences the credits model cannot live with: the album
+  /// artist becomes unreadable, and "one artist plus an album artist" looks
+  /// exactly like "genuinely two artists". Since repeated `ARTIST` fields are
+  /// the most reliable multi-artist signal a file can carry - the file stating
+  /// the answer outright, no heuristics needed - the text fields are re-read
+  /// from the block itself. Stream properties and pictures still come from the
+  /// package, which handles them well.
+  TrackFileMetadata _fromVorbis(
+    VorbisMetadata m,
+    String extension, {
+    VorbisCommentBlock? comments,
+  }) {
     final credits = <RawCredit>[];
 
-    // Vorbis comments may legitimately repeat ARTIST. Several values means the
-    // file already answered the question.
-    final mains = _cleanList(m.artist);
-    final preSplit = mains.length > 1;
-    for (final value in mains) {
+    final List<String> mains;
+    final String? albumArtist;
+    final List<String> genres;
+    final List<String> languages;
+    final String? rawDate;
+
+    if (comments != null) {
+      mains = _cleanList(comments.all(const ['ARTIST']));
+      albumArtist = _clean(comments
+          .first(const ['ALBUMARTIST', 'ALBUM ARTIST', 'ALBUM_ARTIST']));
+      genres = _cleanList(comments.all(const ['GENRE']));
+      languages = _cleanList(comments.all(const ['LANGUAGE', 'LANG']));
+      rawDate = comments.first(const ['DATE', 'ORIGINALDATE', 'YEAR']);
+    } else {
+      mains = _cleanList(m.artist);
+      albumArtist =
+          _clean(_unknown(m.unknowns, const ['ALBUMARTIST', 'ALBUM ARTIST']));
+      genres = _cleanList(m.genres);
+      languages = _cleanList(m.language);
+      rawDate = _unknown(m.unknowns, const ['DATE', 'ORIGINALDATE']);
+    }
+
+    // Guard against the conflation above even on the raw path, since a file may
+    // legitimately repeat the album artist in ARTIST. Only drop it when
+    // something else remains to credit.
+    final albumArtistLower = albumArtist?.toLowerCase();
+    final withoutAlbumArtist = mains.length > 1 && albumArtistLower != null
+        ? mains.where((v) => v.toLowerCase() != albumArtistLower).toList()
+        : mains;
+    final effectiveMains =
+        withoutAlbumArtist.isEmpty ? mains : withoutAlbumArtist;
+
+    final preSplit = effectiveMains.length > 1;
+    for (final value in effectiveMains) {
       credits.add(RawCredit(
         value: value,
         role: CreditRole.mainArtist,
@@ -164,57 +214,81 @@ class TagReader {
       ));
     }
 
-    for (final value in _cleanList(m.composer)) {
-      credits.add(RawCredit(value: value, role: CreditRole.composer));
+    void addAll(List<String> values, CreditRole role) {
+      for (final value in _cleanList(values)) {
+        credits.add(RawCredit(value: value, role: role));
+      }
     }
-    for (final value in _cleanList(m.producer)) {
-      credits.add(RawCredit(value: value, role: CreditRole.producer));
-    }
-    // PERFORMER is a supporting credit, not a lead.
-    for (final value in _cleanList(m.performer)) {
-      credits.add(RawCredit(value: value, role: CreditRole.performer));
-    }
-    _addAll(credits, _unknown(m.unknowns, const ['LYRICIST']),
-        CreditRole.lyricist);
-    _addAll(credits, _unknown(m.unknowns, const ['ARRANGER']),
-        CreditRole.arranger);
-    _addAll(credits, _unknown(m.unknowns, const ['REMIXER', 'MIXARTIST']),
-        CreditRole.remixer);
 
-    final date = m.date.isEmpty ? null : m.date.first;
+    if (comments != null) {
+      addAll(comments.all(const ['COMPOSER']), CreditRole.composer);
+      addAll(comments.all(const ['PRODUCER']), CreditRole.producer);
+      // PERFORMER is a supporting credit, not a lead.
+      addAll(comments.all(const ['PERFORMER']), CreditRole.performer);
+      addAll(comments.all(const ['LYRICIST']), CreditRole.lyricist);
+      addAll(comments.all(const ['ARRANGER']), CreditRole.arranger);
+      addAll(comments.all(const ['REMIXER', 'MIXARTIST']), CreditRole.remixer);
+      addAll(comments.all(const ['CONDUCTOR']), CreditRole.conductor);
+    } else {
+      addAll(m.composer, CreditRole.composer);
+      addAll(m.producer, CreditRole.producer);
+      addAll(m.performer, CreditRole.performer);
+      _addAll(credits, _unknown(m.unknowns, const ['LYRICIST']),
+          CreditRole.lyricist);
+      _addAll(credits, _unknown(m.unknowns, const ['ARRANGER']),
+          CreditRole.arranger);
+      _addAll(credits, _unknown(m.unknowns, const ['REMIXER', 'MIXARTIST']),
+          CreditRole.remixer);
+    }
+
+    final date = _parseDateParts(rawDate) ??
+        (m.date.isEmpty
+            ? null
+            : (year: m.date.first.year, month: null, day: null));
+
+    String? fromEither(List<String> keys) => comments == null
+        ? _unknown(m.unknowns, keys)
+        : _clean(comments.first(keys));
 
     return TrackFileMetadata(
-      title: _clean(m.title.firstOrNull),
-      albumTitle: _clean(m.album.firstOrNull),
-      albumArtistRaw: _clean(
-          _unknown(m.unknowns, const ['ALBUMARTIST', 'ALBUM ARTIST'])),
+      title: _clean(comments?.first(const ['TITLE']) ?? m.title.firstOrNull),
+      albumTitle:
+          _clean(comments?.first(const ['ALBUM']) ?? m.album.firstOrNull),
+      albumArtistRaw: albumArtist,
       credits: credits,
-      trackNo: m.trackNumber.firstOrNull,
-      trackTotal: m.trackTotal,
-      discNo: m.discNumber,
-      discTotal: m.discTotal,
-      // Vorbis DATE is a real date, but a year-only tag parses as 1 January.
-      // Month and day are only trusted when the tag actually carried them.
+      trackNo: _parseIntOr(
+          comments?.first(const ['TRACKNUMBER']), m.trackNumber.firstOrNull),
+      trackTotal: _parseIntOr(
+          comments?.first(const ['TRACKTOTAL', 'TOTALTRACKS']), m.trackTotal),
+      discNo: _parseIntOr(comments?.first(const ['DISCNUMBER']), m.discNumber),
+      discTotal: _parseIntOr(
+          comments?.first(const ['DISCTOTAL', 'TOTALDISCS']), m.discTotal),
       year: date?.year,
-      month: _hasFullDate(m.unknowns, m.date) ? date?.month : null,
-      day: _hasFullDate(m.unknowns, m.date) ? date?.day : null,
-      genres: _cleanList(m.genres),
-      languages: _cleanList(m.language),
-      comment: _clean(m.comment.firstOrNull),
-      bpm: _toDouble(_unknown(m.unknowns, const ['BPM'])),
-      initialKey: _clean(_unknown(m.unknowns, const ['INITIALKEY', 'KEY'])),
-      lyrics: _clean(m.lyric),
-      rating: _parseRating(_unknown(m.unknowns, const ['RATING'])),
-      replayGainDb: _parseGain(m.replayGainTrackGain.firstOrNull),
-      replayGainPeak: _toDouble(m.replayGainTrackPeak.firstOrNull),
+      month: date?.month,
+      day: date?.day,
+      genres: genres,
+      languages: languages,
+      comment: _clean(comments?.first(const ['COMMENT', 'DESCRIPTION']) ??
+          m.comment.firstOrNull),
+      bpm: _toDouble(fromEither(const ['BPM'])),
+      initialKey: _clean(fromEither(const ['INITIALKEY', 'KEY'])),
+      lyrics: _clean(
+          comments?.first(const ['LYRICS', 'UNSYNCEDLYRICS']) ?? m.lyric),
+      rating: _parseRating(fromEither(const ['RATING'])),
+      replayGainDb: _parseGain(
+          comments?.first(const ['REPLAYGAIN_TRACK_GAIN']) ??
+              m.replayGainTrackGain.firstOrNull),
+      replayGainPeak: _toDouble(
+          comments?.first(const ['REPLAYGAIN_TRACK_PEAK']) ??
+              m.replayGainTrackPeak.firstOrNull),
       duration: m.duration,
       bitrate: m.bitrate,
       sampleRate: m.sampleRate,
       lossless: extension == 'flac',
       codec: extension,
-      isCompilation: _isTruthy(_unknown(m.unknowns, const ['COMPILATION'])),
+      isCompilation: _isTruthy(fromEither(const ['COMPILATION'])),
       pictures: _pictures(m.pictures),
-      tagFormat: 'Vorbis comment',
+      tagFormat: comments == null ? 'Vorbis comment' : 'Vorbis comment (raw)',
     );
   }
 
@@ -374,18 +448,30 @@ class TagReader {
   static String? _unknown(Map<String, String> map, List<String> keys) =>
       _custom(map, keys);
 
-  /// Whether a Vorbis DATE tag carried more than just a year.
+  /// Parses a Vorbis DATE, keeping only the precision the tag actually stated.
   ///
-  /// The parser turns "2023" into 2023-01-01, which would otherwise be
-  /// recorded as a precise release date that the file never claimed.
-  static bool _hasFullDate(Map<String, String> unknowns, List<DateTime> dates) {
-    if (dates.isEmpty) return false;
-    final raw = _custom(unknowns, const ['DATE', 'ORIGINALDATE']);
-    if (raw == null) {
-      // No raw form available; only trust a date that is not 1 January.
-      return !(dates.first.month == 1 && dates.first.day == 1);
-    }
-    return raw.contains('-') || raw.contains('/');
+  /// A year-only tag must not become 1 January: the file never claimed a day,
+  /// and pretending otherwise would show a made-up release date.
+  static ({int? year, int? month, int? day})? _parseDateParts(String? raw) {
+    final text = _clean(raw);
+    if (text == null) return null;
+    final match = RegExp(r'^(\d{4})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?')
+        .firstMatch(text);
+    if (match == null) return null;
+    return (
+      year: int.tryParse(match.group(1)!),
+      month: match.group(2) == null ? null : int.tryParse(match.group(2)!),
+      day: match.group(3) == null ? null : int.tryParse(match.group(3)!),
+    );
+  }
+
+  /// Prefers a raw tag value, falling back to the parser's own.
+  static int? _parseIntOr(String? raw, int? fallback) {
+    final text = _clean(raw);
+    if (text == null) return fallback;
+    // "3/12"-style values turn up here too.
+    final match = RegExp(r'\d+').firstMatch(text);
+    return match == null ? fallback : int.tryParse(match.group(0)!) ?? fallback;
   }
 
   static double? _toDouble(String? value) =>
