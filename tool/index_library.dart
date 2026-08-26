@@ -16,7 +16,7 @@ Future<void> main(List<String> args) async {
   final positional = args.where((a) => !a.startsWith('--')).toList();
   if (positional.isEmpty) {
     stderr.writeln('usage: dart run tool/index_library.dart <folder> '
-        '[--db <path>] [--keep] [--content-keys]');
+        '[--db <path>] [--artwork <dir>] [--keep] [--content-keys]');
     exitCode = 64;
     return;
   }
@@ -29,6 +29,7 @@ Future<void> main(List<String> args) async {
   }
 
   final keep = args.contains('--keep');
+  final artworkIndex = args.indexOf('--artwork');
   final contentKeys = args.contains('--content-keys');
   final dbIndex = args.indexOf('--db');
   final workdir = Directory.systemTemp.createTempSync('marmelade_index_');
@@ -37,7 +38,10 @@ Future<void> main(List<String> args) async {
       : p.join(workdir.path, 'marmelade.db');
 
   final db = await MarmeladeDatabase.open(dbPath);
-  final artStore = ArtStore(Directory(p.join(workdir.path, 'artwork')));
+  final artworkPath = artworkIndex >= 0 && artworkIndex + 1 < args.length
+      ? args[artworkIndex + 1]
+      : p.join(workdir.path, 'artwork');
+  final artStore = ArtStore(Directory(artworkPath));
   await artStore.root.create(recursive: true);
 
   final indexer = LibraryIndexer(
