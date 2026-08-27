@@ -237,11 +237,16 @@ void main() {
     CreditResolver withArtists(
       Map<String, int> known, {
       Set<String> protected = const {},
+      ResolverOptions options = const ResolverOptions(),
     }) {
       final vocab = MapArtistVocabulary();
       known.forEach((name, id) => vocab.add(name, id,
           neverSplit: protected.contains(name)));
-      return CreditResolver(tokenizer: tokenizer, vocabulary: vocab);
+      return CreditResolver(
+        tokenizer: tokenizer,
+        vocabulary: vocab,
+        options: options,
+      );
     }
 
     test('an exactly-matching name wins over any splitting', () {
@@ -262,10 +267,33 @@ void main() {
       expect(r.confidence, greaterThanOrEqualTo(0.85));
     });
 
-    test('still refuses when only one part of three is known', () {
+    test('one known part is enough to split', () {
+      // The policy this library is tuned for: a known artist inside the string
+      // means the field is a list. Requiring every part to be attested left
+      // credits like "LukHash x Shirobon" unsplit even though LukHash has his
+      // own albums here, which is the failure the app exists to prevent.
       final resolver = withArtists({'Fire': 3});
       final r = resolver.resolve('Earth, Wind & Fire');
+      expect(r.outcome, ResolutionOutcome.split);
+      expect(r.reason, contains('is a known artist'));
+    });
+
+    test('the conservative rule still refuses, when asked for', () {
+      // The cost of the rule above is a band name whose words include a known
+      // artist. Turning the option off restores review-instead-of-guess.
+      final resolver = withArtists({'Fire': 3},
+          options: const ResolverOptions(splitOnAnyAttestedPart: false));
+      final r = resolver.resolve('Earth, Wind & Fire');
       expect(r.outcome, ResolutionOutcome.needsReview);
+    });
+
+    test('an existing artist row protects a name permanently', () {
+      // This is what bounds the risk: correct a mis-split once and the exact
+      // match in rule 1 keeps it corrected, whatever the parts are attested as.
+      final resolver = withArtists({'Fire': 3, 'Earth, Wind & Fire': 9});
+      final r = resolver.resolve('Earth, Wind & Fire');
+      expect(r.outcome, isNot(ResolutionOutcome.split));
+      expect(r.credits.single.artistId, 9);
     });
 
     test('splits when a clear majority of parts are known', () {
@@ -424,11 +452,22 @@ void main() {
           ['Grand Thaw', 'Rigel Theatre']);
     });
 
-    test('a recurring whole still wins over a well-attested part', () {
-      // If the full string keeps appearing, it is a name even when one of its
-      // words happens to be a known artist.
+    test('a recurring whole no longer outweighs an attested part', () {
+      // Deliberate: the corpus counts one sighting per track, so a twelve-track
+      // collaboration album makes its credit look like a "recurring name". That
+      // made the recurring-whole rule refuse exactly the album-length
+      // collaborations this library is full of, so an attested part now wins.
       final resolver = withCorpus([
         for (var i = 0; i < 6; i++) 'Fire',
+        for (var i = 0; i < 4; i++) 'Earth, Wind & Fire',
+      ]);
+      final r = resolver.resolve('Earth, Wind & Fire');
+      expect(r.outcome, ResolutionOutcome.split);
+    });
+
+    test('a recurring whole still wins when no part is attested', () {
+      // Unchanged, and still the right call: nothing vouches for any part.
+      final resolver = withCorpus([
         for (var i = 0; i < 4; i++) 'Earth, Wind & Fire',
       ]);
       final r = resolver.resolve('Earth, Wind & Fire');

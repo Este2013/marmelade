@@ -116,6 +116,7 @@ are identical to a regex now separate cleanly:
 |---|---|---|
 | `Camellia x Nanahira` | yes - both proven by trustworthy splits elsewhere | **split** |
 | `Earth, Wind & Fire` | no - "Earth", "Wind", "Fire" appear nowhere else | **keep whole** |
+| `LukHash x Shirobon` | one - LukHash has albums of his own | **split** (see below) |
 
 Neither needed an artist row to exist beforehand, and neither needed a
 hard-coded list of band names. The collection answers the question about
@@ -130,9 +131,40 @@ collaboration:
 > `Grand Thaw & Rigel Theatre`, seen once, where `Rigel Theatre` has 195
 > tracks -> **split**.
 
-The rule reverses correctly too: if the whole string also recurs, it wins even
-when one of its words is a known artist, and the resolver asks rather than
-splitting.
+It reverses when nothing vouches for any part: a full string that keeps turning
+up on its own, whose pieces appear nowhere else, is a name, and the resolver
+keeps it whole.
+
+### One attested part is enough
+
+Requiring *every* part to be attested was the rule for a while, and on a real
+library it failed the exact case this feature exists for:
+
+> `LukHash x Shirobon` was kept whole and parked for review -- "nothing
+> corroborates a split here (1 of 2 parts attested)" -- while LukHash had two
+> albums of his own in the same library. His name was on screen with no page
+> behind it.
+
+So one attested part now carries the split. A band coincidentally named
+`LukHash x Shirobon` while LukHash exists alone in the same collection is
+far-fetched, and the alternative is the failure the app was built to remove.
+
+Note that this deliberately overrides the recurring-whole rule above. It has to:
+evidence is counted once per *track*, so a twelve-track collaboration album
+gives its credit twelve sightings and makes it look like a recurring name.
+Guarding on that would have refused precisely the album-length collaborations a
+real library is full of.
+
+What bounds the risk is rule 1. Correct a bad split once -- by merging the
+artists, or by adding the band as an artist with the never-split flag -- and the
+exact-match rule keeps it corrected forever, whatever its parts are attested as.
+The behaviour is a setting (**split on any attested part**), so the conservative
+rule is one toggle away.
+
+On the 5,216-file reference library, turning this on took credits parked for
+review from **479 to 9** and composite artist names from ~46 to ~14, with the
+nine survivors being strings where neither part is a known artist -- which is
+where a human should be asked.
 
 ### Two further signals
 
@@ -190,6 +222,9 @@ page" is not a feature that needs building — it falls out of the schema.
   certain.
 - **Separator editor** — add, disable, or reclassify any token, including the
   built-ins, without losing your own additions.
+- **Split on any attested part** (default on) — one known artist inside the
+  string is enough to treat the field as a list. Off restores the stricter rule,
+  which asks for review instead of guessing.
 - **Whole-name evidence threshold** (default 2) — how many standalone
   sightings of a full string are enough to conclude it is a real name.
 - **Strong attestation threshold** (default 2) — how well attested one part

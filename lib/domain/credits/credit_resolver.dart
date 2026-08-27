@@ -278,6 +278,7 @@ class CreditResolution {
 class ResolverOptions {
   const ResolverOptions({
     this.aggressiveSplitting = false,
+    this.splitOnAnyAttestedPart = true,
     this.wholeNameEvidenceThreshold = 2,
     this.strongAttestationThreshold = 2,
     this.detectAliasPairs = true,
@@ -287,6 +288,19 @@ class ResolverOptions {
   /// evidence. Faster to populate a library, more likely to mangle a band
   /// name. Exposed as a setting, off by default.
   final bool aggressiveSplitting;
+
+  /// Whether a single attested part is enough to justify a split.
+  ///
+  /// One known artist inside the string is taken as evidence that the field is
+  /// a list: a band coincidentally named "LukHash x Shirobon" while LukHash
+  /// exists on his own in the same library is far-fetched, and requiring
+  /// *every* part to be attested left exactly the credits this app was built
+  /// to fix sitting unsplit -- the name on screen with no page behind it.
+  ///
+  /// The cost is a real duo whose name contains a member's name being split.
+  /// That trade is deliberate and reversible: turn this off for the
+  /// conservative rule, which parks such credits for review instead.
+  final bool splitOnAnyAttestedPart;
 
   /// How many standalone appearances of the whole string are enough to
   /// conclude it is a real single name rather than an unsplit list.
@@ -542,6 +556,20 @@ class CreditResolver {
         confidence: 0.75,
         reason: '$supported of $total parts are known artists or are attested '
             'elsewhere',
+      );
+    }
+
+    // One attested part is enough. See [ResolverOptions.splitOnAnyAttestedPart]
+    // for why, and for what it costs.
+    if (options.splitOnAnyAttestedPart && supported >= 1) {
+      return CreditResolution(
+        raw: raw,
+        outcome: ResolutionOutcome.split,
+        credits: split,
+        confidence: 0.7,
+        reason: '$supported of $total parts is a known artist, which is taken '
+            'as evidence that this field is a list of credits rather than one '
+            'name',
       );
     }
 
