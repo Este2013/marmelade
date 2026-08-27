@@ -13,6 +13,8 @@ import '../features/edit/artist_editor_view.dart';
 import '../features/edit/track_editor_view.dart';
 import '../features/library/songs_view.dart';
 import '../features/player/now_playing_view.dart';
+import '../features/playlists/playlist_detail_view.dart';
+import '../features/playlists/playlists_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
@@ -149,6 +151,10 @@ class _AppShellState extends ConsumerState<AppShell>
           Platform.environment['MARMELADE_EDIT_TRACK'] ?? '',
         );
         if (editTrack != null) _editTrack(editTrack);
+        final playlist = int.tryParse(
+          Platform.environment['MARMELADE_PLAYLIST'] ?? '',
+        );
+        if (playlist != null) _openPlaylist(playlist);
       });
     }
 
@@ -278,6 +284,17 @@ class _AppShellState extends ConsumerState<AppShell>
       onOpenArtist: _openArtist,
       onBack: _pop,
       onEditArtist: _editArtist,
+      onEditTrack: _editTrack,
+    ),
+  );
+
+  void _openPlaylist(int playlistId) => _push(
+    PlaylistDetailView(
+      playlistId: playlistId,
+      onBack: _pop,
+      onOpenPlaylist: _openPlaylist,
+      onOpenArtist: _openArtist,
+      onOpenAlbum: _openAlbum,
       onEditTrack: _editTrack,
     ),
   );
@@ -560,10 +577,9 @@ class _AppShellState extends ConsumerState<AppShell>
       icon: Icons.label_outline,
       title: 'Tags',
     ),
-    LibrarySection.playlists => const _NotYetView(
-      icon: Icons.playlist_play_outlined,
-      title: 'Playlists',
-    ),
+    LibrarySection.playlists => PlaylistsView(
+          onOpenPlaylist: _openPlaylist,
+        ),
     LibrarySection.settings => const SettingsView(),
   };
 }

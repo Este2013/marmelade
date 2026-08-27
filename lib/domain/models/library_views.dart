@@ -195,6 +195,9 @@ class PlaylistCard {
     this.query,
     this.childCount = 0,
     this.isPinned = false,
+    this.depth = 0,
+    this.description,
+    this.totalDurationMs = 0,
   });
 
   final int id;
@@ -212,6 +215,16 @@ class PlaylistCard {
 
   final int childCount;
   final bool isPinned;
+
+  /// How deep in the nesting tree, for indentation. Zero at the top level.
+  final int depth;
+
+  final String? description;
+
+  /// Total duration of the tracks directly in this playlist.
+  final int totalDurationMs;
+
+  Duration get totalDuration => Duration(milliseconds: totalDurationMs);
 
   bool get isSmart => kind == 'smart' || kind == 'hybrid';
   bool get isFolder => kind == 'folder';

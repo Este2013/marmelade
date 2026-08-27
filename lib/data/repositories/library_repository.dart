@@ -182,6 +182,7 @@ class LibraryRepository {
     int? artistId,
     int? tagId,
     int? trackId,
+    List<int>? trackIds,
     LibrarySort sort = LibrarySort.nameAscending,
     int? limit,
   }) {
@@ -191,6 +192,12 @@ class LibraryRepository {
     if (trackId != null) {
       where.add('t.id = ?');
       variables.add(Variable(trackId));
+    }
+    if (trackIds != null) {
+      // Interpolated rather than bound: the count varies per call, and these
+      // are integers straight out of the database, never user text.
+      if (trackIds.isEmpty) return Stream.value(const []);
+      where.add('t.id IN (${trackIds.join(',')})');
     }
     if (albumId != null) {
       where.add('t.album_id = ?');
@@ -291,6 +298,25 @@ class LibraryRepository {
   ///
   /// One query for the whole page rather than one per row; a list of a thousand
   /// tracks would otherwise issue a thousand queries.
+  /// Tracks for [trackIds], in exactly that order.
+  ///
+  /// Order matters and duplicates are kept: this serves playlists and queues,
+  /// where a track appearing twice appears twice on purpose. A single `IN`
+  /// query returns neither, so the rows are fetched once and then arranged.
+  Future<List<TrackRow>> tracksByIds(List<int> trackIds) async {
+    if (trackIds.isEmpty) return const [];
+
+    final rows = await watchTracks(
+      trackIds: trackIds.toSet().toList(),
+      limit: trackIds.length,
+    ).first;
+    final byId = {for (final row in rows) row.id: row};
+    return [
+      for (final id in trackIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
   Future<Map<int, List<TrackCreditRef>>> _creditsFor(List<int> trackIds) async {
     if (trackIds.isEmpty) return const {};
     final placeholders = List.filled(trackIds.length, '?').join(',');

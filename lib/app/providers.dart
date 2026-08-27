@@ -11,6 +11,7 @@ import '../data/indexer/search_indexer.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/queue_repository.dart';
 import '../data/repositories/edit_repository.dart';
+import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
@@ -74,6 +75,45 @@ final albumEditProvider =
 final trackEditProvider =
     StreamProvider.family<TrackEdit?, int>((ref, trackId) {
   return ref.watch(editRepositoryProvider).watchTrack(trackId);
+});
+
+final playlistRepositoryProvider = Provider<PlaylistRepository>(
+  (ref) => PlaylistRepository(
+    db: ref.watch(databaseProvider),
+    searchIndexer: ref.watch(searchIndexerProvider),
+  ),
+);
+
+/// Every playlist, flattened into tree order.
+final playlistsProvider = StreamProvider<List<PlaylistCard>>((ref) {
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(playlistRepositoryProvider).watchPlaylists(),
+  );
+});
+
+final playlistProvider =
+    StreamProvider.family<PlaylistCard?, int>((ref, playlistId) {
+  return ref.watch(playlistRepositoryProvider).watchPlaylist(playlistId);
+});
+
+/// One playlist's own rows: its tracks and the playlists it includes.
+final playlistEntriesProvider =
+    StreamProvider.family<List<PlaylistEntry>, int>((ref, playlistId) {
+  return ref.watch(playlistRepositoryProvider).watchEntries(playlistId);
+});
+
+/// A playlist's tracks, resolved through any nested playlists.
+final playlistTracksProvider =
+    StreamProvider.family<List<TrackRow>, int>((ref, playlistId) {
+  // Re-resolved whenever the rows change, since a nested playlist's contents
+  // are part of the answer and can move underneath this one.
+  final repository = ref.watch(playlistRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  return repository.watchEntries(playlistId).asyncMap((_) async {
+    final ids = await repository.resolveTrackIds(playlistId);
+    return library.tracksByIds(ids);
+  });
 });
 
 final reviewRepositoryProvider = Provider<ReviewRepository>(

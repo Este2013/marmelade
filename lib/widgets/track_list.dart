@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../app/providers.dart';
 import '../data/db/enums.dart' show QueueSource;
 import '../domain/models/library_views.dart';
+import '../features/playlists/playlists_view.dart';
 import 'artwork.dart';
 import 'spectrum_bars.dart';
 import 'time_text.dart';
@@ -590,9 +591,91 @@ class _RowActions extends ConsumerWidget {
           onPressed: enabled ? () => player.addToQueue([track.id]) : null,
           icon: const Icon(Icons.playlist_add, size: 19),
         ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Add to a playlist',
+          onPressed: enabled
+              ? () => showAddToPlaylist(context, ref, [track.id])
+              : null,
+          icon: const Icon(Icons.library_add_outlined, size: 18),
+        ),
       ],
     );
   }
+}
+
+/// Offers the playlists, and adds [trackIds] to the chosen one.
+///
+/// Also offers making a new playlist, because the first time anyone reaches for
+/// this there will not be one yet.
+Future<void> showAddToPlaylist(
+  BuildContext context,
+  WidgetRef ref,
+  List<int> trackIds,
+) async {
+  final playlists = await ref.read(playlistsProvider.future);
+  if (!context.mounted) return;
+
+  final chosen = await showDialog<int>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: Text(
+        trackIds.length == 1
+            ? 'Add to a playlist'
+            : 'Add ${pluralize(trackIds.length, 'track')} to a playlist',
+      ),
+      children: [
+        SimpleDialogOption(
+          onPressed: () => Navigator.of(context).pop(-1),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.add, size: 18),
+                SizedBox(width: 12),
+                Text('New playlist...'),
+              ],
+            ),
+          ),
+        ),
+        if (playlists.isNotEmpty) const Divider(),
+        for (final playlist in playlists)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop(playlist.id),
+            child: Padding(
+              // Indented by depth, so a nested playlist is recognisable here
+              // as the same thing it is in the playlists view.
+              padding: EdgeInsets.only(
+                left: playlist.depth * 20.0,
+                top: 6,
+                bottom: 6,
+              ),
+              child: Text(
+                '${playlist.name} · '
+                '${pluralize(playlist.trackCount, 'track')}',
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+  if (chosen == null || !context.mounted) return;
+
+  var target = chosen;
+  if (target == -1) {
+    final created = await createPlaylist(context, ref);
+    if (created == null) return;
+    target = created;
+  }
+
+  await ref.read(playlistRepositoryProvider).addTracks(target, trackIds);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text('Added ${pluralize(trackIds.length, 'track')}'),
+      duration: const Duration(seconds: 2),
+    ),
+  );
 }
 
 /// A small outlined label, for format badges.
