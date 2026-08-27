@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart' show Color, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/db/database.dart';
 import '../data/indexer/library_indexer.dart';
@@ -23,6 +24,7 @@ import '../domain/models/library_views.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
+import '../services/updates/update_service.dart';
 import '../services/audio/playback_engine.dart';
 import '../services/audio/player_controller.dart';
 import '../services/audio/soloud_engine.dart';
@@ -446,6 +448,49 @@ class ThemeSettings extends Notifier<ThemePreference> {
 
 final themeSettingsProvider =
     NotifierProvider<ThemeSettings, ThemePreference>(ThemeSettings.new);
+
+/// The version this build reports, as package_info sees it.
+///
+/// Overridden in tests; read once because it cannot change while running.
+final appVersionProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return info.version;
+});
+
+/// Checks GitHub for a newer release.
+final updateServiceProvider = FutureProvider<UpdateService>((ref) async {
+  final version = await ref.watch(appVersionProvider.future);
+  final service = UpdateService(
+    repository: 'Este2013/marmelade',
+    currentVersion: version,
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Whether the update check should include pre-releases.
+final updateChannelProvider =
+    NotifierProvider<UpdateChannelSetting, bool>(UpdateChannelSetting.new);
+
+/// The beta channel, stored like the appearance settings are.
+class UpdateChannelSetting extends Notifier<bool> {
+  @override
+  bool build() {
+    Future.microtask(() async {
+      state = await ref
+          .read(settingsRepositoryProvider)
+          .get(SettingKeys.updateChannel, false);
+    });
+    return false;
+  }
+
+  Future<void> set(bool includePreReleases) async {
+    state = includePreReleases;
+    await ref
+        .read(settingsRepositoryProvider)
+        .set(SettingKeys.updateChannel, includePreReleases);
+  }
+}
 
 /// Reads and writes lyrics.
 final lyricsRepositoryProvider = Provider<LyricsRepository>(

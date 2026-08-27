@@ -45,6 +45,23 @@ name you can't type.
 - **Stream Deck**: a local control socket, ready for an Elgato Stream Deck
   plugin (the plugin itself is out of scope for now) and handy for debugging
 
+## Releases
+
+Tag a commit and push the tag; CI builds Windows and publishes the release:
+
+```bash
+git tag v1.1.0 && git push origin v1.1.0
+```
+
+The tag and `pubspec.yaml` must agree on the version -- the workflow fails if
+they do not, because a build that reports the wrong version can never see itself
+as out of date. A tag with a pre-release suffix (`v1.1.0-beta.1`) publishes to
+the beta channel, which is the same distinction Settings offers.
+
+The app checks for updates when asked and opens the release page. It never
+downloads or installs anything: that needs signature verification to be safe,
+and until there is some, handing you the page is the honest version.
+
 ## Status
 
 Early construction. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the

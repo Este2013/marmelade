@@ -1,0 +1,45 @@
+name: CI
+
+# Every push and pull request: the checks that must hold before anything is
+# tagged. The release workflow runs them again rather than trusting this one,
+# because a release is built from a tag that may not be what CI last saw.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Pinned, not "latest beta". This project needs a beta SDK for Dart
+          # native assets, and a moving channel would mean a build that breaks
+          # on a day nobody touched the code.
+          flutter-version: 3.45.0-0.1.pre
+          channel: beta
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate drift code
+        # The generated database code is not committed, so nothing compiles
+        # until this has run.
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build
+        # A debug build, because the point here is that it compiles for
+        # Windows. The release workflow makes the artifact.
+        run: flutter build windows --debug

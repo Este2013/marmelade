@@ -11,6 +11,7 @@ import '../../data/db/database.dart';
 import '../../data/indexer/library_indexer.dart';
 import '../../widgets/time_text.dart';
 import 'appearance_section.dart';
+import 'updates_tile.dart';
 
 /// Where the project lives, shown in settings and used by the updater.
 const repositoryUrl = 'https://github.com/Este2013/marmelade';
@@ -543,6 +544,7 @@ class _AboutSection extends ConsumerWidget {
           title: Text('marmelade'),
           subtitle: Text('we be jamming to the tunes'),
         ),
+        const UpdatesTile(),
         ListTile(
           leading: const Icon(Icons.code),
           title: const Text('Source code'),
