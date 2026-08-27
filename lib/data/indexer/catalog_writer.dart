@@ -150,8 +150,21 @@ class CatalogWriter {
     for (final artist in await db.select(db.artists).get()) {
       vocabulary.add(artist.name, artist.id, neverSplit: artist.neverSplit);
     }
-    for (final alias in await db.select(db.artistAliases).get()) {
-      vocabulary.add(alias.alias, alias.artistId);
+
+    // Joined rather than read straight from the alias table, so an alias
+    // pointing at an artist that no longer exists cannot enter the vocabulary.
+    // Foreign keys normally prevent that, but they are only enforced when the
+    // connection enables them - a restored backup or an external edit can
+    // leave orphans behind, and an orphan here means the resolver hands back a
+    // dead id and every album insert afterwards fails on a foreign key.
+    final aliases = await db.customSelect(
+      'SELECT al.alias AS alias, al.artist_id AS artist_id '
+      'FROM artist_aliases al '
+      'JOIN artists a ON a.id = al.artist_id',
+      readsFrom: {db.artistAliases, db.artists},
+    ).get();
+    for (final row in aliases) {
+      vocabulary.add(row.read<String>('alias'), row.read<int>('artist_id'));
     }
     return vocabulary;
   }

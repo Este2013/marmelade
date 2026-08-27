@@ -45,8 +45,24 @@ class TagReader {
   /// [includePictures] is off by default because embedded covers are routinely
   /// several megabytes and a scan touches thousands of files.
   TrackFileMetadata read(File file, {bool includePictures = false}) {
-    final tag = readAllMetadata(file, getImage: includePictures);
     final extension = p.extension(file.path).toLowerCase().replaceFirst('.', '');
+
+    // Typed as Object? because the package does not export the sealed base
+    // type of its metadata models.
+    final Object? tag;
+    try {
+      tag = readAllMetadata(file, getImage: includePictures);
+    } catch (e) {
+      // The package is strict about numeric fields and throws on values that
+      // are perfectly legal in the wild - a vinyl release with `DISCNUMBER=A`
+      // takes down the whole file, and the track then vanishes from the
+      // library entirely. For FLAC the comment block can be read directly, so
+      // recover rather than lose the track. Measured on a real library: 46
+      // files rescued from one soundtrack folder.
+      final recovered = _recoverFlac(file, extension);
+      if (recovered != null) return recovered;
+      rethrow;
+    }
 
     return switch (tag) {
       Mp3Metadata m => _fromMp3(m, extension),
@@ -60,6 +76,10 @@ class TagReader {
       RiffMetadata m => _fromRiff(m, extension),
       ApeMetadata m => _fromApe(m, extension),
       Mp4Metadata m => _fromMp4(m, extension),
+      _ => throw MetadataParserException(
+          track: file,
+          message: 'unrecognised metadata model ${tag.runtimeType}',
+        ),
     };
   }
 
@@ -151,6 +171,80 @@ class TagReader {
           _isTruthy(_custom(m.customMetadata, const ['COMPILATION'])),
       pictures: _pictures(m.pictures),
       tagFormat: 'ID3',
+    );
+  }
+
+  /// Builds metadata for a FLAC the package could not parse.
+  ///
+  /// Returns null when this is not a FLAC, or when even the raw blocks are
+  /// unreadable - at which point the file really is broken and the caller
+  /// should report it.
+  TrackFileMetadata? _recoverFlac(File file, String extension) {
+    if (extension != 'flac') return null;
+    final comments = FlacVorbisReader.read(file);
+    final stream = FlacVorbisReader.readStreamInfo(file);
+    if (comments == null && stream == null) return null;
+
+    final credits = <RawCredit>[];
+    final mains = _cleanList(comments?.all(const ['ARTIST']) ?? const []);
+    final albumArtist = _clean(comments
+        ?.first(const ['ALBUMARTIST', 'ALBUM ARTIST', 'ALBUM_ARTIST']));
+
+    // Same guard as the normal path: an album-artist value repeated in ARTIST
+    // is not a second track artist.
+    final albumArtistLower = albumArtist?.toLowerCase();
+    final filtered = mains.length > 1 && albumArtistLower != null
+        ? mains.where((v) => v.toLowerCase() != albumArtistLower).toList()
+        : mains;
+    final effective = filtered.isEmpty ? mains : filtered;
+
+    final preSplit = effective.length > 1;
+    for (final value in effective) {
+      credits.add(RawCredit(
+        value: value,
+        role: CreditRole.mainArtist,
+        isPreSplit: preSplit,
+      ));
+    }
+    for (final value in _cleanList(comments?.all(const ['COMPOSER']) ?? const [])) {
+      credits.add(RawCredit(value: value, role: CreditRole.composer));
+    }
+
+    final date = _parseDateParts(comments?.first(const ['DATE', 'YEAR']));
+
+    return TrackFileMetadata(
+      title: _clean(comments?.first(const ['TITLE'])),
+      albumTitle: _clean(comments?.first(const ['ALBUM'])),
+      albumArtistRaw: albumArtist,
+      credits: credits,
+      // Deliberately lenient: a non-numeric disc or track label is exactly
+      // what got us here, so it is dropped rather than allowed to fail again.
+      trackNo: _parseIntOr(comments?.first(const ['TRACKNUMBER']), null),
+      trackTotal:
+          _parseIntOr(comments?.first(const ['TRACKTOTAL', 'TOTALTRACKS']), null),
+      discNo: _parseIntOr(comments?.first(const ['DISCNUMBER']), null),
+      discTotal:
+          _parseIntOr(comments?.first(const ['DISCTOTAL', 'TOTALDISCS']), null),
+      year: date?.year,
+      month: date?.month,
+      day: date?.day,
+      genres: _cleanList(comments?.all(const ['GENRE']) ?? const []),
+      languages: _cleanList(comments?.all(const ['LANGUAGE', 'LANG']) ?? const []),
+      comment: _clean(comments?.first(const ['COMMENT', 'DESCRIPTION'])),
+      lyrics: _clean(comments?.first(const ['LYRICS', 'UNSYNCEDLYRICS'])),
+      replayGainDb: _parseGain(comments?.first(const ['REPLAYGAIN_TRACK_GAIN'])),
+      duration: stream?.duration,
+      bitrate: stream?.bitrate,
+      sampleRate: stream?.sampleRate,
+      channels: stream?.channels,
+      bitDepth: stream?.bitsPerSample,
+      lossless: true,
+      codec: 'flac',
+      // Pictures are skipped on this path: the package's picture reader is
+      // what could not be trusted, and a missing cover is recoverable while a
+      // missing track is not.
+      pictures: const [],
+      tagFormat: 'Vorbis comment (recovered)',
     );
   }
 

@@ -39,6 +39,45 @@ class VorbisCommentBlock {
   String toString() => 'VorbisCommentBlock(${fields.length} fields)';
 }
 
+/// Stream properties from a FLAC STREAMINFO block.
+class FlacStreamInfo {
+  const FlacStreamInfo({
+    required this.sampleRate,
+    required this.channels,
+    required this.bitsPerSample,
+    required this.totalSamples,
+    required this.fileLength,
+  });
+
+  final int sampleRate;
+  final int channels;
+  final int bitsPerSample;
+
+  /// Total interchannel samples, or zero when the encoder did not record it.
+  final int totalSamples;
+
+  final int fileLength;
+
+  Duration? get duration => (sampleRate > 0 && totalSamples > 0)
+      ? Duration(
+          microseconds:
+              (totalSamples * Duration.microsecondsPerSecond / sampleRate)
+                  .round(),
+        )
+      : null;
+
+  /// Average bitrate in bits per second.
+  int? get bitrate {
+    final seconds = duration?.inMicroseconds;
+    if (seconds == null || seconds == 0) return null;
+    return (fileLength * 8 * Duration.microsecondsPerSecond / seconds).round();
+  }
+
+  @override
+  String toString() => 'FlacStreamInfo(${sampleRate}Hz, ${channels}ch, '
+      '${bitsPerSample}bit, $totalSamples samples)';
+}
+
 /// Reads the Vorbis comment block out of a FLAC file.
 ///
 /// This exists because `audio_metadata_reader` maps both `ARTIST` and
@@ -96,6 +135,56 @@ abstract final class FlacVorbisReader {
         handle.setPositionSync(handle.positionSync() + length);
       }
       return null;
+    } catch (_) {
+      return null;
+    } finally {
+      handle?.closeSync();
+    }
+  }
+
+  /// Reads the STREAMINFO block of a FLAC file.
+  ///
+  /// Needed because the app cannot rely on the metadata package for a file the
+  /// package refuses to parse, and a track with no duration is a track the UI
+  /// cannot lay out properly.
+  static FlacStreamInfo? readStreamInfo(File file) {
+    RandomAccessFile? handle;
+    try {
+      handle = file.openSync();
+      final fileLength = handle.lengthSync();
+      final magic = handle.readSync(4);
+      if (magic.length < 4 ||
+          magic[0] != 0x66 ||
+          magic[1] != 0x4C ||
+          magic[2] != 0x61 ||
+          magic[3] != 0x43) {
+        return null;
+      }
+      // STREAMINFO is required to be the first metadata block.
+      final header = handle.readSync(4);
+      if (header.length < 4 || (header[0] & 0x7F) != 0) return null;
+      final body = handle.readSync(34);
+      if (body.length < 34) return null;
+
+      // Bit-packed after the frame sizes: 20 bits sample rate, 3 bits
+      // channels-1, 5 bits bits-per-sample-1, 36 bits total samples.
+      final sampleRate = (body[10] << 12) | (body[11] << 4) | (body[12] >> 4);
+      final channels = ((body[12] >> 1) & 0x07) + 1;
+      final bitsPerSample =
+          (((body[12] & 0x01) << 4) | (body[13] >> 4)) + 1;
+      final totalSamples = ((body[13] & 0x0F) << 32) |
+          (body[14] << 24) |
+          (body[15] << 16) |
+          (body[16] << 8) |
+          body[17];
+
+      return FlacStreamInfo(
+        sampleRate: sampleRate,
+        channels: channels,
+        bitsPerSample: bitsPerSample,
+        totalSamples: totalSamples,
+        fileLength: fileLength,
+      );
     } catch (_) {
       return null;
     } finally {

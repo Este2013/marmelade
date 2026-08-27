@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../db/enums.dart';
 import 'file_identity.dart';
 import 'library_scanner.dart';
@@ -172,6 +174,11 @@ class FileReconciler {
 
   /// Builds a plan for one folder.
   ///
+  /// Synchronous, and deliberately so: the logic is pure and the tests want to
+  /// read like assertions rather than futures. Callers that hash real files
+  /// should prefer [reconcileAsync], which yields between files so a large
+  /// library does not freeze the UI for the duration.
+  ///
   /// [identify] is injectable so the logic can be tested without real files.
   ReconciliationPlan reconcile({
     required List<ScannedFile> scanned,
@@ -287,6 +294,61 @@ class FileReconciler {
       missing: missing,
       hashedFiles: hashed,
     );
+  }
+
+  /// Builds a plan, yielding to the event loop while it hashes.
+  ///
+  /// Hashing is synchronous file I/O, so on a library of a few thousand files
+  /// the synchronous [reconcile] blocks the isolate long enough for the window
+  /// to stop responding - measured at sixteen seconds for 5,216 files. This
+  /// splits the work into slices and hands control back between them.
+  Future<ReconciliationPlan> reconcileAsync({
+    required List<ScannedFile> scanned,
+    required List<KnownFile> known,
+    int sliceSize = 64,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final knownByPath = {for (final k in known) k.relativePath: k};
+
+    // Only new or changed files need an identity. Hashing everything would
+    // undo the point of the fast path and make a no-op rescan of a large
+    // library as expensive as a first import.
+    final needsHashing = [
+      for (final file in scanned)
+        if (_needsIdentity(knownByPath[file.relativePath], file)) file,
+    ];
+
+    final identities = <String, FileIdentity>{};
+    for (var i = 0; i < needsHashing.length; i++) {
+      final file = needsHashing[i];
+      try {
+        identities[file.relativePath] = _hasher.quickIdentify(file.file);
+      } on FileSystemException {
+        // A file that vanished between the walk and here is simply not
+        // identifiable; reconcile() will treat it as it finds it.
+      }
+      if (i % sliceSize == sliceSize - 1) {
+        onProgress?.call(i + 1, needsHashing.length);
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+    onProgress?.call(needsHashing.length, needsHashing.length);
+
+    return reconcile(
+      scanned: scanned,
+      known: known,
+      identify: (file) =>
+          identities[file.relativePath] ?? _hasher.quickIdentify(file.file),
+    );
+  }
+
+  /// Whether [file] has to be hashed, mirroring the fast path in [reconcile].
+  static bool _needsIdentity(KnownFile? existing, ScannedFile file) {
+    if (existing == null) return true;
+    final unchanged = existing.sizeBytes == file.sizeBytes &&
+        !existing.modifiedAt.isBefore(file.modifiedAt) &&
+        !existing.modifiedAt.isAfter(file.modifiedAt);
+    return !(unchanged && existing.status == FileStatus.present);
   }
 
   /// Chooses which vanished row a new file most likely came from.

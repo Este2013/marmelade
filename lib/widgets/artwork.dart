@@ -6,6 +6,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
 
+/// Hard ceiling on decode width, in physical pixels.
+///
+/// Nothing in this app draws artwork larger than the now-playing view, so
+/// decoding beyond this only wastes memory. It also bounds the damage from a
+/// single absurdly large cover.
+const maxDecodeWidth = 1200;
+
+/// Decode width used when a widget's constraints are unbounded.
+///
+/// Unbounded means the parent has not decided yet, which happens inside
+/// scrolling and intrinsic layouts. A modest fixed size is better than
+/// full-resolution.
+const _fallbackDecodeWidth = 256.0;
+
 /// Album or artist artwork, with a placeholder when there is none.
 ///
 /// The fallback chain itself lives in SQL (`v_track_artwork`,
@@ -59,20 +73,42 @@ class Artwork extends ConsumerWidget {
           )
         : ClipRRect(
             borderRadius: radius,
-            child: Image.file(
-              file,
-              fit: fit,
-              width: size,
-              height: size,
-              // Decoding at display size keeps a grid of 500 covers from
-              // holding 500 full-resolution bitmaps.
-              cacheWidth: size == null ? null : (size! * 2).round(),
-              filterQuality: FilterQuality.medium,
-              errorBuilder: (context, _, _) => _Placeholder(
-                seed: fallbackSeed,
-                icon: Icons.broken_image_outlined,
-                borderRadius: radius,
-              ),
+            // Every cover must be decoded at roughly the size it is drawn.
+            // Album art is commonly 1400x1400 or larger, which is 7.8 MB
+            // decoded; a grid of forty of those at full resolution is over
+            // 300 MB of bitmaps for one screen, which blows past the image
+            // cache and leaves it re-decoding continuously. When no explicit
+            // size is given the real constraints have to be measured, because
+            // guessing wrong in that direction is the difference between a
+            // smooth grid and an unusable one.
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final devicePixelRatio =
+                    MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+                final logicalWidth = size ??
+                    (constraints.hasBoundedWidth
+                        ? constraints.maxWidth
+                        : _fallbackDecodeWidth);
+                final decodeWidth =
+                    (logicalWidth * devicePixelRatio).round().clamp(
+                          32,
+                          maxDecodeWidth,
+                        );
+
+                return Image.file(
+                  file,
+                  fit: fit,
+                  width: size,
+                  height: size,
+                  cacheWidth: decodeWidth,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (context, _, _) => _Placeholder(
+                    seed: fallbackSeed,
+                    icon: Icons.broken_image_outlined,
+                    borderRadius: radius,
+                  ),
+                );
+              },
             ),
           );
 

@@ -1,10 +1,12 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/providers.dart';
+import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
 import '../../data/indexer/library_indexer.dart';
 import '../../widgets/time_text.dart';
@@ -29,7 +31,117 @@ class SettingsView extends ConsumerWidget {
         const SizedBox(height: 28),
         const _StatisticsSection(),
         const SizedBox(height: 28),
+        const _DiagnosticsSection(),
+        const SizedBox(height: 28),
         const _AboutSection(),
+      ],
+    );
+  }
+}
+
+/// The log, and a way to get at it.
+///
+/// Worth a place in the UI rather than only on disk: when the app misbehaves,
+/// "no errors in the terminal" is not the same as "nothing went wrong", and the
+/// log is the only thing that survives a hard exit.
+class _DiagnosticsSection extends ConsumerStatefulWidget {
+  const _DiagnosticsSection();
+
+  @override
+  ConsumerState<_DiagnosticsSection> createState() =>
+      _DiagnosticsSectionState();
+}
+
+class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
+  var _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final log = AppLog.instance;
+    final file = log.file;
+    final lines = _expanded ? log.recentLines(limit: 200) : const <String>[];
+
+    return _Section(
+      title: 'Diagnostics',
+      subtitle: 'Every session writes a log, flushed line by line so it '
+          'survives a crash.',
+      children: [
+        ListTile(
+          leading: const Icon(Icons.description_outlined),
+          title: Text(file == null ? 'Logging to nowhere' : 'Session log'),
+          subtitle: Text(
+            file?.path ?? 'A log file could not be opened.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Copy path',
+                onPressed: file == null
+                    ? null
+                    : () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: file.path));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Log path copied')),
+                        );
+                      },
+                icon: const Icon(Icons.copy_all_outlined),
+              ),
+              IconButton(
+                tooltip: 'Show in folder',
+                onPressed: file == null
+                    ? null
+                    : () => launchUrl(Uri.file(file.parent.path)),
+                icon: const Icon(Icons.folder_open_outlined),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.terminal),
+          title: const Text('Recent log lines'),
+          subtitle: Text(_expanded ? 'Newest last' : 'Show the last 200 lines'),
+          trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+          onTap: () => setState(() => _expanded = !_expanded),
+        ),
+        if (_expanded)
+          Container(
+            width: double.infinity,
+            height: 260,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: lines.isEmpty
+                ? Center(
+                    child: Text(
+                      'Nothing logged yet.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  )
+                : SelectionArea(
+                    child: ListView.builder(
+                      reverse: true,
+                      itemCount: lines.length,
+                      itemBuilder: (context, index) => Text(
+                        lines[lines.length - 1 - index],
+                        style: const TextStyle(
+                          fontFamily: 'Consolas',
+                          fontSize: 11,
+                          height: 1.45,
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
       ],
     );
   }

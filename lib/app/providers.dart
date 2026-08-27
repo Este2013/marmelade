@@ -145,6 +145,30 @@ final spectrumProvider = StreamProvider<SpectrumFrame>((ref) {
 
 // ------------------------------------------------------------------ library
 
+/// Whether a library scan is running.
+///
+/// The list providers below stop listening to the database while it is true.
+/// Live query streams are exactly the wrong tool during a bulk import: every
+/// commit re-runs them, and a re-run means re-querying thousands of rows,
+/// rebuilding the grids and decoding another wave of album art. Measured on a
+/// 5,216-file library that cost three seconds and about four megabytes per
+/// directory of artwork imported, climbing until the process died.
+///
+/// While a scan runs the UI keeps showing the data it already had, which is
+/// both cheaper and less distracting than watching counts tick up. The lists
+/// are refreshed once, at the end.
+final isIndexingProvider = Provider<bool>(
+  (ref) => ref.watch(indexProgressProvider) != null,
+);
+
+/// Wraps a library query stream so it is not subscribed during a scan.
+///
+/// Riverpod keeps the previous value visible while a provider is rebuilding,
+/// so the UI shows stale-but-complete data rather than emptying out.
+Stream<T> _unlessIndexing<T>(Ref ref, Stream<T> Function() build) =>
+    ref.watch(isIndexingProvider) ? const Stream.empty() : build();
+
+
 /// A single mutable view setting.
 ///
 /// Riverpod 3 moved `StateProvider` to its legacy export; this is the same idea
@@ -174,10 +198,15 @@ final showSinglesProvider =
     NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(false));
 
 final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
-  return ref.watch(libraryRepositoryProvider).watchAlbums(
-        sort: ref.watch(albumSortProvider),
-        includeSingles: ref.watch(showSinglesProvider),
-      );
+  final sort = ref.watch(albumSortProvider);
+  final includeSingles = ref.watch(showSinglesProvider);
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(libraryRepositoryProvider).watchAlbums(
+          sort: sort,
+          includeSingles: includeSingles,
+        ),
+  );
 });
 
 final albumTracksProvider =
@@ -197,9 +226,11 @@ final trackSortProvider =
 );
 
 final allTracksProvider = StreamProvider<List<TrackRow>>((ref) {
-  return ref
-      .watch(libraryRepositoryProvider)
-      .watchTracks(sort: ref.watch(trackSortProvider));
+  final sort = ref.watch(trackSortProvider);
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(libraryRepositoryProvider).watchTracks(sort: sort),
+  );
 });
 
 final artistSortProvider =
@@ -208,9 +239,11 @@ final artistSortProvider =
 );
 
 final artistsProvider = StreamProvider<List<ArtistCard>>((ref) {
-  return ref
-      .watch(libraryRepositoryProvider)
-      .watchArtists(sort: ref.watch(artistSortProvider));
+  final sort = ref.watch(artistSortProvider);
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(libraryRepositoryProvider).watchArtists(sort: sort),
+  );
 });
 
 final artistTracksProvider =
@@ -224,7 +257,10 @@ final artistAlbumsProvider =
 });
 
 final tagsProvider = StreamProvider<List<TagCard>>((ref) {
-  return ref.watch(libraryRepositoryProvider).watchTags();
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(libraryRepositoryProvider).watchTags(),
+  );
 });
 
 final tagTracksProvider =
@@ -286,9 +322,11 @@ class IndexJobController extends Notifier<IndexProgress?> {
       return outcomes;
     } finally {
       _running = false;
+      // Clearing the progress state flips isIndexingProvider, which is what
+      // makes the gated list providers resubscribe and pick up the new data.
+      // Invalidating them by hand here would be a circular dependency: they
+      // watch this notifier.
       state = null;
-      // Nudge the count query, which is not stream-backed.
-      ref.invalidate(libraryCountsProvider);
     }
   }
 
@@ -308,7 +346,6 @@ class IndexJobController extends Notifier<IndexProgress?> {
     } finally {
       _running = false;
       state = null;
-      ref.invalidate(libraryCountsProvider);
     }
   }
 }

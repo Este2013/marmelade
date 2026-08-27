@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,8 @@ import '../features/library/artists_view.dart';
 import '../features/library/songs_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/settings/settings_view.dart';
+import '../core/logging/app_log.dart';
+import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/empty_state.dart';
 import 'providers.dart';
 
@@ -42,11 +46,40 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   var _section = LibrarySection.albums;
 
+  @override
+  void initState() {
+    super.initState();
+    // Debug affordance: reproduce a library refresh without driving the UI.
+    // Indexing is where the app does its heaviest work, and being able to
+    // trigger it from a script is the difference between reading a crash log
+    // and guessing.
+    if (Platform.environment['MARMELADE_AUTOSCAN'] == '1') {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        AppLog.instance.warn('autoscan requested by MARMELADE_AUTOSCAN');
+        _select(LibrarySection.settings);
+        await ref
+            .read(indexProgressProvider.notifier)
+            .refreshAll(trigger: ScanTrigger.startup);
+        AppLog.instance.info('autoscan complete');
+        if (Platform.environment['MARMELADE_AUTOSCAN_EXIT'] == '1') {
+          AppLog.instance.sessionEnd('autoscan finished');
+          exit(0);
+        }
+      });
+    }
+  }
+
   /// One navigator key per section, so each keeps its own history.
   final _navigatorKeys = {
     for (final section in LibrarySection.values)
       section: GlobalKey<NavigatorState>(),
   };
+
+  /// Sections that have been opened, in the order they were first opened.
+  ///
+  /// Doubles as the child list of the section stack, so an unvisited section
+  /// costs nothing at all.
+  final _visitedOrder = <LibrarySection>[LibrarySection.albums];
 
   void _select(LibrarySection section) {
     if (section == _section) {
@@ -55,7 +88,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       _navigatorKeys[section]!.currentState?.popUntil((r) => r.isFirst);
       return;
     }
-    setState(() => _section = section);
+    setState(() {
+      if (!_visitedOrder.contains(section)) _visitedOrder.add(section);
+      _section = section;
+    });
   }
 
   void _push(Widget page) {
@@ -96,10 +132,16 @@ class _AppShellState extends ConsumerState<AppShell> {
                   color: scheme.outlineVariant.withValues(alpha: 0.4),
                 ),
                 Expanded(
+                  // IndexedStack lays out every child, not just the visible
+                  // one, so a plain one would keep all seven sections querying
+                  // the database and decoding album art at all times. Sections
+                  // are therefore built on first visit and kept alive after,
+                  // which preserves their scroll position without paying for
+                  // the ones nobody has opened.
                   child: IndexedStack(
-                    index: LibrarySection.values.indexOf(_section),
+                    index: _visitedOrder.indexOf(_section),
                     children: [
-                      for (final section in LibrarySection.values)
+                      for (final section in _visitedOrder)
                         Navigator(
                           key: _navigatorKeys[section],
                           onGenerateRoute: (settings) => MaterialPageRoute(

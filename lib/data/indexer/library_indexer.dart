@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/logging/app_log.dart';
+
 import '../../domain/credits/credit_resolver.dart';
 import '../../domain/credits/credit_tokenizer.dart';
 import '../../domain/credits/separator.dart';
@@ -158,6 +160,24 @@ class LibraryIndexer {
   final CatalogWriter writer;
   final SearchIndexer searchIndexer;
 
+  /// How many files to process between yields to the event loop.
+  ///
+  /// Small enough that the window keeps painting, large enough that the
+  /// yielding itself is not the cost.
+  static const _yieldEvery = 16;
+
+  /// How many files between progress log lines.
+  static const _logEvery = 64;
+
+  /// How many directories between artwork progress log lines.
+  static const _artworkLogEvery = 25;
+
+  /// How many files to try for embedded art before giving up on an album.
+  ///
+  /// An album with neither a cover file nor embedded pictures should cost a
+  /// couple of probes, not one full tag read per track.
+  static const _maxEmbeddedAttemptsPerAlbum = 3;
+
   /// Registers a folder for indexing, or returns the existing row.
   Future<int> addFolder(String path, {String? displayName}) async {
     final normalized = p.normalize(p.absolute(path));
@@ -219,6 +239,13 @@ class LibraryIndexer {
           ),
         );
     final outcome = IndexOutcome(scanRunId: scanRunId, folderId: folderId);
+    final log = AppLog.instance;
+    log.info('scan started', tag: 'indexer', fields: {
+      'folder': folder.path,
+      'trigger': trigger.name,
+      'scanRun': scanRunId,
+      'rss': AppLog.formatBytes(AppLog.residentBytes()),
+    });
 
     try {
       // ---- Scan ----
@@ -230,9 +257,15 @@ class LibraryIndexer {
           .map((e) => e.toString())
           .toList();
       final scanner = LibraryScanner(excludeGlobs: excludes);
+      final walkStarted = DateTime.now();
       final scan = scanner.scan(folder.path, recursive: folder.recursive);
       outcome.filesSeen = scan.files.length;
       outcome.filesUnreadable = scan.unreadable.length;
+      log.info('walk finished', tag: 'indexer', fields: {
+        'audioFiles': scan.files.length,
+        'unreadable': scan.unreadable.length,
+        'ms': DateTime.now().difference(walkStarted).inMilliseconds,
+      });
 
       for (final entry in scan.unreadable.entries) {
         await _recordIssue(
@@ -247,10 +280,26 @@ class LibraryIndexer {
       // ---- Reconcile ----
       onProgress?.call(const IndexProgress(phase: IndexPhase.reconciling));
       final known = await _loadKnownFiles(folderId);
-      final plan = FileReconciler(hasher: hasher).reconcile(
+      final reconcileStarted = DateTime.now();
+      final plan = await FileReconciler(hasher: hasher).reconcileAsync(
         scanned: scan.files,
         known: known,
+        onProgress: (done, total) => onProgress?.call(IndexProgress(
+          phase: IndexPhase.reconciling,
+          completed: done,
+          total: total,
+        )),
       );
+      log.info('reconciled', tag: 'indexer', fields: {
+        'known': known.length,
+        'keep': plan.keep.length,
+        'update': plan.update.length,
+        'moves': plan.moves.length,
+        'adds': plan.adds.length,
+        'missing': plan.missing.length,
+        'hashed': plan.hashedFiles,
+        'ms': DateTime.now().difference(reconcileStarted).inMilliseconds,
+      });
 
       outcome.filesAdded = plan.adds.length;
       outcome.filesUpdated = plan.update.length;
@@ -281,6 +330,10 @@ class LibraryIndexer {
           _PendingFile(scanned: add.scanned, identity: add.identity),
       ];
 
+      final tagsStarted = DateTime.now();
+      log.info('reading tags', tag: 'indexer',
+          fields: {'files': pending.length});
+
       for (var i = 0; i < pending.length; i++) {
         final file = pending[i];
         onProgress?.call(IndexProgress(
@@ -289,7 +342,26 @@ class LibraryIndexer {
           total: pending.length,
           detail: file.scanned.fileName,
         ));
+
+        // Tag reading is synchronous, so without an explicit yield this
+        // loop runs to completion in one turn of the event loop and the
+        // window stops responding for the whole scan.
+        if (i % _yieldEvery == 0) {
+          await Future<void>.delayed(Duration.zero);
+          if (i > 0 && i % _logEvery == 0) {
+            log.debug('tag progress', tag: 'indexer', fields: {
+              'done': i,
+              'of': pending.length,
+              'rss': AppLog.formatBytes(AppLog.residentBytes()),
+            });
+          }
+        }
+
         try {
+          // Logged before the read, so a hard crash names the file that
+          // caused it rather than the last one that succeeded.
+          log.trace('reading', tag: 'indexer',
+              fields: {'file': file.scanned.relativePath});
           file.metadata = tagReader.read(file.scanned.file);
         } catch (e) {
           file.error = e.toString().split('\n').first;
@@ -303,11 +375,23 @@ class LibraryIndexer {
         }
       }
 
+      log.info('tags read', tag: 'indexer', fields: {
+        'files': pending.length,
+        'failures': pending.where((f) => f.error != null).length,
+        'ms': DateTime.now().difference(tagsStarted).inMilliseconds,
+        'rss': AppLog.formatBytes(AppLog.residentBytes()),
+      });
+
       // ---- Resolve credits across the whole batch ----
       onProgress?.call(const IndexProgress(phase: IndexPhase.resolvingCredits));
+      final resolveStarted = DateTime.now();
       final resolver = await _buildResolver(pending);
+      log.info('resolver ready', tag: 'indexer', fields: {
+        'ms': DateTime.now().difference(resolveStarted).inMilliseconds,
+      });
 
       // ---- Write ----
+      final writeStarted = DateTime.now();
       var completed = 0;
       for (final chunk in _chunks(pending, batchSize)) {
         await db.transaction(() async {
@@ -328,16 +412,40 @@ class LibraryIndexer {
           completed: completed,
           total: pending.length,
         ));
+        log.debug('write batch', tag: 'indexer', fields: {
+          'done': completed,
+          'of': pending.length,
+          'rss': AppLog.formatBytes(AppLog.residentBytes()),
+        });
+        // Let the UI breathe between transactions.
+        await Future<void>.delayed(Duration.zero);
       }
+      log.info('written', tag: 'indexer', fields: {
+        'tracks': outcome.tracksCreated,
+        'artists': outcome.artistsCreated,
+        'albums': outcome.albumsCreated,
+        'credits': outcome.creditsWritten,
+        'ms': DateTime.now().difference(writeStarted).inMilliseconds,
+      });
 
       // ---- Artwork ----
       onProgress?.call(const IndexProgress(phase: IndexPhase.artwork));
+      final artStarted = DateTime.now();
       await _importArtwork(folder.path, pending, outcome);
+      log.info('artwork imported', tag: 'indexer', fields: {
+        'stored': outcome.imagesStored,
+        'ms': DateTime.now().difference(artStarted).inMilliseconds,
+        'rss': AppLog.formatBytes(AppLog.residentBytes()),
+      });
 
       // ---- Search ----
       if (rebuildSearch) {
         onProgress?.call(const IndexProgress(phase: IndexPhase.indexingSearch));
+        final searchStarted = DateTime.now();
         await searchIndexer.rebuildAll();
+        log.info('search index rebuilt', tag: 'indexer', fields: {
+          'ms': DateTime.now().difference(searchStarted).inMilliseconds,
+        });
       }
 
       outcome.aliasesLearned = writer.aliasesAdded;
@@ -350,9 +458,20 @@ class LibraryIndexer {
         trackedFileCount: Value(scan.files.length),
       ));
 
+      log.info('scan finished', tag: 'indexer', fields: {
+        'seen': outcome.filesSeen,
+        'added': outcome.filesAdded,
+        'moved': outcome.filesMoved,
+        'missing': outcome.filesMissing,
+        'pending': outcome.pendingCredits,
+        'ms': outcome.elapsed.inMilliseconds,
+        'rss': AppLog.formatBytes(AppLog.residentBytes()),
+      });
+
       onProgress?.call(const IndexProgress(phase: IndexPhase.done));
       return outcome;
     } catch (e, stack) {
+      log.error('scan failed', tag: 'indexer', error: e, stack: stack);
       outcome.elapsed = DateTime.now().difference(started);
       outcome.problems.add('$e');
       await _finishScanRun(
@@ -505,10 +624,31 @@ class LibraryIndexer {
       (byDirectory[p.dirname(file.scanned.file.path)] ??= []).add(file);
     }
 
+    final log = AppLog.instance;
+    log.info('importing artwork', tag: 'artwork', fields: {
+      'directories': byDirectory.length,
+      'files': pending.length,
+    });
+
     final albumsHandled = <int>{};
     final artistsHandled = <int>{};
 
+    /// Files already tried for embedded art, per album.
+    ///
+    /// Without a cap, an album with neither a cover file nor embedded pictures
+    /// gets every one of its tracks re-parsed with picture loading on - and a
+    /// twenty-track album then costs twenty full tag reads to learn the same
+    /// nothing.
+    final embeddedAttempts = <int, int>{};
+
+    var directoriesDone = 0;
+    final started = DateTime.now();
+
     for (final entry in byDirectory.entries) {
+      // Yield per directory so the window keeps painting: everything below is
+      // filesystem work with no natural suspension points.
+      await Future<void>.delayed(Duration.zero);
+
       final candidates = sidecarFinder.forAlbumFolder(Directory(entry.key));
       final front = candidates
           .where((c) => c.role == ImageRole.front || c.role == ImageRole.other)
@@ -516,15 +656,25 @@ class LibraryIndexer {
 
       // An artist portrait may sit in this folder or in a
       // "[Collection] <Artist>" ancestor, which is how the convention shows up
-      // in practice.
-      final artistArt = _findArtistArt(entry.key, folderPath);
+      // in practice. Resolved once per directory and memoised, because
+      // hundreds of album folders share the same few ancestors.
+      final artistArt = _findArtistArtCached(entry.key, folderPath);
+
+      // The portrait's target artists depend only on the directory, so this is
+      // resolved here rather than per file. Doing it per file meant one
+      // database query per track in the library.
+      final portraitTargets = artistArt == null
+          ? const <int>[]
+          : artistArt.artistName != null
+              ? await _artistIdsNamedCached(artistArt.artistName!)
+              : const <int>[];
 
       for (final file in entry.value) {
         final albumId = file.albumId;
 
         // 1. Folder-level cover art, applied to the album.
         if (albumId != null && front != null && albumsHandled.add(albumId)) {
-          final imageId = await _storeSidecar(front, outcome);
+          final imageId = await _storeSidecarCached(front, outcome);
           if (imageId != null) {
             await writer.setAlbumImageIfAbsent(albumId, imageId);
           }
@@ -533,31 +683,31 @@ class LibraryIndexer {
         // 2. Embedded art, when the folder had nothing to offer.
         if (front == null &&
             (albumId == null || !albumsHandled.contains(albumId))) {
-          final imageId = await _importEmbeddedArt(file, outcome);
-          if (imageId != null) {
-            if (albumId != null) {
-              albumsHandled.add(albumId);
-              await writer.setAlbumImageIfAbsent(albumId, imageId);
-            } else {
-              // A loose single has nowhere else to keep its art.
-              await writer.setTrackImageIfAbsent(file.trackId!, imageId);
+          final attempts = albumId == null ? 0 : (embeddedAttempts[albumId] ?? 0);
+          if (attempts < _maxEmbeddedAttemptsPerAlbum) {
+            if (albumId != null) embeddedAttempts[albumId] = attempts + 1;
+            final imageId = await _importEmbeddedArt(file, outcome);
+            if (imageId != null) {
+              if (albumId != null) {
+                albumsHandled.add(albumId);
+                await writer.setAlbumImageIfAbsent(albumId, imageId);
+              } else {
+                // A loose single has nowhere else to keep its art.
+                await writer.setTrackImageIfAbsent(file.trackId!, imageId);
+              }
             }
           }
         }
 
-        // 3. Artist portrait.
+        // 3. Artist portrait. When it came from a "[Collection] <Artist>"
+        // folder it belongs to that artist alone; applying it to every artist
+        // in the tree would hand the collection owner's photo to each guest.
         if (artistArt != null) {
-          // When the portrait came from a "[Collection] <Artist>" folder, it
-          // belongs to that artist alone. Applying it to every artist in the
-          // tree would hand the collection owner's photo to each guest and
-          // collaborator that appears inside it.
-          final targets = artistArt.artistName != null
-              ? await _artistIdsNamed(artistArt.artistName!)
-              : file.mainArtistIds;
-
+          final targets =
+              artistArt.artistName != null ? portraitTargets : file.mainArtistIds;
           for (final artistId in targets) {
             if (!artistsHandled.add(artistId)) continue;
-            final imageId = await _storeSidecar(
+            final imageId = await _storeSidecarCached(
               artistArt.candidate,
               outcome,
               role: ImageRole.artist,
@@ -567,6 +717,16 @@ class LibraryIndexer {
             }
           }
         }
+      }
+
+      directoriesDone++;
+      if (directoriesDone % _artworkLogEvery == 0) {
+        log.debug('artwork progress', tag: 'artwork', fields: {
+          'directories': '$directoriesDone/${byDirectory.length}',
+          'stored': outcome.imagesStored,
+          'ms': DateTime.now().difference(started).inMilliseconds,
+          'rss': AppLog.formatBytes(AppLog.residentBytes()),
+        });
       }
     }
   }
@@ -660,6 +820,53 @@ class LibraryIndexer {
       current = parent;
     }
     return null;
+  }
+
+  // ---------------------------------------------------- artwork memoisation
+
+  /// Portrait lookups per directory.
+  final _artistArtCache =
+      <String, ({ArtCandidate candidate, String? artistName})?>{};
+
+  /// Artist ids per collection-folder name.
+  final _artistIdsCache = <String, List<int>>{};
+
+  /// Stored image ids per source file path.
+  ///
+  /// One portrait typically serves a whole collection, and without this it
+  /// would be re-read and re-hashed once per artist that references it.
+  final _storedImageCache = <String, int?>{};
+
+  /// [_findArtistArt], memoised by directory.
+  ({ArtCandidate candidate, String? artistName})? _findArtistArtCached(
+    String directory,
+    String folderRoot,
+  ) =>
+      _artistArtCache.putIfAbsent(
+        directory,
+        () => _findArtistArt(directory, folderRoot),
+      );
+
+  /// [_artistIdsNamed], memoised by name.
+  Future<List<int>> _artistIdsNamedCached(String name) async {
+    final cached = _artistIdsCache[name];
+    if (cached != null) return cached;
+    final ids = await _artistIdsNamed(name);
+    _artistIdsCache[name] = ids;
+    return ids;
+  }
+
+  /// [_storeSidecar], memoised by source path.
+  Future<int?> _storeSidecarCached(
+    ArtCandidate candidate,
+    IndexOutcome outcome, {
+    ImageRole? role,
+  }) async {
+    final key = '${candidate.file.path}|${role?.name ?? ''}';
+    if (_storedImageCache.containsKey(key)) return _storedImageCache[key];
+    final id = await _storeSidecar(candidate, outcome, role: role);
+    _storedImageCache[key] = id;
+    return id;
   }
 
   /// Artists whose canonical name or an alias matches [name].
