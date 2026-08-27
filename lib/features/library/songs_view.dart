@@ -13,10 +13,12 @@ class SongsView extends ConsumerWidget {
     super.key,
     required this.onOpenArtist,
     required this.onOpenAlbum,
+    this.onEditTrack,
   });
 
   final void Function(int artistId) onOpenArtist;
   final void Function(int albumId) onOpenAlbum;
+  final void Function(int trackId)? onEditTrack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -82,6 +84,7 @@ class SongsView extends ConsumerWidget {
                     tracks: items,
                     onOpenArtist: onOpenArtist,
                     onOpenAlbum: onOpenAlbum,
+                    onEditTrack: onEditTrack,
                   ),
           ),
         ),

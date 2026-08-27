@@ -21,12 +21,16 @@ class ArtistDetailView extends ConsumerWidget {
     required this.onOpenAlbum,
     required this.onOpenArtist,
     required this.onBack,
+    this.onEditArtist,
+    this.onEditTrack,
   });
 
   final int artistId;
   final void Function(int albumId) onOpenAlbum;
   final void Function(int artistId) onOpenArtist;
   final VoidCallback onBack;
+  final void Function(int artistId)? onEditArtist;
+  final void Function(int trackId)? onEditTrack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -55,6 +59,7 @@ class ArtistDetailView extends ConsumerWidget {
             tracks: items,
             onOpenAlbum: onOpenAlbum,
             onOpenArtist: onOpenArtist,
+            onEditTrack: onEditTrack,
             // Headed sections per release, which is also the play order: the
             // list is what gets queued, so scattering an album's running order
             // scatters playback too.
@@ -69,6 +74,9 @@ class ArtistDetailView extends ConsumerWidget {
               tracks: items,
               onOpenAlbum: onOpenAlbum,
               onBack: onBack,
+              onEdit: onEditArtist == null
+                  ? null
+                  : () => onEditArtist!(artistId),
             ),
           ),
         ],
@@ -79,6 +87,7 @@ class ArtistDetailView extends ConsumerWidget {
 
 class _ArtistHeader extends ConsumerWidget {
   const _ArtistHeader({
+    this.onEdit,
     required this.artist,
     required this.albums,
     required this.tracks,
@@ -89,6 +98,9 @@ class _ArtistHeader extends ConsumerWidget {
   final ArtistCard? artist;
   final List<AlbumCard> albums;
   final List<TrackRow> tracks;
+  /// Opens the artist editor.
+  final VoidCallback? onEdit;
+
   final void Function(int albumId) onOpenAlbum;
   final VoidCallback onBack;
 
@@ -105,10 +117,21 @@ class _ArtistHeader extends ConsumerWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: IconButton(
-              tooltip: 'Back',
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                const Spacer(),
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: 'Edit this artist',
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 8),

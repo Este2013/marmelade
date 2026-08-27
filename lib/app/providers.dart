@@ -10,6 +10,7 @@ import '../data/indexer/library_indexer.dart';
 import '../data/indexer/search_indexer.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/queue_repository.dart';
+import '../data/repositories/edit_repository.dart';
 import '../data/repositories/review_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
@@ -50,6 +51,29 @@ final queueRepositoryProvider = Provider<QueueRepository>(
 final searchIndexerProvider = Provider<SearchIndexer>(
   (ref) => SearchIndexer(ref.watch(databaseProvider)),
 );
+
+final editRepositoryProvider = Provider<EditRepository>(
+  (ref) => EditRepository(
+    db: ref.watch(databaseProvider),
+    searchIndexer: ref.watch(searchIndexerProvider),
+  ),
+);
+
+/// One artist with everything the editor shows, refreshed as it is edited.
+final artistEditProvider =
+    StreamProvider.family<ArtistEdit?, int>((ref, artistId) {
+  return ref.watch(editRepositoryProvider).watchArtist(artistId);
+});
+
+final albumEditProvider =
+    StreamProvider.family<AlbumEdit?, int>((ref, albumId) {
+  return ref.watch(editRepositoryProvider).watchAlbum(albumId);
+});
+
+final trackEditProvider =
+    StreamProvider.family<TrackEdit?, int>((ref, trackId) {
+  return ref.watch(editRepositoryProvider).watchTrack(trackId);
+});
 
 final reviewRepositoryProvider = Provider<ReviewRepository>(
   (ref) => ReviewRepository(

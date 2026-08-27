@@ -16,11 +16,15 @@ class AlbumDetailView extends ConsumerWidget {
     required this.albumId,
     required this.onOpenArtist,
     required this.onBack,
+    this.onEditAlbum,
+    this.onEditTrack,
   });
 
   final int albumId;
   final void Function(int artistId) onOpenArtist;
   final VoidCallback onBack;
+  final void Function(int albumId)? onEditAlbum;
+  final void Function(int trackId)? onEditTrack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,6 +69,7 @@ class AlbumDetailView extends ConsumerWidget {
                 showAlbum: false,
                 showTrackNumbers: true,
                 onOpenArtist: onOpenArtist,
+                onEditTrack: onEditTrack,
                 queueSource: QueueSource.album,
                 queueSourceId: albumId,
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -73,6 +78,9 @@ class AlbumDetailView extends ConsumerWidget {
                   tracks: items,
                   onOpenArtist: onOpenArtist,
                   onBack: onBack,
+                  onEdit: onEditAlbum == null
+                      ? null
+                      : () => onEditAlbum!(albumId),
                 ),
               ),
             ),
@@ -90,12 +98,16 @@ class _AlbumHeader extends ConsumerWidget {
     required this.tracks,
     required this.onOpenArtist,
     required this.onBack,
+    this.onEdit,
   });
 
   final AlbumCard album;
   final List<TrackRow> tracks;
   final void Function(int artistId) onOpenArtist;
   final VoidCallback onBack;
+
+  /// Opens the album editor.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -118,6 +130,12 @@ class _AlbumHeader extends ConsumerWidget {
                   icon: const Icon(Icons.arrow_back),
                 ),
                 const Spacer(),
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: 'Edit this album',
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
                 // Track order is what an album is normally read in, but a
                 // long compilation is easier to search alphabetically and a
                 // soundtrack is sometimes easier by length.

@@ -8,6 +8,9 @@ import '../features/library/albums_view.dart';
 import '../features/library/artist_detail_view.dart';
 import '../features/library/artists_view.dart';
 import '../features/library/credit_review_view.dart';
+import '../features/edit/album_editor_view.dart';
+import '../features/edit/artist_editor_view.dart';
+import '../features/edit/track_editor_view.dart';
 import '../features/library/songs_view.dart';
 import '../features/player/now_playing_view.dart';
 import '../features/player/player_bar.dart';
@@ -134,6 +137,18 @@ class _AppShellState extends ConsumerState<AppShell>
           Platform.environment['MARMELADE_ALBUM'] ?? '',
         );
         if (album != null) _openAlbum(album);
+        final editArtist = int.tryParse(
+          Platform.environment['MARMELADE_EDIT_ARTIST'] ?? '',
+        );
+        if (editArtist != null) _editArtist(editArtist);
+        final editAlbum = int.tryParse(
+          Platform.environment['MARMELADE_EDIT_ALBUM'] ?? '',
+        );
+        if (editAlbum != null) _editAlbum(editAlbum);
+        final editTrack = int.tryParse(
+          Platform.environment['MARMELADE_EDIT_TRACK'] ?? '',
+        );
+        if (editTrack != null) _editTrack(editTrack);
       });
     }
 
@@ -247,7 +262,13 @@ class _AppShellState extends ConsumerState<AppShell>
   void _pop() => _navigatorKeys[_section]!.currentState?.maybePop();
 
   void _openAlbum(int albumId) => _push(
-    AlbumDetailView(albumId: albumId, onOpenArtist: _openArtist, onBack: _pop),
+    AlbumDetailView(
+      albumId: albumId,
+      onOpenArtist: _openArtist,
+      onBack: _pop,
+      onEditAlbum: _editAlbum,
+      onEditTrack: _editTrack,
+    ),
   );
 
   void _openArtist(int artistId) => _push(
@@ -256,8 +277,24 @@ class _AppShellState extends ConsumerState<AppShell>
       onOpenAlbum: _openAlbum,
       onOpenArtist: _openArtist,
       onBack: _pop,
+      onEditArtist: _editArtist,
+      onEditTrack: _editTrack,
     ),
   );
+
+  void _editArtist(int artistId) => _push(
+    ArtistEditorView(
+      artistId: artistId,
+      onBack: _pop,
+      onOpenArtist: _openArtist,
+    ),
+  );
+
+  void _editAlbum(int albumId) =>
+      _push(AlbumEditorView(albumId: albumId, onBack: _pop));
+
+  void _editTrack(int trackId) =>
+      _push(TrackEditorView(trackId: trackId, onBack: _pop));
 
   void _openCreditReview() {
     // Lives inside the Artists stack: it is about who the artists are, and it
@@ -511,9 +548,10 @@ class _AppShellState extends ConsumerState<AppShell>
           ref.read(playerProvider.notifier).playTrack(trackId),
     ),
     LibrarySection.songs => SongsView(
-      onOpenArtist: _openArtist,
-      onOpenAlbum: _openAlbum,
-    ),
+            onOpenArtist: _openArtist,
+            onOpenAlbum: _openAlbum,
+            onEditTrack: _editTrack,
+          ),
     LibrarySection.artists => ArtistsView(
       onOpenArtist: _openArtist,
       onOpenReview: _openCreditReview,

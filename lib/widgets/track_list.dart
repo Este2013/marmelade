@@ -24,6 +24,7 @@ class TrackList extends ConsumerWidget {
     this.showAlbum = true,
     this.showTrackNumbers = false,
     this.groupByAlbum = false,
+    this.onEditTrack,
     this.padding = const EdgeInsets.fromLTRB(24, 0, 24, 24),
     this.header,
     this.queueSource = QueueSource.user,
@@ -36,6 +37,9 @@ class TrackList extends ConsumerWidget {
   final bool showArtwork;
   final bool showAlbum;
   final bool showTrackNumbers;
+
+  /// Opens the track editor, when there is somewhere to open it.
+  final void Function(int trackId)? onEditTrack;
 
   /// Breaks the list into a headed section per release.
   ///
@@ -98,6 +102,7 @@ class TrackList extends ConsumerWidget {
           showTrackNumber: showTrackNumbers || groupByAlbum,
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
+          onEditTrack: onEditTrack,
           onPlay: () => _playFrom(ref, trackRow.trackIndex),
         );
       },
@@ -266,6 +271,7 @@ class TrackTile extends ConsumerStatefulWidget {
     this.showTrackNumber = false,
     this.onOpenArtist,
     this.onOpenAlbum,
+    this.onEditTrack,
   });
 
   final TrackRow track;
@@ -278,6 +284,7 @@ class TrackTile extends ConsumerStatefulWidget {
   final bool showTrackNumber;
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
+  final void Function(int trackId)? onEditTrack;
 
   @override
   ConsumerState<TrackTile> createState() => _TrackTileState();
@@ -374,7 +381,11 @@ class _TrackTileState extends ConsumerState<TrackTile> {
                   // See the note in albums_view: dropping semantics at zero
                   // opacity churns the accessibility tree on every hover.
                   alwaysIncludeSemantics: true,
-                  child: _RowActions(track: track, enabled: _hovering),
+                  child: _RowActions(
+                    track: track,
+                    enabled: _hovering,
+                    onEdit: widget.onEditTrack,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -524,10 +535,15 @@ class _LinkTextState extends State<_LinkText> {
 
 /// Per-row actions: favourite, queue, more.
 class _RowActions extends ConsumerWidget {
-  const _RowActions({required this.track, required this.enabled});
+  const _RowActions({
+    required this.track,
+    required this.enabled,
+    this.onEdit,
+  });
 
   final TrackRow track;
   final bool enabled;
+  final void Function(int trackId)? onEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -537,6 +553,13 @@ class _RowActions extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onEdit != null)
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Edit this track',
+            onPressed: enabled ? () => onEdit!(track.id) : null,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+          ),
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: track.isFavorite ? 'Remove from favourites' : 'Favourite',
