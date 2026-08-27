@@ -986,7 +986,7 @@ void main() {
       final data = tester
           .getSemantics(find.bySemanticsLabel('Playback position'))
           .getSemanticsData();
-      expect(data.hasFlag(SemanticsFlag.isSlider), isTrue);
+      expect(data.flagsCollection.isSlider, isTrue);
       expect(data.hasAction(SemanticsAction.increase), isTrue);
       expect(data.hasAction(SemanticsAction.decrease), isTrue);
       expect(data.value, contains('3:22'), reason: 'the total should be read');
