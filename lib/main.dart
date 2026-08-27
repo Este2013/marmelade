@@ -9,6 +9,7 @@ import 'app/providers.dart';
 import 'app/shell.dart';
 import 'app/storage_paths.dart';
 import 'app/theme/app_theme.dart';
+import 'core/debug/screenshotter.dart';
 import 'core/logging/app_log.dart';
 
 /// How much decoded image data to keep.
@@ -105,9 +106,11 @@ class MarmeladeApp extends StatelessWidget {
           darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
           // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
           // tree, to test whether a fault is the accessibility bridge's.
-          home: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1'
-              ? const ExcludeSemantics(child: AppShell())
-              : const AppShell(),
+          home: Screenshotter.boundary(
+            child: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1'
+                ? const ExcludeSemantics(child: AppShell())
+                : const AppShell(),
+          ),
         );
       },
     );

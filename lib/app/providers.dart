@@ -209,9 +209,20 @@ final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
   );
 });
 
+/// How an album's own track list is sorted.
+///
+/// Separate from [albumSortProvider], which orders the grid of albums.
+final albumTrackSortProvider =
+    NotifierProvider<ViewSetting<LibrarySort>, LibrarySort>(
+  () => ViewSetting(LibrarySort.trackNumber),
+);
+
 final albumTracksProvider =
     StreamProvider.family<List<TrackRow>, int>((ref, albumId) {
-  return ref.watch(libraryRepositoryProvider).watchTracks(albumId: albumId);
+  final sort = ref.watch(albumTrackSortProvider);
+  return ref
+      .watch(libraryRepositoryProvider)
+      .watchTracks(albumId: albumId, sort: sort);
 });
 
 final albumDetailProvider =

@@ -110,10 +110,35 @@ class _AlbumHeader extends ConsumerWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: IconButton(
-              tooltip: 'Back',
-              onPressed: onBack,
-              icon: const Icon(Icons.arrow_back),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: onBack,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                const Spacer(),
+                // Track order is what an album is normally read in, but a
+                // long compilation is easier to search alphabetically and a
+                // soundtrack is sometimes easier by length.
+                PopupMenuButton<LibrarySort>(
+                  tooltip: 'Sort tracks',
+                  initialValue: ref.watch(albumTrackSortProvider),
+                  onSelected: (value) =>
+                      ref.read(albumTrackSortProvider.notifier).set(value),
+                  icon: const Icon(Icons.sort),
+                  itemBuilder: (context) => [
+                    for (final option in const [
+                      LibrarySort.trackNumber,
+                      LibrarySort.nameAscending,
+                      LibrarySort.duration,
+                      LibrarySort.mostPlayed,
+                      LibrarySort.random,
+                    ])
+                      PopupMenuItem(value: option, child: Text(option.label)),
+                  ],
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),

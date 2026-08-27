@@ -277,6 +277,8 @@ class PlayableTrack {
 /// How a library list is ordered.
 enum LibrarySort {
   nameAscending,
+  /// Disc then track number. Only meaningful within a single release.
+  trackNumber,
   nameDescending,
   recentlyAdded,
   recentlyPlayed,
@@ -288,6 +290,7 @@ enum LibrarySort {
 
   String get label => switch (this) {
         LibrarySort.nameAscending => 'Name (A–Z)',
+        LibrarySort.trackNumber => 'Track number',
         LibrarySort.nameDescending => 'Name (Z–A)',
         LibrarySort.recentlyAdded => 'Recently added',
         LibrarySort.recentlyPlayed => 'Recently played',

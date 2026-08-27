@@ -10,6 +10,7 @@ import '../features/library/artists_view.dart';
 import '../features/library/songs_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/settings/settings_view.dart';
+import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
 import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/empty_state.dart';
@@ -49,6 +50,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
+    Screenshotter.scheduleIfRequested();
     // Debug affordance: reproduce a library refresh without driving the UI.
     // Indexing is where the app does its heaviest work, and being able to
     // trigger it from a script is the difference between reading a crash log

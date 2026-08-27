@@ -213,10 +213,11 @@ class LibraryRepository {
       LibrarySort.releaseYear => 't.release_year DESC, t.title',
       LibrarySort.duration => 't.duration_ms DESC',
       LibrarySort.random => 'RANDOM()',
-      _ => albumId != null
-          // Inside an album, disc and track order is the only sensible default.
-          ? 't.disc_no, t.track_no, t.title'
-          : 't.sort_title, t.title',
+      // Disc and track order. Tracks with no number sort last rather than
+      // first, since a NULL track number means "unknown", not "track zero".
+      LibrarySort.trackNumber =>
+        'COALESCE(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.title',
+      _ => 't.sort_title, t.title',
     };
 
     return db.customSelect(
