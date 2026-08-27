@@ -13,6 +13,7 @@ import '../data/repositories/queue_repository.dart';
 import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
+import '../data/repositories/tag_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
 import '../services/audio/playback_engine.dart';
@@ -387,6 +388,47 @@ final artistTracksProvider =
 final artistAlbumsProvider =
     StreamProvider.family<List<AlbumCard>, int>((ref, artistId) {
   return ref.watch(libraryRepositoryProvider).watchArtistAlbums(artistId);
+});
+
+final tagRepositoryProvider = Provider<TagRepository>(
+  (ref) => TagRepository(
+    db: ref.watch(databaseProvider),
+    searchIndexer: ref.watch(searchIndexerProvider),
+  ),
+);
+
+/// The tags attached to one thing, cascade included for a track.
+final attachedTagsProvider = StreamProvider.family<List<AttachedTag>,
+    ({TagTarget target, int id})>((ref, key) {
+  return ref.watch(tagRepositoryProvider).watchTagsOf(key.target, key.id);
+});
+
+/// Every tag, with the number of tracks that carry it once the cascade from
+/// albums and playlists is taken into account.
+final taggedProvider = StreamProvider<List<TagCard>>((ref) {
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(tagRepositoryProvider).watchTags(),
+  );
+});
+
+final tagCategoriesProvider = StreamProvider<List<TagCategoryRow>>((ref) {
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(tagRepositoryProvider).watchCategories(),
+  );
+});
+
+/// The tracks carrying a tag, cascade included.
+final tagTrackListProvider =
+    StreamProvider.family<List<TrackRow>, int>((ref, tagId) {
+  final repository = ref.watch(tagRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  // Watched rather than fetched once: tagging an album, or adding a track to a
+  // tagged playlist, moves tracks into this set without touching them.
+  return repository
+      .watchTrackIdsWithTag(tagId)
+      .asyncMap(library.tracksByIds);
 });
 
 final tagsProvider = StreamProvider<List<TagCard>>((ref) {

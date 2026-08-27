@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../enums.dart';
 import 'catalog.dart';
 import 'images.dart';
+import 'playlists.dart';
 
 /// A grouping of related tags, such as "Genre", "Language" or "Mood".
 ///
@@ -154,4 +155,25 @@ class ArtistTags extends Table {
 
   @override
   Set<Column> get primaryKey => {artistId, tagId};
+}
+
+/// Tags on a playlist.
+///
+/// Like an album's tags, these reach the tracks: a playlist tagged "workout"
+/// makes every track it resolves to a workout track, nested playlists included.
+/// The cascade lives in `v_track_effective_tags` rather than in duplicated
+/// rows, so removing the tag from the playlist removes it from the tracks with
+/// no bookkeeping.
+class PlaylistTags extends Table {
+  IntColumn get playlistId =>
+      integer().references(Playlists, #id, onDelete: KeyAction.cascade)();
+  IntColumn get tagId =>
+      integer().references(Tags, #id, onDelete: KeyAction.cascade)();
+  TextColumn get source =>
+      textEnum<DataSource>().withDefault(const Constant('user'))();
+  DateTimeColumn get addedAt =>
+      dateTime().clientDefault(() => DateTime.now().toUtc())();
+
+  @override
+  Set<Column> get primaryKey => {playlistId, tagId};
 }

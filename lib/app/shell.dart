@@ -15,12 +15,13 @@ import '../features/library/songs_view.dart';
 import '../features/player/now_playing_view.dart';
 import '../features/playlists/playlist_detail_view.dart';
 import '../features/playlists/playlists_view.dart';
+import '../features/tags/tag_detail_view.dart';
+import '../features/tags/tags_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
 import '../data/db/enums.dart' show ScanTrigger;
-import '../widgets/empty_state.dart';
 import '../widgets/time_text.dart';
 import 'providers.dart';
 import 'window_chrome.dart';
@@ -155,6 +156,8 @@ class _AppShellState extends ConsumerState<AppShell>
           Platform.environment['MARMELADE_PLAYLIST'] ?? '',
         );
         if (playlist != null) _openPlaylist(playlist);
+        final tag = int.tryParse(Platform.environment['MARMELADE_TAG'] ?? '');
+        if (tag != null) _openTag(tag);
       });
     }
 
@@ -288,6 +291,16 @@ class _AppShellState extends ConsumerState<AppShell>
     ),
   );
 
+  void _openTag(int tagId) => _push(
+    TagDetailView(
+      tagId: tagId,
+      onBack: _pop,
+      onOpenArtist: _openArtist,
+      onOpenAlbum: _openAlbum,
+      onEditTrack: _editTrack,
+    ),
+  );
+
   void _openPlaylist(int playlistId) => _push(
     PlaylistDetailView(
       playlistId: playlistId,
@@ -296,6 +309,7 @@ class _AppShellState extends ConsumerState<AppShell>
       onOpenArtist: _openArtist,
       onOpenAlbum: _openAlbum,
       onEditTrack: _editTrack,
+      onOpenTag: _openTag,
     ),
   );
 
@@ -573,10 +587,7 @@ class _AppShellState extends ConsumerState<AppShell>
       onOpenArtist: _openArtist,
       onOpenReview: _openCreditReview,
     ),
-    LibrarySection.tags => const _NotYetView(
-      icon: Icons.label_outline,
-      title: 'Tags',
-    ),
+    LibrarySection.tags => TagsView(onOpenTag: _openTag),
     LibrarySection.playlists => PlaylistsView(
           onOpenPlaylist: _openPlaylist,
         ),
@@ -726,28 +737,6 @@ class _RailFootButton extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Placeholder for a section that is designed but not yet built.
-///
-/// Better than a blank panel: it says the section exists and is coming, rather
-/// than looking broken.
-class _NotYetView extends StatelessWidget {
-  const _NotYetView({required this.icon, required this.title});
-
-  final IconData icon;
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return EmptyState(
-      icon: icon,
-      title: title,
-      message:
-          'Not built yet. The data behind it is already indexed, so this '
-          'view is the only thing missing.',
     );
   }
 }

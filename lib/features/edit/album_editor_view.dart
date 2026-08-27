@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/repositories/edit_repository.dart';
+import '../../data/repositories/tag_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
+import 'tag_section.dart';
 import 'picture_section.dart';
 
 /// Everything about one album that a person can change.
@@ -239,6 +241,7 @@ class _EditorState extends ConsumerState<_Editor> {
                     onRemove: (id) =>
                         ref.read(editRepositoryProvider).removeAlbumAlias(id),
                   ),
+                  TagSection(target: TagTarget.album, id: edit.id),
                   EditSection(
                     title: 'Album artist',
                     subtitle: 'Who the release as a whole is by. Individual '

@@ -251,6 +251,9 @@ void main() {
           const AlbumEditorView(albumId: 1, onBack: _noop),
           album: albumEdit,
         ),
+        // Picture, other titles and tags now sit above the album artist, so a
+        // short viewport's lazy list never reaches it.
+        size: const Size(1200, 1800),
       );
 
       expect(find.text('Diverse System'), findsOne);
@@ -282,6 +285,7 @@ void main() {
           const TrackEditorView(trackId: 1, onBack: _noop),
           track: trackEdit,
         ),
+        size: const Size(1200, 1800),
       );
 
       expect(find.text('Credits'), findsOne);
@@ -300,6 +304,7 @@ void main() {
           const TrackEditorView(trackId: 1, onBack: _noop),
           track: trackEdit,
         ),
+        size: const Size(1200, 1800),
       );
       expect(saveButton(tester).onPressed, isNull);
 

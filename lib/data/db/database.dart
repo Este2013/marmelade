@@ -77,6 +77,7 @@ abstract final class SearchEntity {
     TrackTags,
     AlbumTags,
     ArtistTags,
+    PlaylistTags,
     // Playlists
     Playlists,
     PlaylistItems,
@@ -116,7 +117,7 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
       MarmeladeDatabase(NativeDatabase.memory(logStatements: logStatements));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// Set when the `trigram` FTS5 tokenizer is unavailable in the linked
   /// SQLite build. Search then falls back to token and prefix matching only,
@@ -130,6 +131,13 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
           await _createSearchIndexes();
           await _createViews();
           await _seed();
+        },
+        onUpgrade: (m, from, to) async {
+          // v2 added tags on playlists. Views and search indexes are recreated
+          // on every open, so only the real table needs a step here.
+          if (from < 2) {
+            await m.createTable(playlistTags);
+          }
         },
         beforeOpen: (details) async {
           // Referential integrity is off by default in SQLite.
@@ -222,6 +230,65 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
             LIMIT 1)
         ) AS image_id
       FROM albums a
+    ''');
+
+    await _createTagViews();
+  }
+
+  /// Creates the tag-cascade views.
+  ///
+  /// Tags are attached to tracks, albums, artists and playlists, and the ones
+  /// on a container reach the tracks inside it: an album tagged "soundtrack"
+  /// makes its tracks soundtrack tracks, and a playlist tagged "workout" makes
+  /// everything it resolves to a workout track.
+  ///
+  /// That cascade lives here rather than in duplicated rows, which is the whole
+  /// point: untagging the album untags its tracks with no bookkeeping, and
+  /// nothing can drift out of step. The cost is that "the tags on this track"
+  /// is a query rather than a lookup, which is what a view is for.
+  ///
+  /// Artist tags deliberately do *not* cascade. An artist tag says something
+  /// about the artist -- "Japanese", "signed to Diverse System" -- and pushing
+  /// it onto every track they ever guested on would make the track tags
+  /// useless. Album and playlist tags describe a collection of music, which is
+  /// what a track belongs to.
+  Future<void> _createTagViews() async {
+    await customStatement('DROP VIEW IF EXISTS v_playlist_tracks');
+    // Recursive, because a playlist can include another. UNION rather than
+    // UNION ALL: it deduplicates, which is also what stops a cycle from
+    // looping forever.
+    await customStatement('''
+      CREATE VIEW v_playlist_tracks AS
+      WITH RECURSIVE reach(playlist_id, track_id) AS (
+        SELECT pi.playlist_id, pi.track_id
+          FROM playlist_items pi
+         WHERE pi.track_id IS NOT NULL AND pi.is_exclusion = 0
+        UNION
+        SELECT pi.playlist_id, r.track_id
+          FROM playlist_items pi
+          JOIN reach r ON r.playlist_id = pi.child_playlist_id
+         WHERE pi.is_exclusion = 0
+      )
+      SELECT playlist_id, track_id FROM reach
+    ''');
+
+    await customStatement('DROP VIEW IF EXISTS v_track_effective_tags');
+    await customStatement('''
+      CREATE VIEW v_track_effective_tags AS
+      SELECT track_id, tag_id, source FROM (
+        SELECT tt.track_id AS track_id, tt.tag_id AS tag_id,
+               'track' AS source
+          FROM track_tags tt
+        UNION
+        SELECT t.id AS track_id, at.tag_id AS tag_id, 'album' AS source
+          FROM tracks t
+          JOIN album_tags at ON at.album_id = t.album_id
+        UNION
+        SELECT vpt.track_id AS track_id, pt.tag_id AS tag_id,
+               'playlist' AS source
+          FROM v_playlist_tracks vpt
+          JOIN playlist_tags pt ON pt.playlist_id = vpt.playlist_id
+      )
     ''');
   }
 

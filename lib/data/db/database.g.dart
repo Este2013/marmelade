@@ -13069,6 +13069,330 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
   }
 }
 
+class $PlaylistTagsTable extends PlaylistTags
+    with TableInfo<$PlaylistTagsTable, PlaylistTag> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlaylistTagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _playlistIdMeta = const VerificationMeta(
+    'playlistId',
+  );
+  @override
+  late final GeneratedColumn<int> playlistId = GeneratedColumn<int>(
+    'playlist_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES playlists (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  @override
+  late final GeneratedColumn<int> tagId = GeneratedColumn<int>(
+    'tag_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tags (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DataSource, String> source =
+      GeneratedColumn<String>(
+        'source',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('user'),
+      ).withConverter<DataSource>($PlaylistTagsTable.$convertersource);
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: () => DateTime.now().toUtc(),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [playlistId, tagId, source, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'playlist_tags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlaylistTag> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('playlist_id')) {
+      context.handle(
+        _playlistIdMeta,
+        playlistId.isAcceptableOrUnknown(data['playlist_id']!, _playlistIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_playlistIdMeta);
+    }
+    if (data.containsKey('tag_id')) {
+      context.handle(
+        _tagIdMeta,
+        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagIdMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {playlistId, tagId};
+  @override
+  PlaylistTag map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlaylistTag(
+      playlistId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}playlist_id'],
+      )!,
+      tagId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tag_id'],
+      )!,
+      source: $PlaylistTagsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PlaylistTagsTable createAlias(String alias) {
+    return $PlaylistTagsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<DataSource, String, String> $convertersource =
+      const EnumNameConverter<DataSource>(DataSource.values);
+}
+
+class PlaylistTag extends DataClass implements Insertable<PlaylistTag> {
+  final int playlistId;
+  final int tagId;
+  final DataSource source;
+  final DateTime addedAt;
+  const PlaylistTag({
+    required this.playlistId,
+    required this.tagId,
+    required this.source,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['playlist_id'] = Variable<int>(playlistId);
+    map['tag_id'] = Variable<int>(tagId);
+    {
+      map['source'] = Variable<String>(
+        $PlaylistTagsTable.$convertersource.toSql(source),
+      );
+    }
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  PlaylistTagsCompanion toCompanion(bool nullToAbsent) {
+    return PlaylistTagsCompanion(
+      playlistId: Value(playlistId),
+      tagId: Value(tagId),
+      source: Value(source),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory PlaylistTag.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlaylistTag(
+      playlistId: serializer.fromJson<int>(json['playlistId']),
+      tagId: serializer.fromJson<int>(json['tagId']),
+      source: $PlaylistTagsTable.$convertersource.fromJson(
+        serializer.fromJson<String>(json['source']),
+      ),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'playlistId': serializer.toJson<int>(playlistId),
+      'tagId': serializer.toJson<int>(tagId),
+      'source': serializer.toJson<String>(
+        $PlaylistTagsTable.$convertersource.toJson(source),
+      ),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  PlaylistTag copyWith({
+    int? playlistId,
+    int? tagId,
+    DataSource? source,
+    DateTime? addedAt,
+  }) => PlaylistTag(
+    playlistId: playlistId ?? this.playlistId,
+    tagId: tagId ?? this.tagId,
+    source: source ?? this.source,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  PlaylistTag copyWithCompanion(PlaylistTagsCompanion data) {
+    return PlaylistTag(
+      playlistId: data.playlistId.present
+          ? data.playlistId.value
+          : this.playlistId,
+      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+      source: data.source.present ? data.source.value : this.source,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaylistTag(')
+          ..write('playlistId: $playlistId, ')
+          ..write('tagId: $tagId, ')
+          ..write('source: $source, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(playlistId, tagId, source, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlaylistTag &&
+          other.playlistId == this.playlistId &&
+          other.tagId == this.tagId &&
+          other.source == this.source &&
+          other.addedAt == this.addedAt);
+}
+
+class PlaylistTagsCompanion extends UpdateCompanion<PlaylistTag> {
+  final Value<int> playlistId;
+  final Value<int> tagId;
+  final Value<DataSource> source;
+  final Value<DateTime> addedAt;
+  final Value<int> rowid;
+  const PlaylistTagsCompanion({
+    this.playlistId = const Value.absent(),
+    this.tagId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PlaylistTagsCompanion.insert({
+    required int playlistId,
+    required int tagId,
+    this.source = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : playlistId = Value(playlistId),
+       tagId = Value(tagId);
+  static Insertable<PlaylistTag> custom({
+    Expression<int>? playlistId,
+    Expression<int>? tagId,
+    Expression<String>? source,
+    Expression<DateTime>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (playlistId != null) 'playlist_id': playlistId,
+      if (tagId != null) 'tag_id': tagId,
+      if (source != null) 'source': source,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PlaylistTagsCompanion copyWith({
+    Value<int>? playlistId,
+    Value<int>? tagId,
+    Value<DataSource>? source,
+    Value<DateTime>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return PlaylistTagsCompanion(
+      playlistId: playlistId ?? this.playlistId,
+      tagId: tagId ?? this.tagId,
+      source: source ?? this.source,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (playlistId.present) {
+      map['playlist_id'] = Variable<int>(playlistId.value);
+    }
+    if (tagId.present) {
+      map['tag_id'] = Variable<int>(tagId.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(
+        $PlaylistTagsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaylistTagsCompanion(')
+          ..write('playlistId: $playlistId, ')
+          ..write('tagId: $tagId, ')
+          ..write('source: $source, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PlaylistItemsTable extends PlaylistItems
     with TableInfo<$PlaylistItemsTable, PlaylistItem> {
   @override
@@ -18304,6 +18628,7 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
   late final $AlbumTagsTable albumTags = $AlbumTagsTable(this);
   late final $ArtistTagsTable artistTags = $ArtistTagsTable(this);
   late final $PlaylistsTable playlists = $PlaylistsTable(this);
+  late final $PlaylistTagsTable playlistTags = $PlaylistTagsTable(this);
   late final $PlaylistItemsTable playlistItems = $PlaylistItemsTable(this);
   late final $QueueItemsTable queueItems = $QueueItemsTable(this);
   late final $PlayHistoryTable playHistory = $PlayHistoryTable(this);
@@ -18503,6 +18828,7 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     albumTags,
     artistTags,
     playlists,
+    playlistTags,
     playlistItems,
     queueItems,
     playHistory,
@@ -18772,6 +19098,20 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('playlists', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'playlists',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('playlist_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'tags',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('playlist_tags', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -28643,6 +28983,25 @@ final class $$TagsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$PlaylistTagsTable, List<PlaylistTag>>
+  _playlistTagsRefsTable(_$MarmeladeDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.playlistTags,
+        aliasName: 'tags__id__playlist_tags__tag_id',
+      );
+
+  $$PlaylistTagsTableProcessedTableManager get playlistTagsRefs {
+    final manager = $$PlaylistTagsTableTableManager(
+      $_db,
+      $_db.playlistTags,
+    ).filter((f) => f.tagId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_playlistTagsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$TagsTableFilterComposer
@@ -28854,6 +29213,31 @@ class $$TagsTableFilterComposer
           }) => $$ArtistTagsTableFilterComposer(
             $db: $db,
             $table: $db.artistTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> playlistTagsRefs(
+    Expression<bool> Function($$PlaylistTagsTableFilterComposer f) f,
+  ) {
+    final $$PlaylistTagsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTags,
+      getReferencedColumn: (t) => t.tagId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTagsTableFilterComposer(
+            $db: $db,
+            $table: $db.playlistTags,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -29188,6 +29572,31 @@ class $$TagsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> playlistTagsRefs<T extends Object>(
+    Expression<T> Function($$PlaylistTagsTableAnnotationComposer a) f,
+  ) {
+    final $$PlaylistTagsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTags,
+      getReferencedColumn: (t) => t.tagId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTagsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.playlistTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TagsTableTableManager
@@ -29211,6 +29620,7 @@ class $$TagsTableTableManager
             bool trackTagsRefs,
             bool albumTagsRefs,
             bool artistTagsRefs,
+            bool playlistTagsRefs,
           })
         > {
   $$TagsTableTableManager(_$MarmeladeDatabase db, $TagsTable table)
@@ -29291,6 +29701,7 @@ class $$TagsTableTableManager
                 trackTagsRefs = false,
                 albumTagsRefs = false,
                 artistTagsRefs = false,
+                playlistTagsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -29299,6 +29710,7 @@ class $$TagsTableTableManager
                     if (trackTagsRefs) db.trackTags,
                     if (albumTagsRefs) db.albumTags,
                     if (artistTagsRefs) db.artistTags,
+                    if (playlistTagsRefs) db.playlistTags,
                   ],
                   addJoins:
                       <
@@ -29418,6 +29830,22 @@ class $$TagsTableTableManager
                           ) => referencedItems.where((e) => e.tagId == item.id),
                           typedResults: items,
                         ),
+                      if (playlistTagsRefs)
+                        await $_getPrefetchedData<Tag, $TagsTable, PlaylistTag>(
+                          currentTable: table,
+                          referencedTable: $$TagsTableReferences
+                              ._playlistTagsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$TagsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).playlistTagsRefs,
+                          referencedItemsForCurrentItem: (
+                            item,
+                            referencedItems,
+                          ) => referencedItems.where((e) => e.tagId == item.id),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -29446,6 +29874,7 @@ typedef $$TagsTableProcessedTableManager =
         bool trackTagsRefs,
         bool albumTagsRefs,
         bool artistTagsRefs,
+        bool playlistTagsRefs,
       })
     >;
 typedef $$TagAliasesTableCreateCompanionBuilder = TagAliasesCompanion Function({
@@ -30969,6 +31398,25 @@ final class $$PlaylistsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$PlaylistTagsTable, List<PlaylistTag>>
+  _playlistTagsRefsTable(_$MarmeladeDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.playlistTags,
+        aliasName: 'playlists__id__playlist_tags__playlist_id',
+      );
+
+  $$PlaylistTagsTableProcessedTableManager get playlistTagsRefs {
+    final manager = $$PlaylistTagsTableTableManager(
+      $_db,
+      $_db.playlistTags,
+    ).filter((f) => f.playlistId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_playlistTagsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$PlaylistItemsTable, List<PlaylistItem>>
   _playlistEntriesTable(_$MarmeladeDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -31129,6 +31577,31 @@ class $$PlaylistsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> playlistTagsRefs(
+    Expression<bool> Function($$PlaylistTagsTableFilterComposer f) f,
+  ) {
+    final $$PlaylistTagsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTags,
+      getReferencedColumn: (t) => t.playlistId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTagsTableFilterComposer(
+            $db: $db,
+            $table: $db.playlistTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> playlistEntries(
@@ -31403,6 +31876,31 @@ class $$PlaylistsTableAnnotationComposer
     return composer;
   }
 
+  Expression<T> playlistTagsRefs<T extends Object>(
+    Expression<T> Function($$PlaylistTagsTableAnnotationComposer a) f,
+  ) {
+    final $$PlaylistTagsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTags,
+      getReferencedColumn: (t) => t.playlistId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTagsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.playlistTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> playlistEntries<T extends Object>(
     Expression<T> Function($$PlaylistItemsTableAnnotationComposer a) f,
   ) {
@@ -31470,6 +31968,7 @@ class $$PlaylistsTableTableManager
           PrefetchHooks Function({
             bool imageId,
             bool parentId,
+            bool playlistTagsRefs,
             bool playlistEntries,
             bool inclusionsOfThisPlaylist,
           })
@@ -31565,12 +32064,14 @@ class $$PlaylistsTableTableManager
               ({
                 imageId = false,
                 parentId = false,
+                playlistTagsRefs = false,
                 playlistEntries = false,
                 inclusionsOfThisPlaylist = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
+                    if (playlistTagsRefs) db.playlistTags,
                     if (playlistEntries) db.playlistItems,
                     if (inclusionsOfThisPlaylist) db.playlistItems,
                   ],
@@ -31617,6 +32118,27 @@ class $$PlaylistsTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
+                      if (playlistTagsRefs)
+                        await $_getPrefetchedData<
+                          Playlist,
+                          $PlaylistsTable,
+                          PlaylistTag
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PlaylistsTableReferences
+                              ._playlistTagsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PlaylistsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).playlistTagsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.playlistId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (playlistEntries)
                         await $_getPrefetchedData<
                           Playlist,
@@ -31682,9 +32204,394 @@ typedef $$PlaylistsTableProcessedTableManager =
       PrefetchHooks Function({
         bool imageId,
         bool parentId,
+        bool playlistTagsRefs,
         bool playlistEntries,
         bool inclusionsOfThisPlaylist,
       })
+    >;
+typedef $$PlaylistTagsTableCreateCompanionBuilder =
+    PlaylistTagsCompanion Function({
+      required int playlistId,
+      required int tagId,
+      Value<DataSource> source,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+typedef $$PlaylistTagsTableUpdateCompanionBuilder =
+    PlaylistTagsCompanion Function({
+      Value<int> playlistId,
+      Value<int> tagId,
+      Value<DataSource> source,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+
+final class $$PlaylistTagsTableReferences
+    extends
+        BaseReferences<_$MarmeladeDatabase, $PlaylistTagsTable, PlaylistTag> {
+  $$PlaylistTagsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PlaylistsTable _playlistIdTable(_$MarmeladeDatabase db) =>
+      db.playlists.createAlias('playlist_tags__playlist_id__playlists__id');
+
+  $$PlaylistsTableProcessedTableManager get playlistId {
+    final $_column = $_itemColumn<int>('playlist_id')!;
+
+    final manager = $$PlaylistsTableTableManager(
+      $_db,
+      $_db.playlists,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_playlistIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $TagsTable _tagIdTable(_$MarmeladeDatabase db) =>
+      db.tags.createAlias('playlist_tags__tag_id__tags__id');
+
+  $$TagsTableProcessedTableManager get tagId {
+    final $_column = $_itemColumn<int>('tag_id')!;
+
+    final manager = $$TagsTableTableManager(
+      $_db,
+      $_db.tags,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_tagIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PlaylistTagsTableFilterComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTagsTable> {
+  $$PlaylistTagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnWithTypeConverterFilters<DataSource, DataSource, String> get source =>
+      $composableBuilder(
+        column: $table.source,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PlaylistsTableFilterComposer get playlistId {
+    final $$PlaylistsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableFilterComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableFilterComposer get tagId {
+    final $$TagsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tags,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableFilterComposer(
+            $db: $db,
+            $table: $db.tags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTagsTableOrderingComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTagsTable> {
+  $$PlaylistTagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PlaylistsTableOrderingComposer get playlistId {
+    final $$PlaylistsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableOrderingComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableOrderingComposer get tagId {
+    final $$TagsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tags,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableOrderingComposer(
+            $db: $db,
+            $table: $db.tags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTagsTableAnnotationComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTagsTable> {
+  $$PlaylistTagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumnWithTypeConverter<DataSource, String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  $$PlaylistsTableAnnotationComposer get playlistId {
+    final $$PlaylistsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableAnnotationComposer get tagId {
+    final $$TagsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tags,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTagsTableTableManager
+    extends
+        RootTableManager<
+          _$MarmeladeDatabase,
+          $PlaylistTagsTable,
+          PlaylistTag,
+          $$PlaylistTagsTableFilterComposer,
+          $$PlaylistTagsTableOrderingComposer,
+          $$PlaylistTagsTableAnnotationComposer,
+          $$PlaylistTagsTableCreateCompanionBuilder,
+          $$PlaylistTagsTableUpdateCompanionBuilder,
+          (PlaylistTag, $$PlaylistTagsTableReferences),
+          PlaylistTag,
+          PrefetchHooks Function({bool playlistId, bool tagId})
+        > {
+  $$PlaylistTagsTableTableManager(
+    _$MarmeladeDatabase db,
+    $PlaylistTagsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlaylistTagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlaylistTagsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlaylistTagsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> playlistId = const Value.absent(),
+                Value<int> tagId = const Value.absent(),
+                Value<DataSource> source = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlaylistTagsCompanion(
+                playlistId: playlistId,
+                tagId: tagId,
+                source: source,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int playlistId,
+                required int tagId,
+                Value<DataSource> source = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlaylistTagsCompanion.insert(
+                playlistId: playlistId,
+                tagId: tagId,
+                source: source,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PlaylistTagsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({playlistId = false, tagId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (playlistId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.playlistId,
+                        referencedTable: $$PlaylistTagsTableReferences
+                            ._playlistIdTable(db),
+                        referencedColumn: $$PlaylistTagsTableReferences
+                            ._playlistIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+                    if (tagId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.tagId,
+                        referencedTable: $$PlaylistTagsTableReferences
+                            ._tagIdTable(db),
+                        referencedColumn: $$PlaylistTagsTableReferences
+                            ._tagIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PlaylistTagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarmeladeDatabase,
+      $PlaylistTagsTable,
+      PlaylistTag,
+      $$PlaylistTagsTableFilterComposer,
+      $$PlaylistTagsTableOrderingComposer,
+      $$PlaylistTagsTableAnnotationComposer,
+      $$PlaylistTagsTableCreateCompanionBuilder,
+      $$PlaylistTagsTableUpdateCompanionBuilder,
+      (PlaylistTag, $$PlaylistTagsTableReferences),
+      PlaylistTag,
+      PrefetchHooks Function({bool playlistId, bool tagId})
     >;
 typedef $$PlaylistItemsTableCreateCompanionBuilder =
     PlaylistItemsCompanion Function({
@@ -35393,6 +36300,8 @@ class $MarmeladeDatabaseManager {
       $$ArtistTagsTableTableManager(_db, _db.artistTags);
   $$PlaylistsTableTableManager get playlists =>
       $$PlaylistsTableTableManager(_db, _db.playlists);
+  $$PlaylistTagsTableTableManager get playlistTags =>
+      $$PlaylistTagsTableTableManager(_db, _db.playlistTags);
   $$PlaylistItemsTableTableManager get playlistItems =>
       $$PlaylistItemsTableTableManager(_db, _db.playlistItems);
   $$QueueItemsTableTableManager get queueItems =>

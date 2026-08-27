@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/playlist_repository.dart';
+import '../../data/repositories/tag_repository.dart';
+import '../edit/tag_section.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
@@ -28,6 +30,7 @@ class PlaylistDetailView extends ConsumerWidget {
     this.onOpenArtist,
     this.onOpenAlbum,
     this.onEditTrack,
+    this.onOpenTag,
   });
 
   final int playlistId;
@@ -36,6 +39,7 @@ class PlaylistDetailView extends ConsumerWidget {
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
   final void Function(int trackId)? onEditTrack;
+  final void Function(int tagId)? onOpenTag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -75,6 +79,7 @@ class PlaylistDetailView extends ConsumerWidget {
             entries: entries.value ?? const [],
             onBack: onBack,
             onOpenPlaylist: onOpenPlaylist,
+            onOpenTag: onOpenTag,
           ),
         );
       },
@@ -89,6 +94,7 @@ class _Header extends ConsumerWidget {
     required this.entries,
     required this.onBack,
     required this.onOpenPlaylist,
+    this.onOpenTag,
   });
 
   final PlaylistCard playlist;
@@ -96,6 +102,7 @@ class _Header extends ConsumerWidget {
   final List<PlaylistEntry> entries;
   final VoidCallback onBack;
   final void Function(int playlistId) onOpenPlaylist;
+  final void Function(int tagId)? onOpenTag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -225,6 +232,17 @@ class _Header extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          // Constrained, because the section is designed for an editor page
+          // and this one is a header inside a scrolling list.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: TagSection(
+              target: TagTarget.playlist,
+              id: playlist.id,
+              onOpenTag: onOpenTag,
+            ),
           ),
           if (entries.isNotEmpty) ...[
             const SizedBox(height: 28),
