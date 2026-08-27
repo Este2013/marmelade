@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/playlist_repository.dart';
+import '../../data/repositories/smart_playlist_resolver.dart' show smartPlaylistSorts;
 import '../../data/repositories/tag_repository.dart';
 import '../edit/tag_section.dart';
 import '../../domain/models/library_views.dart';
@@ -13,6 +14,7 @@ import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
 import 'playlist_pickers.dart';
 import 'playlists_view.dart';
+import 'smart_query_field.dart';
 
 /// One playlist: its rows in order, and everything you can do to them.
 ///
@@ -73,6 +75,15 @@ class PlaylistDetailView extends ConsumerWidget {
           onEditTrack: onEditTrack,
           queueSource: QueueSource.playlist,
           queueSourceId: playlistId,
+          // A query put these tracks here, so there is no row to delete. The
+          // only way to drop one is to say it does not belong, which is what
+          // an exclusion is.
+          onRemoveTrack: !card.isSmart
+              ? null
+              : (trackId) => ref
+                  .read(playlistRepositoryProvider)
+                  .exclude(playlistId, trackId),
+          removeTooltip: 'Keep this track out of this playlist',
           header: _Header(
             playlist: card,
             tracks: items,
@@ -233,6 +244,13 @@ class _Header extends ConsumerWidget {
               ),
             ],
           ),
+          if (playlist.isSmart) ...[
+            const SizedBox(height: 24),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: _QuerySection(playlist: playlist),
+            ),
+          ],
           const SizedBox(height: 24),
           // Constrained, because the section is designed for an editor page
           // and this one is a header inside a scrolling list.
@@ -289,7 +307,11 @@ class _Header extends ConsumerWidget {
           ],
           const SizedBox(height: 24),
           Text(
-            playlist.childCount > 0 ? 'All tracks, in order' : 'Tracks',
+            switch (playlist) {
+              final p when p.isSmart => 'Tracks matching this query, now',
+              final p when p.childCount > 0 => 'All tracks, in order',
+              _ => 'Tracks',
+            },
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
@@ -415,6 +437,174 @@ class _EntryRow extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The query behind a smart playlist, editable in place.
+///
+/// On the playlist itself rather than behind a dialog: the query *is* the
+/// playlist, and a smart playlist you cannot see the definition of is a list of
+/// songs that changes for reasons you cannot inspect.
+class _QuerySection extends ConsumerStatefulWidget {
+  const _QuerySection({required this.playlist});
+
+  final PlaylistCard playlist;
+
+  @override
+  ConsumerState<_QuerySection> createState() => _QuerySectionState();
+}
+
+class _QuerySectionState extends ConsumerState<_QuerySection> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.playlist.query ?? '');
+  late String _sort = widget.playlist.querySort ?? '';
+  var _saved = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final dirty = _controller.text != (widget.playlist.query ?? '');
+      if (dirty == !_saved) return;
+      setState(() => _saved = !dirty);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await ref.read(playlistRepositoryProvider).saveQuery(
+          widget.playlist.id,
+          query: _controller.text,
+          sort: _sort,
+        );
+    if (mounted) setState(() => _saved = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 18, color: scheme.primary),
+              const SizedBox(width: 10),
+              Text('Follows a search', style: theme.textTheme.titleMedium),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _saved ? null : _save,
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text('Save'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Nothing is stored: the tracks below are this query and the '
+            'library, right now. Add music that matches and it appears here.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          SmartQueryField(
+            controller: _controller,
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: smartPlaylistSorts.containsKey(_sort)
+                      ? _sort
+                      : '',
+                  decoration: const InputDecoration(
+                    labelText: 'Order',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final entry in smartPlaylistSorts.entries)
+                      DropdownMenuItem(
+                        value: entry.key,
+                        child: Text(entry.value),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _sort = value);
+                    _save();
+                  },
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _Exclusions(playlistId: widget.playlist.id),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What this playlist refuses to include, and a way to change its mind.
+class _Exclusions extends ConsumerWidget {
+  const _Exclusions({required this.playlistId});
+
+  final int playlistId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final excluded = ref.watch(playlistExclusionsProvider(playlistId));
+    final rows = excluded.value ?? const <TrackRow>[];
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${pluralize(rows.length, 'track')} kept out',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final track in rows)
+              Chip(
+                label: Text(track.title),
+                avatar: const Icon(Icons.block_outlined, size: 16),
+                onDeleted: () => ref
+                    .read(playlistRepositoryProvider)
+                    .unexclude(playlistId, track.id),
+                deleteIcon: const Icon(Icons.undo, size: 16),
+                deleteButtonTooltipMessage: 'Let it back in',
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

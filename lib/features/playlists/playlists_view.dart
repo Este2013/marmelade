@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../data/db/enums.dart' show PlaylistKind;
 import '../../domain/models/library_views.dart';
+import '../../domain/search/smart_query.dart';
+import 'smart_query_field.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
@@ -39,6 +42,12 @@ class PlaylistsView extends ConsumerWidget {
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
               const Spacer(),
+              OutlinedButton.icon(
+                onPressed: () => createSmartPlaylist(context, ref),
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('New smart playlist'),
+              ),
+              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: () => createPlaylist(context, ref),
                 icon: const Icon(Icons.add, size: 18),
@@ -84,6 +93,42 @@ class PlaylistsView extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Creates a playlist that follows a query.
+///
+/// The query is asked for up front, because a smart playlist with no query is
+/// an empty page that does not say why. It can be changed on the playlist
+/// itself afterwards.
+Future<int?> createSmartPlaylist(
+  BuildContext context,
+  WidgetRef ref, {
+  int? parentId,
+}) async {
+  final result = await showDialog<({String name, String query})>(
+    context: context,
+    builder: (context) => const _SmartPlaylistDialog(),
+  );
+  if (result == null) return null;
+
+  final repository = ref.read(playlistRepositoryProvider);
+  final id = await repository.create(
+    result.name,
+    parentId: parentId,
+    kind: PlaylistKind.smart,
+  );
+  if (id == null) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That would nest the playlists too deep.'),
+        ),
+      );
+    }
+    return null;
+  }
+  await repository.saveQuery(id, query: result.query);
+  return id;
 }
 
 /// Asks for a name and creates a playlist, optionally inside [parentId].
@@ -248,6 +293,16 @@ class _PlaylistTile extends ConsumerWidget {
   }
 
   static String _summary(PlaylistCard playlist) {
+    // A smart playlist has no rows, so a track count would read as zero for
+    // something that might hold two hundred songs. What it says instead is
+    // what it means, which is the query.
+    if (playlist.isSmart) {
+      final query = playlist.query;
+      if (query != null && query.trim().isNotEmpty) {
+        return SmartQuery.parse(query).describe();
+      }
+      return 'Follows a search, once it has one';
+    }
     final parts = <String>[
       if (playlist.trackCount > 0 || playlist.childCount == 0)
         pluralize(playlist.trackCount, 'track'),
@@ -315,5 +370,84 @@ class _PlaylistTile extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(playlistRepositoryProvider).delete(playlist.id);
+  }
+}
+
+/// Asks for the two things a smart playlist needs: a name and a query.
+class _SmartPlaylistDialog extends StatefulWidget {
+  const _SmartPlaylistDialog();
+
+  @override
+  State<_SmartPlaylistDialog> createState() => _SmartPlaylistDialogState();
+}
+
+class _SmartPlaylistDialogState extends State<_SmartPlaylistDialog> {
+  final _name = TextEditingController();
+  final _query = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _name.addListener(_onChanged);
+    _query.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() => setState(() {});
+
+  bool get _ready =>
+      _name.text.trim().isNotEmpty && _query.text.trim().isNotEmpty;
+
+  void _submit() {
+    if (!_ready) return;
+    Navigator.of(context).pop((
+      name: _name.text.trim(),
+      query: _query.text.trim(),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New smart playlist'),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SmartQueryField(
+              controller: _query,
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _ready ? _submit : null,
+          child: const Text('Create'),
+        ),
+      ],
+    );
   }
 }

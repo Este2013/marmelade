@@ -30,6 +30,8 @@ class TrackList extends ConsumerWidget {
     this.header,
     this.queueSource = QueueSource.user,
     this.queueSourceId,
+    this.onRemoveTrack,
+    this.removeTooltip = 'Remove',
   });
 
   final List<TrackRow> tracks;
@@ -56,6 +58,15 @@ class TrackList extends ConsumerWidget {
 
   final QueueSource queueSource;
   final int? queueSourceId;
+
+  /// Takes a track out of whatever list this is, when that means something.
+  ///
+  /// Set by a smart playlist, where there is no row to delete: the query put
+  /// the track there, so the only way to remove one is to say so explicitly.
+  final void Function(int trackId)? onRemoveTrack;
+
+  /// What that removal is called here, since it differs by context.
+  final String removeTooltip;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -104,6 +115,8 @@ class TrackList extends ConsumerWidget {
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
           onEditTrack: onEditTrack,
+          onRemove: onRemoveTrack,
+          removeTooltip: removeTooltip,
           onPlay: () => _playFrom(ref, trackRow.trackIndex),
         );
       },
@@ -273,6 +286,8 @@ class TrackTile extends ConsumerStatefulWidget {
     this.onOpenArtist,
     this.onOpenAlbum,
     this.onEditTrack,
+    this.onRemove,
+    this.removeTooltip = 'Remove',
   });
 
   final TrackRow track;
@@ -286,6 +301,10 @@ class TrackTile extends ConsumerStatefulWidget {
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
   final void Function(int trackId)? onEditTrack;
+
+  /// Takes this track out of the list it is in. See [TrackList.onRemoveTrack].
+  final void Function(int trackId)? onRemove;
+  final String removeTooltip;
 
   @override
   ConsumerState<TrackTile> createState() => _TrackTileState();
@@ -386,6 +405,8 @@ class _TrackTileState extends ConsumerState<TrackTile> {
                     track: track,
                     enabled: _hovering,
                     onEdit: widget.onEditTrack,
+                    onRemove: widget.onRemove,
+                    removeTooltip: widget.removeTooltip,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -540,11 +561,15 @@ class _RowActions extends ConsumerWidget {
     required this.track,
     required this.enabled,
     this.onEdit,
+    this.onRemove,
+    this.removeTooltip = 'Remove',
   });
 
   final TrackRow track;
   final bool enabled;
   final void Function(int trackId)? onEdit;
+  final void Function(int trackId)? onRemove;
+  final String removeTooltip;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -599,6 +624,13 @@ class _RowActions extends ConsumerWidget {
               : null,
           icon: const Icon(Icons.library_add_outlined, size: 18),
         ),
+        if (onRemove != null)
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: removeTooltip,
+            onPressed: () => onRemove!(track.id),
+            icon: const Icon(Icons.block_outlined, size: 18),
+          ),
       ],
     );
   }

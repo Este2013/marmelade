@@ -193,6 +193,7 @@ class PlaylistCard {
     this.parentId,
     this.imagePath,
     this.query,
+    this.querySort,
     this.childCount = 0,
     this.isPinned = false,
     this.depth = 0,
@@ -212,6 +213,9 @@ class PlaylistCard {
 
   /// The search expression, for smart playlists.
   final String? query;
+
+  /// The order applied to what the query finds, as a stored sort key.
+  final String? querySort;
 
   final int childCount;
   final bool isPinned;

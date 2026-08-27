@@ -79,6 +79,13 @@ class SearchRepository {
     if (terms.isEmpty) return SearchResults.empty(text);
     final wanted = kinds ?? SearchEntity.values.toSet();
 
+    // Both caps scale with what was asked for. A caller wanting a thousand
+    // results and getting forty, silently, is the kind of bug that reads as a
+    // ranking problem for weeks.
+    final candidateCap =
+        perKind > _candidatesPerKind ? perKind : _candidatesPerKind;
+    final rowLimit = perKind > _indexLimit ? perKind : _indexLimit;
+
     final candidates = <(SearchEntity, int), _Candidate>{};
     var truncated = false;
 
@@ -105,6 +112,7 @@ class SearchRepository {
     truncated |= await _matchTokens(
       terms.map((t) => '{title aliases}:${_phrase(t)}').join(' AND '),
       wanted,
+      rowLimit,
       (entity, id, title, aliases) => note(entity, id, 2, title, aliases),
     );
 
@@ -113,6 +121,7 @@ class SearchRepository {
     truncated |= await _matchTokens(
       terms.map(_phrase).join(' AND '),
       wanted,
+      rowLimit,
       (entity, id, title, aliases) => note(entity, id, 1, title, aliases),
     );
 
@@ -124,13 +133,13 @@ class SearchRepository {
       void hit(SearchEntity entity, int id) =>
           note(entity, id, 0, null, null);
       if (needle.length >= 3) {
-        truncated |= await _matchTrigrams(needle, wanted, hit);
+        truncated |= await _matchTrigrams(needle, wanted, rowLimit, hit);
       } else if (needle.runes.any(_writtenWithoutWordBreaks)) {
         // A trigram MATCH needs three characters. Two of them is an entirely
         // ordinary Japanese word rather than half a typed one, so scan the
         // same haystack instead of refusing: slower, but the alternative is
         // telling someone their word is too short to look for.
-        truncated |= await _scanHaystack(needle, wanted, hit);
+        truncated |= await _scanHaystack(needle, wanted, rowLimit, hit);
       }
     }
 
@@ -177,18 +186,17 @@ class SearchRepository {
     for (final entry in byKind.entries) {
       final sorted = entry.value.toList()
         ..sort((a, b) => b.tier.compareTo(a.tier));
-      if (sorted.length > _candidatesPerKind) {
+      if (sorted.length > candidateCap) {
         AppLog.instance.debug(
           'search dropped low-tier candidates before hydration',
           fields: {
             'kind': entry.key.key,
             'found': sorted.length,
-            'kept': _candidatesPerKind,
+            'kept': candidateCap,
           },
         );
       }
-      ids[entry.key] =
-          sorted.take(_candidatesPerKind).map((c) => c.id).toList();
+      ids[entry.key] = sorted.take(candidateCap).map((c) => c.id).toList();
     }
 
     final tierOf = <(SearchEntity, int), int>{
@@ -213,7 +221,7 @@ class SearchRepository {
     void total(SearchEntity kind, int hydratedCount) {
       final found = byKind[kind]?.length ?? 0;
       if (found == 0) return;
-      totals[kind] = found <= _candidatesPerKind ? hydratedCount : found;
+      totals[kind] = found <= candidateCap ? hydratedCount : found;
     }
 
     total(SearchEntity.artist, (hydrated[0] as List).length);
@@ -311,12 +319,28 @@ class SearchRepository {
     );
   }
 
+  /// Every track the words in [text] match, best first.
+  ///
+  /// The uncapped sibling of [search], for callers that want the whole set
+  /// rather than a page of it: a smart playlist is allowed to be a thousand
+  /// tracks long. Ranked the same way, so the first tracks of a smart playlist
+  /// are the ones a search for the same words would have led with.
+  Future<List<int>> trackIdsMatching(String text, {int limit = 20000}) async {
+    final results = await search(
+      text,
+      perKind: limit,
+      kinds: {SearchEntity.track},
+    );
+    return [for (final track in results.tracks) track.id];
+  }
+
   // ------------------------------------------------------------------ queries
 
   /// Runs one MATCH against the word index. Returns whether it hit the limit.
   Future<bool> _matchTokens(
     String match,
     Set<SearchEntity> wanted,
+    int rowLimit,
     void Function(
       SearchEntity entity,
       int id,
@@ -326,7 +350,7 @@ class SearchRepository {
   ) async {
     final rows = await _match(
       'SELECT entity_type, entity_id, title, aliases FROM $ftsTokenTable '
-      'WHERE $ftsTokenTable MATCH ?1 LIMIT $_indexLimit',
+      'WHERE $ftsTokenTable MATCH ?1 LIMIT $rowLimit',
       match,
     );
     for (final row in rows) {
@@ -341,17 +365,18 @@ class SearchRepository {
         row.read<String>('aliases'),
       );
     }
-    return rows.length >= _indexLimit;
+    return rows.length >= rowLimit;
   }
 
   Future<bool> _matchTrigrams(
     String needle,
     Set<SearchEntity> wanted,
+    int rowLimit,
     void Function(SearchEntity entity, int id) onHit,
   ) async {
     final rows = await _match(
       'SELECT entity_type, entity_id FROM $ftsTrigramTable '
-      'WHERE $ftsTrigramTable MATCH ?1 LIMIT $_indexLimit',
+      'WHERE $ftsTrigramTable MATCH ?1 LIMIT $rowLimit',
       _phrase(needle),
     );
     for (final row in rows) {
@@ -361,7 +386,7 @@ class SearchRepository {
       if (id == null) continue;
       onHit(entity, id);
     }
-    return rows.length >= _indexLimit;
+    return rows.length >= rowLimit;
   }
 
   /// Scans the substring haystack, for a needle too short to MATCH.
@@ -373,11 +398,12 @@ class SearchRepository {
   Future<bool> _scanHaystack(
     String needle,
     Set<SearchEntity> wanted,
+    int rowLimit,
     void Function(SearchEntity entity, int id) onHit,
   ) async {
     final rows = await _match(
       'SELECT entity_type, entity_id FROM $ftsTrigramTable '
-      'WHERE instr(lower(haystack), ?1) > 0 LIMIT $_indexLimit',
+      'WHERE instr(lower(haystack), ?1) > 0 LIMIT $rowLimit',
       needle,
     );
     for (final row in rows) {
@@ -387,7 +413,7 @@ class SearchRepository {
       if (id == null) continue;
       onHit(entity, id);
     }
-    return rows.length >= _indexLimit;
+    return rows.length >= rowLimit;
   }
 
   /// Runs a MATCH, treating a rejected expression as no results.

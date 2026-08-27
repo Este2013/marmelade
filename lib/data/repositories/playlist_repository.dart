@@ -4,6 +4,7 @@ import '../../domain/text/normalize.dart';
 import '../../domain/models/library_views.dart';
 import '../db/database.dart';
 import '../indexer/search_indexer.dart';
+import 'smart_playlist_resolver.dart';
 
 /// One row inside a playlist: a track, or another playlist included whole.
 class PlaylistEntry {
@@ -42,10 +43,21 @@ class PlaylistEntry {
 /// *path*, not everything seen so far: reaching the same playlist twice through
 /// different branches is legitimate and both copies belong in the result.
 class PlaylistRepository {
-  PlaylistRepository({required this.db, required this.searchIndexer});
+  PlaylistRepository({
+    required this.db,
+    required this.searchIndexer,
+    this.smart,
+  });
 
   final MarmeladeDatabase db;
   final SearchIndexer searchIndexer;
+
+  /// Resolves the query behind a smart playlist.
+  ///
+  /// Optional so the repository can still be constructed for the parts of it
+  /// that have nothing to do with queries -- and so a smart playlist degrades
+  /// to its manual rows rather than throwing, if it ever is not wired up.
+  final SmartPlaylistResolver? smart;
 
   /// How deep nesting may go.
   ///
@@ -67,6 +79,7 @@ class PlaylistRepository {
       SELECT
         p.id AS id, p.name AS name, p.kind AS kind, p.parent_id AS parent_id,
         p.description AS description, p.query AS query,
+        p.query_sort AS query_sort,
         im.stored_path AS image_path,
         (SELECT COUNT(*) FROM playlist_items i
           WHERE i.playlist_id = p.id AND i.track_id IS NOT NULL
@@ -110,6 +123,7 @@ class PlaylistRepository {
             parentId: parentId,
             description: row.read<String?>('description'),
             query: row.read<String?>('query'),
+            querySort: row.read<String?>('query_sort'),
             imagePath: row.read<String?>('image_path'),
             trackCount: row.read<int>('track_count'),
             childCount: row.read<int>('child_count'),
@@ -173,6 +187,133 @@ class PlaylistRepository {
     final ids = <int>[];
     await _resolveInto(playlistId, ids, <int>[]);
     return ids;
+  }
+
+  /// Resolves a playlist, running its query if it has one.
+  ///
+  /// A smart playlist has no rows of its own, so its contents come from the
+  /// query and the library as they are right now. A hybrid one is the query's
+  /// results plus anything added by hand, minus anything explicitly excluded:
+  /// the exclusion is the whole reason hybrid exists -- one track you never
+  /// want in an otherwise perfectly good query.
+  Future<List<int>> resolveContents(int playlistId) async {
+    final row = await db
+        .customSelect(
+          'SELECT kind, query, query_limit, query_sort FROM playlists '
+          'WHERE id = ?1',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlists},
+        )
+        .getSingleOrNull();
+    if (row == null) return const [];
+
+    final kind = row.read<String>('kind');
+    final query = row.read<String?>('query');
+    final resolver = smart;
+    final isQueried = kind == PlaylistKind.smart.name ||
+        kind == PlaylistKind.hybrid.name;
+
+    if (!isQueried || query == null || query.trim().isEmpty ||
+        resolver == null) {
+      return resolveTrackIds(playlistId);
+    }
+
+    final matched = await resolver.resolve(
+      query,
+      limit: row.read<int?>('query_limit'),
+      sort: row.read<String?>('query_sort'),
+    );
+
+    if (kind == PlaylistKind.smart.name) {
+      final excluded = await _exclusionsOf(playlistId);
+      return [
+        for (final id in matched)
+          if (!excluded.contains(id)) id,
+      ];
+    }
+
+    // Hybrid: the query first, then the hand-picked rows that it missed, so
+    // adding a track by hand does not reshuffle everything the query found.
+    final manual = await resolveTrackIds(playlistId);
+    final excluded = await _exclusionsOf(playlistId);
+    final seen = <int>{};
+    return [
+      for (final id in [...matched, ...manual])
+        if (!excluded.contains(id) && seen.add(id)) id,
+    ];
+  }
+
+  /// Watches the tracks this playlist explicitly does not want.
+  Stream<List<int>> watchExclusions(int playlistId) => db
+      .customSelect(
+        'SELECT track_id FROM playlist_items '
+        'WHERE playlist_id = ?1 AND is_exclusion = 1 AND track_id IS NOT NULL '
+        'ORDER BY id',
+        variables: [Variable(playlistId)],
+        readsFrom: {db.playlistItems},
+      )
+      .watch()
+      .map((rows) => [for (final row in rows) row.read<int>('track_id')]);
+
+  /// Tracks this playlist explicitly does not want.
+  Future<Set<int>> _exclusionsOf(int playlistId) async {
+    final rows = await db
+        .customSelect(
+          'SELECT track_id FROM playlist_items '
+          'WHERE playlist_id = ?1 AND is_exclusion = 1 AND track_id IS NOT NULL',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlistItems},
+        )
+        .get();
+    return {for (final row in rows) row.read<int>('track_id')};
+  }
+
+  /// Stores the query behind a smart playlist.
+  Future<void> saveQuery(
+    int playlistId, {
+    required String query,
+    String? sort,
+    int? limit,
+  }) async {
+    final trimmed = query.trim();
+    await db.customUpdate(
+      'UPDATE playlists SET query = ?1, query_sort = ?2, query_limit = ?3, '
+      'kind = CASE WHEN kind = ?4 THEN ?4 ELSE ?5 END, updated_at = ?6 '
+      'WHERE id = ?7',
+      variables: [
+        Variable(trimmed.isEmpty ? null : trimmed),
+        Variable(sort == null || sort.isEmpty ? null : sort),
+        Variable(limit),
+        Variable(PlaylistKind.hybrid.name),
+        Variable(PlaylistKind.smart.name),
+        Variable(DateTime.now().toUtc()),
+        Variable(playlistId),
+      ],
+      updates: {db.playlists},
+    );
+  }
+
+  /// Keeps a track out of a queried playlist without touching its query.
+  Future<void> exclude(int playlistId, int trackId) async {
+    await db.into(db.playlistItems).insert(
+          PlaylistItemsCompanion.insert(
+            playlistId: playlistId,
+            trackId: Value(trackId),
+            position: 0,
+            isExclusion: const Value(true),
+          ),
+        );
+  }
+
+  /// Lets an excluded track back in.
+  Future<void> unexclude(int playlistId, int trackId) async {
+    await db.customUpdate(
+      'DELETE FROM playlist_items WHERE playlist_id = ?1 AND track_id = ?2 '
+      'AND is_exclusion = 1',
+      variables: [Variable(playlistId), Variable(trackId)],
+      updates: {db.playlistItems},
+      updateKind: UpdateKind.delete,
+    );
   }
 
   Future<void> _resolveInto(

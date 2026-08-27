@@ -14,6 +14,7 @@ import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
 import '../data/repositories/search_repository.dart';
+import '../data/repositories/smart_playlist_resolver.dart';
 import '../data/repositories/tag_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
@@ -79,10 +80,27 @@ final trackEditProvider =
   return ref.watch(editRepositoryProvider).watchTrack(trackId);
 });
 
-final playlistRepositoryProvider = Provider<PlaylistRepository>(
+/// Resolves smart playlists.
+///
+/// The type is written out rather than inferred, and so are its two neighbours:
+/// search hydrates playlist results, playlists resolve through search, and Dart
+/// cannot infer a type through that ring even though the runtime dependency is
+/// broken by the lazy read below.
+final Provider<SmartPlaylistResolver> smartPlaylistResolverProvider = Provider(
+  (ref) => SmartPlaylistResolver(
+    db: ref.watch(databaseProvider),
+    // Read when a query runs, not when this is built: search hydrates playlist
+    // results, so watching it here would close a construction cycle.
+    searchTracks: (query, {int limit = 20000}) =>
+        ref.read(searchRepositoryProvider).trackIdsMatching(query, limit: limit),
+  ),
+);
+
+final Provider<PlaylistRepository> playlistRepositoryProvider = Provider(
   (ref) => PlaylistRepository(
     db: ref.watch(databaseProvider),
     searchIndexer: ref.watch(searchIndexerProvider),
+    smart: ref.watch(smartPlaylistResolverProvider),
   ),
 );
 
@@ -105,17 +123,30 @@ final playlistEntriesProvider =
   return ref.watch(playlistRepositoryProvider).watchEntries(playlistId);
 });
 
-/// A playlist's tracks, resolved through any nested playlists.
+/// A playlist's tracks: its rows, its nested playlists, or its query.
 final playlistTracksProvider =
     StreamProvider.family<List<TrackRow>, int>((ref, playlistId) {
-  // Re-resolved whenever the rows change, since a nested playlist's contents
-  // are part of the answer and can move underneath this one.
   final repository = ref.watch(playlistRepositoryProvider);
   final library = ref.watch(libraryRepositoryProvider);
+  // Watched, not read: a smart playlist has no rows of its own, so entries
+  // alone would never fire for it. Editing its query changes the playlist row,
+  // which is what this picks up. (A scan that adds matching tracks refreshes
+  // through the indexing guard, not through here.)
+  ref.watch(playlistProvider(playlistId));
   return repository.watchEntries(playlistId).asyncMap((_) async {
-    final ids = await repository.resolveTrackIds(playlistId);
+    final ids = await repository.resolveContents(playlistId);
     return library.tracksByIds(ids);
   });
+});
+
+/// The tracks a queried playlist explicitly keeps out.
+final playlistExclusionsProvider =
+    StreamProvider.family<List<TrackRow>, int>((ref, playlistId) {
+  final repository = ref.watch(playlistRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  return repository
+      .watchExclusions(playlistId)
+      .asyncMap(library.tracksByIds);
 });
 
 /// How much the search index holds, for the maintenance tile.
@@ -124,7 +155,7 @@ final searchIndexCountsProvider =
   return ref.watch(searchIndexerProvider).counts();
 });
 
-final searchRepositoryProvider = Provider<SearchRepository>(
+final Provider<SearchRepository> searchRepositoryProvider = Provider(
   (ref) => SearchRepository(
     db: ref.watch(databaseProvider),
     library: ref.watch(libraryRepositoryProvider),

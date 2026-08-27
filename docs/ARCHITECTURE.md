@@ -153,6 +153,38 @@ that is right there — and for a while one did exactly that, because every call
 passed `'artist'` where the index stores `'art'`. `SearchEntity` is now an enum
 that carries its own key, so the two cannot disagree again.
 
+### Smart playlists: the query is the playlist
+
+A smart playlist stores no tracks. It is a query plus the library, evaluated when
+you look at it, which is why there is no cache to go stale and no "refresh"
+button to explain. It stores the text as typed, in a small grammar meant to be
+retyped from memory:
+
+```
+artist:Nanahira tag:hardcore -tag:remix added:<30d year:>=2015
+```
+
+Bare words go through the search index, so a smart playlist inherits the credit
+splitting for free: `camellia` collects the collaborations, not just the tracks
+where that name happens to be first. Everything with a field becomes SQL against
+the catalog, where dates and numbers belong. `tag:` reads the effective tags, so
+a tag on the album counts here exactly as it counts everywhere else.
+
+Two deliberate choices:
+
+- **Nothing is rejected.** A query is typed one character at a time, and
+  `year:>` is a state on the way to `year:>2015`. An unparseable field value is
+  kept as a search word instead of being dropped, and the field says back what
+  it understood as you type.
+- **`<` reads as "within".** `added:<30d` means added in the last thirty days,
+  which is what someone typing it means, even though the comparison on the
+  stored timestamp runs the other way. The inversion is written out rather than
+  being clever, because it is exactly the kind of thing a refactor reverses.
+
+A *hybrid* playlist is the query's results plus rows added by hand, minus
+explicit exclusions. The exclusion is the reason hybrid exists: one otherwise
+perfect query with one song you never want to hear.
+
 ## Testing strategy
 
 - `domain/` is covered by plain `dart test` — separator tokenizing and artist
