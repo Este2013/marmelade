@@ -65,14 +65,23 @@ class CreditReviewView extends ConsumerWidget {
                       'cannot confidently split.',
                 );
               }
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                itemCount: groups.length,
-                itemBuilder: (context, index) => _ReviewCard(
-                  // Keyed on the credit string so the editable fields follow
-                  // their card as the list shrinks under them.
-                  key: ValueKey(groups[index].rawCredit),
-                  group: groups[index],
+              // Capped rather than full-width: a card is a short question with
+              // two name fields, and stretching it across a wide monitor puts
+              // the answer buttons a screen away from the question.
+              return Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+                    itemCount: groups.length,
+                    itemBuilder: (context, index) => _ReviewCard(
+                      // Keyed on the credit string so the editable fields
+                      // follow their card as the list shrinks under them.
+                      key: ValueKey(groups[index].rawCredit),
+                      group: groups[index],
+                    ),
+                  ),
                 ),
               );
             },

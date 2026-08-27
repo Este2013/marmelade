@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,17 @@ import 'core/logging/app_log.dart';
 /// that a grid of covers evicts and re-decodes continuously.
 const _imageCacheBytes = 220 * 1024 * 1024;
 const _imageCacheCount = 400;
+
+/// Opening window size, in logical pixels.
+///
+/// Wide enough for the now-playing view's two-pane layout and a six-column
+/// album grid.
+const _windowSize = Size(1320, 860);
+
+/// The smallest the window may be dragged, in logical pixels.
+///
+/// The layouts are built and tested down to this and no further.
+const _minimumWindowSize = Size(860, 620);
 
 Future<void> main() async {
   // Everything runs inside one zone, bindings included. Initialising the
@@ -41,7 +53,18 @@ Future<void> main() async {
 
     log.info('initialising window');
     await windowManager.ensureInitialized();
-    await windowManager.waitUntilReadyToShow(const WindowOptions(size: Size(1320, 860), minimumSize: Size(860, 620), center: true, title: 'marmelade', titleBarStyle: TitleBarStyle.normal), () async {
+
+    // window_manager 0.5.2 takes these sizes in *physical* pixels on Windows,
+    // not logical ones, so they have to be scaled by hand. On a 175% display
+    // the unscaled numbers open the window at 754 logical pixels wide - below
+    // the app's own stated minimum, and narrow enough to fold the now-playing
+    // view into its single-pane layout on a large monitor. The minimum needs
+    // the same treatment, or the window can be dragged down to 491x354
+    // logical, far below anything the layout is built or tested for.
+    final scale = PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0;
+    log.info('window scale', fields: {'devicePixelRatio': scale, 'logical': '${_windowSize.width}x${_windowSize.height}', 'physical': '${(_windowSize.width * scale).round()}x${(_windowSize.height * scale).round()}'});
+
+    await windowManager.waitUntilReadyToShow(WindowOptions(size: _windowSize * scale, minimumSize: _minimumWindowSize * scale, center: true, title: 'marmelade', titleBarStyle: TitleBarStyle.normal), () async {
       await windowManager.show();
       await windowManager.focus();
     });
