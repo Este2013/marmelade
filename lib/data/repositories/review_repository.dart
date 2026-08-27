@@ -273,7 +273,7 @@ class ReviewRepository {
     });
 
     for (final id in touchedArtists) {
-      await searchIndexer.reindexEntity('artist', id);
+      await searchIndexer.reindexEntity(SearchEntity.artist, id);
     }
   }
 
@@ -345,7 +345,7 @@ class ReviewRepository {
       for (final row in rows) {
         final id = row.read<int>('id');
         await (db.delete(db.artists)..where((t) => t.id.equals(id))).go();
-        await searchIndexer.removeEntity('artist', id);
+        await searchIndexer.removeEntity(SearchEntity.artist, id);
       }
     }
   }

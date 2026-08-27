@@ -13,6 +13,7 @@ import '../data/repositories/queue_repository.dart';
 import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
+import '../data/repositories/search_repository.dart';
 import '../data/repositories/tag_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
@@ -115,6 +116,46 @@ final playlistTracksProvider =
     final ids = await repository.resolveTrackIds(playlistId);
     return library.tracksByIds(ids);
   });
+});
+
+/// How much the search index holds, for the maintenance tile.
+final searchIndexCountsProvider =
+    FutureProvider<({int tokens, int trigrams})>((ref) {
+  return ref.watch(searchIndexerProvider).counts();
+});
+
+final searchRepositoryProvider = Provider<SearchRepository>(
+  (ref) => SearchRepository(
+    db: ref.watch(databaseProvider),
+    library: ref.watch(libraryRepositoryProvider),
+    tags: ref.watch(tagRepositoryProvider),
+    playlists: ref.watch(playlistRepositoryProvider),
+  ),
+);
+
+/// What is currently typed in the search field.
+///
+/// Held here rather than in the view so the field survives navigating away and
+/// back, and so a shortcut from anywhere can put a query in it.
+final searchQueryProvider =
+    NotifierProvider<ViewSetting<String>, String>(() => ViewSetting(''));
+
+/// The results for what is typed, one search per pause in typing.
+///
+/// Debounced here rather than in the field: every widget that can change the
+/// query would otherwise need its own timer, and they would disagree.
+final searchResultsProvider = FutureProvider<SearchResults>((ref) async {
+  final query = ref.watch(searchQueryProvider);
+  if (searchTerms(query).isEmpty) return SearchResults.empty(query);
+
+  // A keystroke disposes this build. Waiting first, then checking, collapses a
+  // burst of typing into the one search that matters.
+  var superseded = false;
+  ref.onDispose(() => superseded = true);
+  await Future<void>.delayed(const Duration(milliseconds: 160));
+  if (superseded) return SearchResults.empty(query);
+
+  return ref.watch(searchRepositoryProvider).search(query);
 });
 
 final reviewRepositoryProvider = Provider<ReviewRepository>(
@@ -429,18 +470,6 @@ final tagTrackListProvider =
   return repository
       .watchTrackIdsWithTag(tagId)
       .asyncMap(library.tracksByIds);
-});
-
-final tagsProvider = StreamProvider<List<TagCard>>((ref) {
-  return _unlessIndexing(
-    ref,
-    () => ref.watch(libraryRepositoryProvider).watchTags(),
-  );
-});
-
-final tagTracksProvider =
-    StreamProvider.family<List<TrackRow>, int>((ref, tagId) {
-  return ref.watch(libraryRepositoryProvider).watchTracks(tagId: tagId);
 });
 
 /// Headline library counts, refreshed when the catalog changes.

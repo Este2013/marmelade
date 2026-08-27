@@ -41,15 +41,21 @@ const ftsTrigramTable = 'search_trigrams';
 
 /// Entity kinds that appear in the search index.
 ///
-/// Stored as short strings to keep the index small.
-abstract final class SearchEntity {
-  static const track = 'trk';
-  static const album = 'alb';
-  static const artist = 'art';
-  static const tag = 'tag';
-  static const playlist = 'pls';
+/// An enum rather than bare strings: the index stores short keys to stay small,
+/// and callers used to pass the long word, so a delete matched nothing and a
+/// reindex fell through its switch. Silently. The type now carries the key, so
+/// the two cannot disagree.
+enum SearchEntity {
+  track('trk'),
+  album('alb'),
+  artist('art'),
+  tag('tag'),
+  playlist('pls');
 
-  static const all = [track, album, artist, tag, playlist];
+  const SearchEntity(this.key);
+
+  /// What goes in the index's `entity_type` column.
+  final String key;
 }
 
 @DriftDatabase(

@@ -107,6 +107,52 @@ Album art recolouring uses Flutter's built-in
 built-in is a better fit: it yields a whole coherent M3 scheme, not just a
 swatch).
 
+### Searching: tiers, not a score
+
+Two FTS5 indexes back the search box, and both are needed. `search_tokens`
+(`unicode61`, diacritics folded) gives ranked word and prefix matching, which is
+what makes results appear while you type. `search_trigrams` gives substring
+matching, which is the only thing that works mid-word and the only thing that
+works at all for a run of Japanese — `unicode61` treats one as a single token,
+so a substring of it can never match there.
+
+Ranking is a small integer tier rather than a relevance score. A single opaque
+number is impossible to argue with when a result looks wrong, and "the exact
+name you typed comes first" is a promise worth being able to check:
+
+| tier | what matched |
+| --- | --- |
+| 4 | the name is exactly what was typed |
+| 3 | the name, or another name it goes by, starts with what was typed |
+| 2 | every word matched the name or an alias |
+| 1 | matched something else — a credited artist, the album, a tag's category |
+| 0 | matched only as a substring |
+
+Within a kind, a tie is broken by how much music the thing accounts for, then by
+name. Across kinds — which only decides the single result the view leads with —
+an artist named *Amiga* beats a track called *Amiga*.
+
+Two details that are easy to get wrong:
+
+- **User text never reaches `MATCH`.** FTS5 reads `AND`, `OR`, `NOT`, `NEAR`,
+  `-`, `*`, `:` and `"` as syntax, so `AC/DC -` would be a syntax error rather
+  than a search. Only runs of letters, digits and marks are kept, each quoted as
+  its own prefix phrase.
+- **A trigram `MATCH` needs three characters.** Two of them is an ordinary
+  Japanese word, not half a typed one, so a short query containing a script
+  written without spaces falls back to scanning the same haystack with `instr`.
+
+Results are hydrated through the same queries the library grid and lists use, so
+a card in search shows exactly what that card shows anywhere else. The ranking
+decides *which* things; it never decides what a thing looks like.
+
+The index is maintained per edit, and **Settings → Library → Search index**
+rebuilds it. That repair path is not optional: a bug in the bookkeeping leaves
+search quietly wrong — finding a name nobody has used for months, or missing one
+that is right there — and for a while one did exactly that, because every caller
+passed `'artist'` where the index stores `'art'`. `SearchEntity` is now an enum
+that carries its own key, so the two cannot disagree again.
+
 ## Testing strategy
 
 - `domain/` is covered by plain `dart test` — separator tokenizing and artist

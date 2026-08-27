@@ -14,7 +14,10 @@ import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/data/repositories/review_repository.dart';
+import 'package:marmelade/data/repositories/search_repository.dart';
+import 'package:marmelade/features/library/album_detail_view.dart';
 import 'package:marmelade/features/player/player_bar.dart';
+import 'package:marmelade/features/search/search_view.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
@@ -365,6 +368,47 @@ const _artists = [
   ),
 ];
 
+/// A search that found something of every kind, with more behind each heading.
+const _searchResults = SearchResults(
+  query: 'camellia',
+  artists: [
+    ArtistCard(
+      id: 2,
+      name: 'Camellia',
+      kind: 'person',
+      trackCount: 12,
+      albumCount: 3,
+      memberCount: 0,
+    ),
+  ],
+  albums: [_comic],
+  tracks: [_crossSeparator],
+  tags: [
+    TagCard(id: 9, name: 'Hardcore', trackCount: 40, categoryName: 'Genre'),
+  ],
+  playlists: [
+    PlaylistCard(
+      id: 3,
+      name: 'Camellia mix',
+      kind: 'manual',
+      trackCount: 18,
+      childCount: 0,
+      isPinned: false,
+      depth: 0,
+      totalDurationMs: 0,
+    ),
+  ],
+  totals: {
+    SearchEntity.artist: 1,
+    SearchEntity.album: 1,
+    SearchEntity.track: 9,
+    SearchEntity.tag: 1,
+    SearchEntity.playlist: 1,
+  },
+  truncated: false,
+  best: (entity: SearchEntity.artist, id: 2),
+);
+
 void main() {
   late MarmeladeDatabase db;
   late Directory artRoot;
@@ -395,6 +439,7 @@ void main() {
     bool queuedOnly = false,
     ({int index, int length})? longQueue,
     Stream<Duration>? positions,
+    SearchResults? searchResults,
   }) {
     return ProviderScope(
       overrides: [
@@ -419,10 +464,15 @@ void main() {
             tracks.where((t) => t.id == trackId).firstOrNull,
           ),
         ),
+        if (searchResults != null) ...[
+          searchQueryProvider
+              .overrideWith(() => ViewSetting(searchResults.query)),
+          searchResultsProvider.overrideWith((ref) async => searchResults),
+        ],
         albumsProvider.overrideWith((ref) => Stream.value(albums)),
         allTracksProvider.overrideWith((ref) => Stream.value(tracks)),
         artistsProvider.overrideWith((ref) => Stream.value(_artists)),
-        tagsProvider.overrideWith((ref) => Stream.value(const <TagCard>[])),
+        taggedProvider.overrideWith((ref) => Stream.value(const <TagCard>[])),
         albumTracksProvider.overrideWith(
           (ref, albumId) =>
               Stream.value(tracks.where((t) => t.albumId == albumId).toList()),
@@ -1047,6 +1097,63 @@ void main() {
     expect(list.groupByAlbum, isTrue);
     expect(tester.takeException(), isNull);
     await capture(tester, 'artist');
+  });
+
+  testWidgets('search groups what it found and leads with the best',
+      (tester) async {
+    await open(tester, app: buildApp(searchResults: _searchResults));
+    await tester.tap(railItem('Search'));
+    await settle(tester);
+
+    // The one obvious answer, then everything by kind.
+    expect(find.text('Top result'), findsOneWidget);
+    expect(find.text('Camellia'), findsWidgets);
+    expect(find.text('Artists'), findsWidgets);
+    expect(find.text('Albums'), findsWidgets);
+    expect(find.text('Songs'), findsWidgets);
+    expect(find.text('Tags'), findsWidgets);
+    expect(find.text('Playlists'), findsWidgets);
+    expect(find.text('Cross Separator'), findsOneWidget);
+    expect(find.text('Camellia mix'), findsOneWidget);
+
+    // Eight more songs matched than are listed, and it says so rather than
+    // letting six results read as all there is.
+    expect(find.text('8 more'), findsOneWidget);
+
+    expect(tester.takeException(), isNull);
+    await capture(tester, '08-search');
+  });
+
+  testWidgets('opening a result stays inside search', (tester) async {
+    // Pushed onto the search section's own stack, so the way back is one tap
+    // and the query is still there when you arrive.
+    await open(tester, app: buildApp(searchResults: _searchResults));
+    await tester.tap(railItem('Search'));
+    await settle(tester);
+    await tester.tap(find.text('Comic and Cosmic').first);
+    await settle(tester);
+
+    // Offstage, not gone: the pushed page covers it, and popping brings back
+    // the results and the query rather than an empty field.
+    expect(find.byType(SearchView, skipOffstage: false), findsOneWidget);
+    expect(find.byType(AlbumDetailView), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('search fits the narrowest allowed window', (tester) async {
+    // Result rows carry art, a name, a context line and a chevron. That is a
+    // lot of fixed width to fit beside a rail in 860 pixels.
+    await open(
+      tester,
+      app: buildApp(searchResults: _searchResults),
+      size: const Size(860, 620),
+    );
+    await tester.tap(railItem('Search'));
+    await settle(tester);
+
+    expect(find.text('Top result'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await capture(tester, '09-search-narrow');
   });
 
   testWidgets('the narrowest allowed window does not overflow', (tester) async {

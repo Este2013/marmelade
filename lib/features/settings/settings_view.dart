@@ -457,7 +457,71 @@ class _StatisticsSection extends ConsumerWidget {
               ),
             ),
         ],
+        const _SearchIndexTile(),
       ],
+    );
+  }
+}
+
+/// What search knows about, and a way to make it agree with the library again.
+///
+/// The index is kept up to date as things change, which means a bug in that
+/// bookkeeping leaves search quietly wrong -- finding a name nobody has used
+/// for months, or missing one that is right there. Rebuilding is a handful of
+/// bulk statements, so the repair is cheap; not having one at all is what makes
+/// a stale index permanent.
+class _SearchIndexTile extends ConsumerStatefulWidget {
+  const _SearchIndexTile();
+
+  @override
+  ConsumerState<_SearchIndexTile> createState() => _SearchIndexTileState();
+}
+
+class _SearchIndexTileState extends ConsumerState<_SearchIndexTile> {
+  var _rebuilding = false;
+
+  Future<void> _rebuild() async {
+    setState(() => _rebuilding = true);
+    try {
+      await ref.read(searchIndexerProvider).rebuildAll();
+      ref.invalidate(searchIndexCountsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Search index rebuilt')),
+      );
+    } finally {
+      if (mounted) setState(() => _rebuilding = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = ref.watch(searchIndexCountsProvider).value;
+
+    return ListTile(
+      leading: const Icon(Icons.manage_search),
+      title: const Text('Search index'),
+      subtitle: Text(
+        switch (counts) {
+          null => 'Counting...',
+          final c when c.trigrams == 0 =>
+            '${pluralize(c.tokens, 'entry')} · no substring index, so '
+                'mid-word and Japanese search are unavailable',
+          final c => '${pluralize(c.tokens, 'entry')} · '
+              '${pluralize(c.trigrams, 'substring entry')}',
+        },
+      ),
+      trailing: _rebuilding
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : IconButton(
+              tooltip: 'Rebuild from the library',
+              onPressed: _rebuild,
+              icon: const Icon(Icons.refresh),
+            ),
     );
   }
 }

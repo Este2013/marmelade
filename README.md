@@ -31,6 +31,10 @@ name you can't type.
 - **Player**: queue, shuffle, per-track and global gain, 10-band parametric EQ,
   playback speed, synced lyrics, a spectrum visualizer, mini-player and
   fullscreen modes
+- **Search**: one field over artists, songs, albums, tags and playlists at
+  once. Prefixes match as you type, diacritics fold (`Bjork` finds `Björk`),
+  substrings and Japanese work, and a song is found under every artist credited
+  on it
 - **Stream Deck**: a local control socket, ready for an Elgato Stream Deck
   plugin (the plugin itself is out of scope for now) and handy for debugging
 

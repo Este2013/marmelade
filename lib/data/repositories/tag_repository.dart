@@ -10,15 +10,19 @@ import '../indexer/search_indexer.dart';
 /// The four differ only in the join table, so everything here is written once
 /// and switched on this.
 enum TagTarget {
-  track('track_tags', 'track_id'),
-  album('album_tags', 'album_id'),
-  artist('artist_tags', 'artist_id'),
-  playlist('playlist_tags', 'playlist_id');
+  track('track_tags', 'track_id', SearchEntity.track),
+  album('album_tags', 'album_id', SearchEntity.album),
+  artist('artist_tags', 'artist_id', SearchEntity.artist),
+  playlist('playlist_tags', 'playlist_id', SearchEntity.playlist);
 
-  const TagTarget(this.table, this.column);
+  const TagTarget(this.table, this.column, this.entity);
 
   final String table;
   final String column;
+
+  /// What this target is called in the search index. Carried here rather than
+  /// derived from [name], which is a different vocabulary.
+  final SearchEntity entity;
 }
 
 /// Where a tag on a track came from.
@@ -99,8 +103,15 @@ class TagRepository {
 
   /// Watches every tag, with how many tracks carry it once the cascade is
   /// taken into account.
-  Stream<List<TagCard>> watchTags({int? categoryId}) {
-    final filter = categoryId == null ? '' : 'WHERE t.category_id = ?1';
+  Stream<List<TagCard>> watchTags({int? categoryId, List<int>? ids}) {
+    if (ids != null && ids.isEmpty) return Stream.value(const []);
+    final filters = <String>[
+      if (categoryId != null) 't.category_id = ?1',
+      // Interpolated rather than bound: the count varies per call, and these
+      // are integers straight out of the database, never user text.
+      if (ids != null) 't.id IN (${ids.join(',')})',
+    ];
+    final filter = filters.isEmpty ? '' : 'WHERE ${filters.join(' AND ')}';
     return db
         .customSelect(
           '''
@@ -337,7 +348,7 @@ class TagRepository {
             categoryId: Value(categoryId),
           ),
         );
-    await searchIndexer.reindexEntity('tag', id);
+    await searchIndexer.reindexEntity(SearchEntity.tag, id);
     return id;
   }
 
@@ -350,7 +361,7 @@ class TagRepository {
         nameKey: Value(normalizeKey(trimmed)),
       ),
     );
-    await searchIndexer.reindexEntity('tag', tagId);
+    await searchIndexer.reindexEntity(SearchEntity.tag, tagId);
   }
 
   Future<void> setTagCategory(int tagId, int? categoryId) =>
@@ -364,7 +375,7 @@ class TagRepository {
   /// Deletes a tag and every attachment of it, everywhere.
   Future<void> deleteTag(int tagId) async {
     await (db.delete(db.tags)..where((t) => t.id.equals(tagId))).go();
-    await searchIndexer.removeEntity('tag', tagId);
+    await searchIndexer.removeEntity(SearchEntity.tag, tagId);
   }
 
   /// Attaches a tag, creating it if the name is new.
@@ -419,7 +430,7 @@ class TagRepository {
       };
 
   Future<void> _reindex(TagTarget target, int id) =>
-      searchIndexer.reindexEntity(target.name, id);
+      searchIndexer.reindexEntity(target.entity, id);
 
   // --------------------------------------------------------------- categories
 

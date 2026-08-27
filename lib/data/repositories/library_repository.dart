@@ -27,11 +27,17 @@ class LibraryRepository {
   /// [includeSingles] adds a synthetic entry for each track that belongs to no
   /// album, so loose singles are browsable rather than invisible. They are
   /// given negative ids to keep them distinguishable from real albums.
+  ///
+  /// [ids] restricts the result to those albums, which is how search hydrates
+  /// its hits: the ranking decides which albums, this query decides what an
+  /// album card contains. Two places deciding the latter would drift.
   Stream<List<AlbumCard>> watchAlbums({
     LibrarySort sort = LibrarySort.nameAscending,
     bool includeSingles = false,
     bool favouritesOnly = false,
+    List<int>? ids,
   }) {
+    if (ids != null && ids.isEmpty) return Stream.value(const []);
     final order = switch (sort) {
       LibrarySort.nameAscending => 'al.sort_title, al.title',
       LibrarySort.nameDescending => 'al.sort_title DESC, al.title DESC',
@@ -43,7 +49,13 @@ class LibraryRepository {
       _ => 'al.sort_title, al.title',
     };
 
-    final favouriteFilter = favouritesOnly ? 'WHERE al.is_favorite = 1' : '';
+    final filters = <String>[
+      if (favouritesOnly) 'al.is_favorite = 1',
+      // Interpolated rather than bound: the count varies per call, and these
+      // are integers straight out of the database, never user text.
+      if (ids != null) 'al.id IN (${ids.join(',')})',
+    ];
+    final filter = filters.isEmpty ? '' : 'WHERE ${filters.join(' AND ')}';
 
     return db.customSelect(
       '''
@@ -62,7 +74,7 @@ class LibraryRepository {
       FROM albums al
       LEFT JOIN artists ar ON ar.id = al.album_artist_id
       $_albumArtJoin
-      $favouriteFilter
+      $filter
       ORDER BY $order
       ''',
       readsFrom: {db.albums, db.artists, db.tracks, db.images},
@@ -180,7 +192,6 @@ class LibraryRepository {
   Stream<List<TrackRow>> watchTracks({
     int? albumId,
     int? artistId,
-    int? tagId,
     int? trackId,
     List<int>? trackIds,
     LibrarySort sort = LibrarySort.nameAscending,
@@ -209,11 +220,6 @@ class LibraryRepository {
       where.add('EXISTS (SELECT 1 FROM track_credits tc '
           'WHERE tc.track_id = t.id AND tc.artist_id = ?)');
       variables.add(Variable(artistId));
-    }
-    if (tagId != null) {
-      where.add('EXISTS (SELECT 1 FROM track_tags tt '
-          'WHERE tt.track_id = t.id AND tt.tag_id = ?)');
-      variables.add(Variable(tagId));
     }
 
     final order = switch (sort) {
@@ -265,7 +271,6 @@ class LibraryRepository {
         db.images,
         db.mediaFiles,
         db.trackCredits,
-        db.trackTags,
       },
     ).watch().asyncMap((rows) async {
       if (rows.isEmpty) return const <TrackRow>[];
@@ -348,12 +353,18 @@ class LibraryRepository {
   // ----------------------------------------------------------------- artists
 
   /// Watches the artists and groups list.
+  ///
+  /// [ids] restricts the result, for the same reason as [watchAlbums].
   Stream<List<ArtistCard>> watchArtists({
     LibrarySort sort = LibrarySort.nameAscending,
     bool groupsOnly = false,
     bool withTracksOnly = true,
+    List<int>? ids,
   }) {
-    final filters = <String>[];
+    if (ids != null && ids.isEmpty) return Stream.value(const []);
+    final filters = <String>[
+      if (ids != null) 'a.id IN (${ids.join(',')})',
+    ];
     if (groupsOnly) filters.add("a.kind IN ('group', 'orchestra')");
     if (withTracksOnly) {
       filters.add('EXISTS (SELECT 1 FROM track_credits tc '
@@ -455,42 +466,6 @@ class LibraryRepository {
   }
 
   // -------------------------------------------------------------------- tags
-
-  /// Watches the tag list, grouped by category.
-  Stream<List<TagCard>> watchTags({int? categoryId}) {
-    return db.customSelect(
-      '''
-      SELECT
-        tg.id AS id, tg.name AS name, tg.category_id AS category_id,
-        COALESCE(tg.color, c.color) AS color,
-        c.name AS category_name,
-        im.stored_path AS image_path,
-        (SELECT COUNT(*) FROM track_tags tt WHERE tt.tag_id = tg.id)
-          AS track_count,
-        (SELECT COUNT(*) FROM tags child WHERE child.parent_tag_id = tg.id)
-          AS child_count
-      FROM tags tg
-      LEFT JOIN tag_categories c ON c.id = tg.category_id
-      LEFT JOIN images im ON im.id = tg.image_id
-      ${categoryId == null ? '' : 'WHERE tg.category_id = ?'}
-      ORDER BY c.sort_order, c.name, tg.sort_order, tg.name
-      ''',
-      variables: categoryId == null ? const [] : [Variable(categoryId)],
-      readsFrom: {db.tags, db.tagCategories, db.trackTags, db.images},
-    ).watch().map((rows) => [
-          for (final row in rows)
-            TagCard(
-              id: row.read<int>('id'),
-              name: row.read<String>('name'),
-              trackCount: row.read<int>('track_count'),
-              categoryId: row.read<int?>('category_id'),
-              categoryName: row.read<String?>('category_name'),
-              color: row.read<int?>('color'),
-              imagePath: row.read<String?>('image_path'),
-              childCount: row.read<int>('child_count'),
-            ),
-        ]);
-  }
 
   // ---------------------------------------------------------------- playback
 

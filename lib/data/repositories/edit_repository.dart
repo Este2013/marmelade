@@ -547,7 +547,7 @@ class EditRepository {
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    await searchIndexer.reindexEntity('artist', artistId);
+    await searchIndexer.reindexEntity(SearchEntity.artist, artistId);
   }
 
   static String? _orNull(String? value) {
@@ -578,7 +578,7 @@ class EditRepository {
           // would resolve on the primary key instead and throw.
           mode: InsertMode.insertOrIgnore,
         );
-    await searchIndexer.reindexEntity('artist', artistId);
+    await searchIndexer.reindexEntity(SearchEntity.artist, artistId);
   }
 
   Future<void> removeArtistAlias(int aliasId) async {
@@ -588,7 +588,7 @@ class EditRepository {
     );
     await (db.delete(db.artistAliases)..where((t) => t.id.equals(aliasId))).go();
     if (artistId != null) {
-      await searchIndexer.reindexEntity('artist', artistId);
+      await searchIndexer.reindexEntity(SearchEntity.artist, artistId);
     }
   }
 
@@ -734,7 +734,7 @@ class EditRepository {
     });
 
     for (final id in created) {
-      await searchIndexer.reindexEntity('artist', id);
+      await searchIndexer.reindexEntity(SearchEntity.artist, id);
     }
     return created;
   }
@@ -805,9 +805,9 @@ class EditRepository {
     });
 
     for (final id in others) {
-      await searchIndexer.removeEntity('artist', id);
+      await searchIndexer.removeEntity(SearchEntity.artist, id);
     }
-    await searchIndexer.reindexEntity('artist', keepId);
+    await searchIndexer.reindexEntity(SearchEntity.artist, keepId);
   }
 
   Future<int> _findOrCreateArtist(String name) async {
@@ -853,7 +853,7 @@ class EditRepository {
     if (inUse) return;
 
     await (db.delete(db.artists)..where((t) => t.id.equals(artistId))).go();
-    await searchIndexer.removeEntity('artist', artistId);
+    await searchIndexer.removeEntity(SearchEntity.artist, artistId);
   }
 
 
@@ -864,9 +864,10 @@ class EditRepository {
   /// The three differ only in the table they write and the role recorded on the
   /// image row, so they share one implementation. The *kind* is always
   /// userProvided: that is provenance, and a hand-picked file has exactly one.
-  static const _artistPicture = ('artists', ImageRole.artist, 'artist');
-  static const _albumPicture = ('albums', ImageRole.front, 'album');
-  static const _trackPicture = ('tracks', ImageRole.front, 'track');
+  static const _artistPicture =
+      ('artists', ImageRole.artist, SearchEntity.artist);
+  static const _albumPicture = ('albums', ImageRole.front, SearchEntity.album);
+  static const _trackPicture = ('tracks', ImageRole.front, SearchEntity.track);
 
   Future<bool> setArtistPicture(int artistId, File file) =>
       _setPicture(_artistPicture, artistId, file);
@@ -893,7 +894,7 @@ class EditRepository {
   /// false when the file could not be read as an image, which is the one
   /// outcome worth telling the person about.
   Future<bool> _setPicture(
-    (String, ImageRole, String) target,
+    (String, ImageRole, SearchEntity) target,
     int id,
     File file,
   ) async {
@@ -929,7 +930,7 @@ class EditRepository {
   /// The file itself stays in the store: it is content-addressed and may be
   /// shared with a track that still uses it. Pruning is the store's job.
   Future<void> _clearPicture(
-    (String, ImageRole, String) target,
+    (String, ImageRole, SearchEntity) target,
     int id,
   ) async {
     final (table, _, entity) = target;
@@ -970,7 +971,7 @@ class EditRepository {
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    await searchIndexer.reindexEntity('album', albumId);
+    await searchIndexer.reindexEntity(SearchEntity.album, albumId);
   }
 
 
@@ -997,7 +998,7 @@ class EditRepository {
           ),
           mode: InsertMode.insertOrIgnore,
         );
-    await searchIndexer.reindexEntity('album', albumId);
+    await searchIndexer.reindexEntity(SearchEntity.album, albumId);
   }
 
   Future<void> removeAlbumAlias(int aliasId) async {
@@ -1006,7 +1007,7 @@ class EditRepository {
       aliasId,
     );
     await (db.delete(db.albumAliases)..where((t) => t.id.equals(aliasId))).go();
-    if (albumId != null) await searchIndexer.reindexEntity('album', albumId);
+    if (albumId != null) await searchIndexer.reindexEntity(SearchEntity.album, albumId);
   }
 
   Future<void> addTrackAlias(
@@ -1028,7 +1029,7 @@ class EditRepository {
           ),
           mode: InsertMode.insertOrIgnore,
         );
-    await searchIndexer.reindexEntity('track', trackId);
+    await searchIndexer.reindexEntity(SearchEntity.track, trackId);
   }
 
   Future<void> removeTrackAlias(int aliasId) async {
@@ -1037,7 +1038,7 @@ class EditRepository {
       aliasId,
     );
     await (db.delete(db.trackAliases)..where((t) => t.id.equals(aliasId))).go();
-    if (trackId != null) await searchIndexer.reindexEntity('track', trackId);
+    if (trackId != null) await searchIndexer.reindexEntity(SearchEntity.track, trackId);
   }
 
   Future<List<AliasRow>> _aliasesFrom(
@@ -1092,7 +1093,7 @@ class EditRepository {
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    await searchIndexer.reindexEntity('track', trackId);
+    await searchIndexer.reindexEntity(SearchEntity.track, trackId);
   }
 
   /// Replaces a track's credits wholesale.
@@ -1131,7 +1132,7 @@ class EditRepository {
         ),
       );
     });
-    await searchIndexer.reindexEntity('track', trackId);
+    await searchIndexer.reindexEntity(SearchEntity.track, trackId);
   }
 
   Future<int?> _scalar(String sql, int variable) async {

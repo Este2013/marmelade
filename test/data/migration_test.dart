@@ -13,7 +13,7 @@ void main() {
   test('v1 to v2 adds playlist tags without disturbing what exists', () async {
     // A real file, because the migration is about a database on disk.
     final file = sqlite3.sqlite3.openInMemory();
-    addTearDown(file.dispose);
+    addTearDown(file.close);
 
     // Stand up the current schema, then wind it back to look like v1: the only
     // difference is the table v2 added.
@@ -79,7 +79,7 @@ void main() {
     // recreated on every open. That is what lets a view change ship without a
     // schema version bump -- and it has to actually happen.
     final file = sqlite3.sqlite3.openInMemory();
-    addTearDown(file.dispose);
+    addTearDown(file.close);
 
     var db = MarmeladeDatabase(
       NativeDatabase.opened(file, closeUnderlyingOnClose: false),

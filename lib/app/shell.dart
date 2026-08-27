@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/library/album_detail_view.dart';
@@ -18,6 +19,7 @@ import '../features/playlists/playlists_view.dart';
 import '../features/tags/tag_detail_view.dart';
 import '../features/tags/tags_view.dart';
 import '../features/player/player_bar.dart';
+import '../features/search/search_view.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
@@ -32,6 +34,7 @@ import 'window_chrome.dart';
 /// the player itself, so it opens by drawing the player bar up over the content
 /// rather than by taking a rail slot alongside Albums and Artists.
 enum LibrarySection {
+  search('Search', Icons.search_outlined, Icons.search),
   albums('Albums', Icons.album_outlined, Icons.album),
   songs('Songs', Icons.music_note_outlined, Icons.music_note),
   artists('Artists', Icons.people_outline, Icons.people),
@@ -49,7 +52,14 @@ enum LibrarySection {
   ///
   /// Settings is excluded and pinned to the foot of the rail instead: it is
   /// where the app gets configured, not another way to browse music.
-  static const railDestinations = [albums, songs, artists, tags, playlists];
+  static const railDestinations = [
+    search,
+    albums,
+    songs,
+    artists,
+    tags,
+    playlists,
+  ];
 }
 
 /// The application frame: navigation rail, content, and the player strip.
@@ -158,6 +168,15 @@ class _AppShellState extends ConsumerState<AppShell>
         if (playlist != null) _openPlaylist(playlist);
         final tag = int.tryParse(Platform.environment['MARMELADE_TAG'] ?? '');
         if (tag != null) _openTag(tag);
+        if (Platform.environment['MARMELADE_REINDEX'] == '1') {
+          ref.read(searchIndexerProvider).rebuildAll().then(
+                (_) => AppLog.instance.info('search index rebuilt on request'),
+              );
+        }
+        final query = Platform.environment['MARMELADE_SEARCH'];
+        if (query != null && query.isNotEmpty) {
+          ref.read(searchQueryProvider.notifier).set(query);
+        }
       });
     }
 
@@ -210,6 +229,9 @@ class _AppShellState extends ConsumerState<AppShell>
     // Nothing to look at, so nothing to look at it in.
     _toggleShade(open: false);
   }
+
+  /// The search page, so a keystroke from anywhere can put the caret in it.
+  final _searchKey = GlobalKey<SearchViewState>();
 
   /// One navigator key per section, so each keeps its own history.
   final _navigatorKeys = {
@@ -327,6 +349,29 @@ class _AppShellState extends ConsumerState<AppShell>
   void _editTrack(int trackId) =>
       _push(TrackEditorView(trackId: trackId, onBack: _pop));
 
+  /// Goes to search and puts the caret in the field.
+  ///
+  /// From anywhere, including with the shade up: someone reaching for Ctrl+F
+  /// wants to type, not to first work out what is covering the page.
+  void _openSearch() {
+    _toggleShade(open: false);
+    if (_section != LibrarySection.search) {
+      _select(LibrarySection.search);
+      // The page does not exist yet in this frame, so the caret has to wait for
+      // it. Selecting the section is what mounts it.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _searchKey.currentState?.focusField(),
+      );
+      return;
+    }
+    // Already there: pop anything opened from a result, then focus.
+    final navigator = _navigatorKeys[LibrarySection.search]?.currentState;
+    while (navigator?.canPop() ?? false) {
+      navigator!.pop();
+    }
+    _searchKey.currentState?.focusField();
+  }
+
   void _openCreditReview() {
     // Lives inside the Artists stack: it is about who the artists are, and it
     // keeps the rail to five destinations rather than adding one for something
@@ -348,94 +393,104 @@ class _AppShellState extends ConsumerState<AppShell>
       (_, canPlay) => _syncBar(canPlay),
     );
 
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: Row(
-                    children: [
-                      // The rail runs to the top edge of the window, which is
-                      // the point of drawing our own caption.
-                      _Rail(
-                        selected: _section,
-                        onSelect: _select,
-                        pendingCredits:
-                            ref.watch(pendingCreditCountProvider).value ?? 0,
-                      ),
-                      VerticalDivider(
-                        width: 1,
-                        thickness: 1,
-                        color: scheme.outlineVariant.withValues(alpha: 0.4),
-                      ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            // Room for the caption strip. The strip itself is
-                            // transparent and drawn on top, so this keeps the
-                            // content from scrolling underneath the window
-                            // buttons.
-                            const SizedBox(height: WindowChrome.height),
-                            Expanded(child: _sections()),
-                          ],
+    return CallbackShortcuts(
+      bindings: {
+        // Both, because both are muscle memory: Ctrl+F from file managers and
+        // browsers, Ctrl+K from everything built in the last five years.
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _openSearch,
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+            _openSearch,
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        // The rail runs to the top edge of the window, which is
+                        // the point of drawing our own caption.
+                        _Rail(
+                          selected: _section,
+                          onSelect: _select,
+                          pendingCredits:
+                              ref.watch(pendingCreditCountProvider).value ?? 0,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                // The shade covers the rail as well as the content, so the
-                // artwork gets the whole window. The way back is the close
-                // button in its header and the chevron in the bar below, both
-                // of which stay visible.
-                Positioned.fill(child: _shadeLayer()),
-                // Above everything, including the shade: a window that cannot
-                // be moved or closed because a panel is open would be a poor
-                // trade for the extra immersion.
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  // Rebuilt as the shade animates, because the shade's own
-                  // controls live in this strip now.
-                  child: AnimatedBuilder(
-                    animation: _shade,
-                    builder: (context, _) => WindowChrome(
-                      leading: _shadeLeading(),
-                      trailing: _shadeTrailing(),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: scheme.outlineVariant.withValues(alpha: 0.4),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              // Room for the caption strip. The strip itself is
+                              // transparent and drawn on top, so this keeps the
+                              // content from scrolling underneath the window
+                              // buttons.
+                              const SizedBox(height: WindowChrome.height),
+                              Expanded(child: _sections()),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  // The shade covers the rail as well as the content, so the
+                  // artwork gets the whole window. The way back is the close
+                  // button in its header and the chevron in the bar below, both
+                  // of which stay visible.
+                  Positioned.fill(child: _shadeLayer()),
+                  // Above everything, including the shade: a window that cannot
+                  // be moved or closed because a panel is open would be a poor
+                  // trade for the extra immersion.
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    // Rebuilt as the shade animates, because the shade's own
+                    // controls live in this strip now.
+                    child: AnimatedBuilder(
+                      animation: _shade,
+                      builder: (context, _) => WindowChrome(
+                        leading: _shadeLeading(),
+                        trailing: _shadeTrailing(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          // Listens to both controllers: the bar's own reveal, and the shade's,
-          // because the bar's chevron points the other way while the shade is
-          // up and nothing else would rebuild it.
-          AnimatedBuilder(
-            animation: Listenable.merge([_bar, _shade]),
-            builder: (context, _) {
-              // Gone entirely, not merely zero pixels tall. A clipped bar would
-              // leave every transport control in the tree at zero height, and a
-              // zero-area interactive node is what crashed this app on the
-              // Windows accessibility bridge.
-              if (_bar.value == 0) return const SizedBox.shrink();
-              return SizeTransition(
-                sizeFactor: _barCurve,
-                axis: Axis.vertical,
-                // Bottom-aligned, so the bar's own bottom edge stays put and
-                // the rest of it rises into view.
-                alignment: Alignment.bottomCenter,
-                child: PlayerBar(
-                  expanded: _shadeOpen,
-                  onToggleExpanded: () => _toggleShade(),
-                  onOpenQueue: () => _toggleShade(open: true, showQueue: true),
-                ),
-              );
-            },
-          ),
-        ],
+            // Listens to both controllers: the bar's own reveal, and the shade's,
+            // because the bar's chevron points the other way while the shade is
+            // up and nothing else would rebuild it.
+            AnimatedBuilder(
+              animation: Listenable.merge([_bar, _shade]),
+              builder: (context, _) {
+                // Gone entirely, not merely zero pixels tall. A clipped bar would
+                // leave every transport control in the tree at zero height, and a
+                // zero-area interactive node is what crashed this app on the
+                // Windows accessibility bridge.
+                if (_bar.value == 0) return const SizedBox.shrink();
+                return SizeTransition(
+                  sizeFactor: _barCurve,
+                  axis: Axis.vertical,
+                  // Bottom-aligned, so the bar's own bottom edge stays put and
+                  // the rest of it rises into view.
+                  alignment: Alignment.bottomCenter,
+                  child: PlayerBar(
+                    expanded: _shadeOpen,
+                    onToggleExpanded: () => _toggleShade(),
+                    onOpenQueue: () => _toggleShade(open: true, showQueue: true),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -573,6 +628,14 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   Widget _rootFor(LibrarySection section) => switch (section) {
+    LibrarySection.search => SearchView(
+            key: _searchKey,
+            onOpenArtist: _openArtist,
+            onOpenAlbum: _openAlbum,
+            onOpenTag: _openTag,
+            onOpenPlaylist: _openPlaylist,
+            onEditTrack: _editTrack,
+          ),
     LibrarySection.albums => AlbumsView(
       onOpenAlbum: _openAlbum,
       onOpenTrack: (trackId) =>

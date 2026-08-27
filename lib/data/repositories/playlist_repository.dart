@@ -234,7 +234,7 @@ class PlaylistRepository {
             description: Value(_orNull(description)),
           ),
         );
-    await searchIndexer.reindexEntity('playlist', id);
+    await searchIndexer.reindexEntity(SearchEntity.playlist, id);
     return id;
   }
 
@@ -249,7 +249,7 @@ class PlaylistRepository {
         updatedAt: Value(DateTime.now().toUtc()),
       ),
     );
-    await searchIndexer.reindexEntity('playlist', playlistId);
+    await searchIndexer.reindexEntity(SearchEntity.playlist, playlistId);
   }
 
   Future<void> setDescription(int playlistId, String? description) =>
@@ -267,7 +267,7 @@ class PlaylistRepository {
     final descendants = await _descendantsOf(playlistId);
     await (db.delete(db.playlists)..where((t) => t.id.equals(playlistId))).go();
     for (final id in [playlistId, ...descendants]) {
-      await searchIndexer.removeEntity('playlist', id);
+      await searchIndexer.removeEntity(SearchEntity.playlist, id);
     }
   }
 

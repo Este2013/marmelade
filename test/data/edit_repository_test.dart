@@ -564,4 +564,55 @@ void main() {
       expect(await repository.findArtists('  '), isEmpty);
     });
   });
+
+  group('the search index follows an edit', () {
+    // A regression guard. The indexer keys rows by a short string ('art'),
+    // and every caller used to pass the long word ('artist'): the delete
+    // matched nothing, the reindex switch fell through, and searching kept
+    // finding the old name forever. Nothing threw, and no other test noticed.
+    Future<List<String>> indexed(SearchEntity entity, int id) async {
+      final rows = await db.customSelect(
+        'SELECT title FROM $ftsTokenTable '
+        'WHERE entity_type = ? AND entity_id = ?',
+        variables: [Variable(entity.key), Variable('$id')],
+      ).get();
+      return rows.map((r) => r.read<String>('title')).toList();
+    }
+
+    test('renaming an artist replaces its indexed name', () async {
+      final id = await artist('Old Name');
+      await SearchIndexer(db).rebuildAll();
+      expect(await indexed(SearchEntity.artist, id), ['Old Name']);
+
+      await repository.saveArtist(id, name: 'New Name');
+
+      // Exactly one row: a reindex that inserted without deleting would leave
+      // the artist findable under both names.
+      expect(await indexed(SearchEntity.artist, id), ['New Name']);
+    });
+
+    test('renaming an album and a track replaces their indexed names',
+        () async {
+      final albumId = await album('Old Album');
+      final trackId = await track('Old Track', artistId: await artist('A'));
+      await SearchIndexer(db).rebuildAll();
+
+      await repository.saveAlbum(albumId, title: 'New Album');
+      await repository.saveTrack(trackId, title: 'New Track');
+
+      expect(await indexed(SearchEntity.album, albumId), ['New Album']);
+      expect(await indexed(SearchEntity.track, trackId), ['New Track']);
+    });
+
+    test('a merged-away artist leaves the index', () async {
+      final keep = await artist('Keep');
+      final gone = await artist('Gone');
+      await SearchIndexer(db).rebuildAll();
+
+      await repository.mergeArtists(keep, [gone]);
+
+      expect(await indexed(SearchEntity.artist, gone), isEmpty);
+      expect(await indexed(SearchEntity.artist, keep), ['Keep']);
+    });
+  });
 }

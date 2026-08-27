@@ -39,10 +39,10 @@ class SearchIndexer {
   }
 
   /// Re-indexes a single entity after an edit.
-  Future<void> reindexEntity(String entityType, int id) async {
+  Future<void> reindexEntity(SearchEntity entity, int id) async {
     await db.transaction(() async {
-      await _remove(entityType, id);
-      switch (entityType) {
+      await _remove(entity, id);
+      switch (entity) {
         case SearchEntity.artist:
           await _indexArtists(onlyId: id);
         case SearchEntity.album:
@@ -58,18 +58,18 @@ class SearchIndexer {
   }
 
   /// Drops an entity from both indexes.
-  Future<void> removeEntity(String entityType, int id) =>
-      db.transaction(() => _remove(entityType, id));
+  Future<void> removeEntity(SearchEntity entity, int id) =>
+      db.transaction(() => _remove(entity, id));
 
-  Future<void> _remove(String entityType, int id) async {
+  Future<void> _remove(SearchEntity entity, int id) async {
     await db.customStatement(
       'DELETE FROM $ftsTokenTable WHERE entity_type = ? AND entity_id = ?',
-      [entityType, '$id'],
+      [entity.key, '$id'],
     );
     if (db.trigramSearchAvailable) {
       await db.customStatement(
         'DELETE FROM $ftsTrigramTable WHERE entity_type = ? AND entity_id = ?',
-        [entityType, '$id'],
+        [entity.key, '$id'],
       );
     }
   }
@@ -123,7 +123,7 @@ class SearchIndexer {
     final filter = onlyId == null ? '' : 'WHERE a.id = ?';
     await _insert(
       select: '''
-        SELECT '${SearchEntity.artist}' AS entity_type,
+        SELECT '${SearchEntity.artist.key}' AS entity_type,
           CAST(a.id AS TEXT) AS entity_id,
           a.name AS title,
           COALESCE((SELECT group_concat(al.alias, ' ')
@@ -140,7 +140,7 @@ class SearchIndexer {
     final filter = onlyId == null ? '' : 'WHERE al.id = ?';
     await _insert(
       select: '''
-        SELECT '${SearchEntity.album}' AS entity_type,
+        SELECT '${SearchEntity.album.key}' AS entity_type,
           CAST(al.id AS TEXT) AS entity_id,
           al.title AS title,
           COALESCE((SELECT group_concat(aa.alias, ' ')
@@ -161,7 +161,7 @@ class SearchIndexer {
     // click away" hold without extra work in the UI.
     await _insert(
       select: '''
-        SELECT '${SearchEntity.track}' AS entity_type,
+        SELECT '${SearchEntity.track.key}' AS entity_type,
           CAST(t.id AS TEXT) AS entity_id,
           t.title AS title,
           COALESCE((SELECT group_concat(ta.alias, ' ')
@@ -186,7 +186,7 @@ class SearchIndexer {
     final filter = onlyId == null ? '' : 'WHERE tg.id = ?';
     await _insert(
       select: '''
-        SELECT '${SearchEntity.tag}' AS entity_type,
+        SELECT '${SearchEntity.tag.key}' AS entity_type,
           CAST(tg.id AS TEXT) AS entity_id,
           tg.name AS title,
           COALESCE((SELECT group_concat(al.alias, ' ')
@@ -204,7 +204,7 @@ class SearchIndexer {
     final filter = onlyId == null ? '' : 'WHERE pl.id = ?';
     await _insert(
       select: '''
-        SELECT '${SearchEntity.playlist}' AS entity_type,
+        SELECT '${SearchEntity.playlist.key}' AS entity_type,
           CAST(pl.id AS TEXT) AS entity_id,
           pl.name AS title,
           '' AS aliases,
