@@ -14,7 +14,7 @@ import 'package:window_manager/window_manager.dart';
 /// the now-playing shade too: a window you cannot move or close because a panel
 /// is open would be a poor trade for the extra immersion.
 class WindowChrome extends StatelessWidget {
-  const WindowChrome({super.key});
+  const WindowChrome({super.key, this.leading, this.trailing});
 
   /// Height of the strip, in logical pixels.
   ///
@@ -22,20 +22,33 @@ class WindowChrome extends StatelessWidget {
   /// where the muscle memory expects them.
   static const height = 40.0;
 
+  /// Controls placed at the left end of the strip, before the drag area.
+  ///
+  /// The strip is the only chrome the window has, so anything that belongs to
+  /// the window as a whole rather than to a view belongs here. Kept as opaque
+  /// widgets so this file stays about the window and knows nothing about the
+  /// player.
+  final Widget? leading;
+
+  /// Controls placed after the drag area, before the window buttons.
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: height,
       child: Row(
-        children: const [
+        children: [
+          ?leading,
           // The strip runs the full width, over the rail's top as well. The
           // rail's first destination starts below it, so nothing interactive is
           // covered, and in exchange the entire top edge of the window drags --
           // which is what the edge of a window is expected to do. Reserving a
           // gap for the rail would mean hard-coding its width, and a rail with
           // labels is wider than its minWidth suggests.
-          Expanded(child: _DragStrip()),
-          _WindowButtons(),
+          const Expanded(child: _DragStrip()),
+          ?trailing,
+          const _WindowButtons(),
         ],
       ),
     );

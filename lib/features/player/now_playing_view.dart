@@ -17,27 +17,27 @@ import '../../widgets/time_text.dart';
 /// That also means it deliberately repeats none of the transport controls --
 /// they are a few pixels below, in the bar that opened this -- so the freed
 /// space goes to the artwork instead.
+///
+/// It has no header of its own either. Closing it, naming it and showing or
+/// hiding the queue all live in the window's caption strip, which is already at
+/// the top of the screen and already where the window's own controls are. One
+/// strip of controls, not two stacked on each other.
 class NowPlayingView extends ConsumerWidget {
   const NowPlayingView({
     super.key,
     this.topInset = 0,
     this.onOpenArtist,
     this.onOpenAlbum,
-    this.onClose,
   });
 
   /// Space to leave clear at the top for the window's caption strip.
   ///
-  /// The shade covers the whole window, and the caption strip is drawn over it,
-  /// so without this the shade's own controls would sit under the window
-  /// buttons.
+  /// The shade covers the whole window and the strip is drawn over it, so
+  /// without this the artwork would start underneath the window buttons.
   final double topInset;
 
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
-
-  /// Closes the shade.
-  final VoidCallback? onClose;
 
   /// Below this width the artwork and the queue are shown one at a time.
   ///
@@ -71,13 +71,6 @@ class NowPlayingView extends ConsumerWidget {
           return Column(
             children: [
               SizedBox(height: topInset),
-              _ShadeBar(
-                queueVisible: queueVisible,
-                queueLength: player.queue.length,
-                onToggleQueue: () =>
-                    ref.read(queuePaneVisibleProvider.notifier).toggle(),
-                onClose: onClose,
-              ),
               Expanded(
                 child: twoPane
                     // Side by side: the queue slides in from the right edge
@@ -111,58 +104,6 @@ class NowPlayingView extends ConsumerWidget {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-/// The shade's own thin header: close on the left, queue toggle on the right.
-class _ShadeBar extends StatelessWidget {
-  const _ShadeBar({
-    required this.queueVisible,
-    required this.queueLength,
-    required this.onToggleQueue,
-    this.onClose,
-  });
-
-  final bool queueVisible;
-  final int queueLength;
-  final VoidCallback onToggleQueue;
-  final VoidCallback? onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Close now playing',
-            onPressed: onClose,
-            icon: const Icon(Icons.keyboard_arrow_down),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Now playing',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            // The count lives in the tooltip rather than a badge: a permanent
-            // red dot on a control that is not a notification reads as an
-            // alert about nothing.
-            tooltip: queueVisible
-                ? 'Hide the queue'
-                : 'Show the queue (${pluralize(queueLength, 'track')})',
-            isSelected: queueVisible,
-            onPressed: onToggleQueue,
-            icon: const Icon(Icons.queue_music),
-          ),
-        ],
       ),
     );
   }

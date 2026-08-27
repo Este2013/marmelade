@@ -853,6 +853,38 @@ void main() {
       }
     });
 
+    testWidgets('the shade puts its own controls in the caption strip',
+        (tester) async {
+      // One strip of controls at the top of the window, not two stacked on
+      // each other.
+      await open(tester, app: buildApp(playing: true));
+
+      Finder inChrome(Finder matching) => find.descendant(
+            of: find.byType(WindowChrome),
+            matching: matching,
+          );
+
+      // Closed: the strip carries nothing but the window's own buttons.
+      expect(inChrome(find.text('Now playing')), findsNothing);
+      expect(inChrome(find.byTooltip('Close now playing')), findsNothing);
+
+      await tester.tap(find.byTooltip('Open now playing'));
+      await settle(tester);
+
+      expect(inChrome(find.text('Now playing')), findsOne);
+      expect(inChrome(find.byTooltip('Close now playing')), findsOne);
+      expect(inChrome(find.byTooltip('Hide the queue')), findsOne);
+      // And nowhere else: the shade has no header of its own any more.
+      expect(find.text('Now playing'), findsOne);
+      expect(find.byTooltip('Close now playing'), findsOne);
+
+      // Closing from the strip works.
+      await tester.tap(inChrome(find.byTooltip('Close now playing')));
+      await settle(tester);
+      expect(find.text('Now playing'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('content starts below the caption, not underneath it',
         (tester) async {
       await open(tester);

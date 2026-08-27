@@ -16,6 +16,7 @@ import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
 import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/empty_state.dart';
+import '../widgets/time_text.dart';
 import 'providers.dart';
 import 'window_chrome.dart';
 
@@ -328,7 +329,15 @@ class _AppShellState extends ConsumerState<AppShell>
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: const WindowChrome(),
+                  // Rebuilt as the shade animates, because the shade's own
+                  // controls live in this strip now.
+                  child: AnimatedBuilder(
+                    animation: _shade,
+                    builder: (context, _) => WindowChrome(
+                      leading: _shadeLeading(),
+                      trailing: _shadeTrailing(),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -384,6 +393,73 @@ class _AppShellState extends ConsumerState<AppShell>
     ],
   );
 
+  /// Fade for the shade's controls in the caption strip.
+  ///
+  /// Null below the threshold, so the controls are absent rather than sitting
+  /// there at zero opacity. An invisible interactive node is the shape of bug
+  /// that crashed this app on the Windows accessibility bridge, and it is not
+  /// worth reintroducing for a fade.
+  double? _shadeControlsOpacity() {
+    if (_shade.value <= 0.01) return null;
+    return Curves.easeOut.transform((_shade.value / 0.6).clamp(0.0, 1.0));
+  }
+
+  /// The shade's close button and title, for the caption strip.
+  Widget? _shadeLeading() {
+    final opacity = _shadeControlsOpacity();
+    if (opacity == null) return null;
+    final theme = Theme.of(context);
+
+    return Opacity(
+      opacity: opacity,
+      child: Row(
+        children: [
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Close now playing',
+            onPressed: () => _toggleShade(open: false),
+            icon: const Icon(Icons.keyboard_arrow_down),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'Now playing',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+
+  /// The shade's queue toggle, for the caption strip.
+  Widget? _shadeTrailing() {
+    final opacity = _shadeControlsOpacity();
+    if (opacity == null) return null;
+    final queueVisible = ref.watch(queuePaneVisibleProvider);
+    final queueLength = ref.watch(playerProvider.select((s) => s.queue.length));
+
+    return Opacity(
+      opacity: opacity,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: IconButton(
+          // The count lives in the tooltip rather than a badge: a permanent
+          // red dot on a control that is not a notification reads as an alert
+          // about nothing.
+          tooltip: queueVisible
+              ? 'Hide the queue'
+              : 'Show the queue (${pluralize(queueLength, 'track')})',
+          isSelected: queueVisible,
+          onPressed: () =>
+              ref.read(queuePaneVisibleProvider.notifier).toggle(),
+          icon: const Icon(Icons.queue_music),
+        ),
+      ),
+    );
+  }
+
   /// The now-playing shade, drawn up from the bottom edge.
   ///
   /// Built only while it is showing, so the view's providers subscribe to
@@ -418,7 +494,6 @@ class _AppShellState extends ConsumerState<AppShell>
                     topInset: WindowChrome.height,
                     onOpenArtist: _openArtist,
                     onOpenAlbum: _openAlbum,
-                    onClose: () => _toggleShade(open: false),
                   ),
                 ),
               ),
