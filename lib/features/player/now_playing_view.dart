@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import 'lyrics_pane.dart';
 import '../../data/repositories/queue_repository.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
@@ -28,6 +29,7 @@ class NowPlayingView extends ConsumerWidget {
     this.topInset = 0,
     this.onOpenArtist,
     this.onOpenAlbum,
+    this.onEditTrack,
   });
 
   /// Space to leave clear at the top for the window's caption strip.
@@ -39,7 +41,10 @@ class NowPlayingView extends ConsumerWidget {
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
 
-  /// Below this width the artwork and the queue are shown one at a time.
+  /// Opens the track editor, which is where lyrics get written.
+  final void Function(int trackId)? onEditTrack;
+
+  /// Below this width the artwork and the side pane are shown one at a time.
   ///
   /// Both at once in the app's minimum window leaves neither usable.
   static const _twoPaneBreakpoint = 980.0;
@@ -48,6 +53,7 @@ class NowPlayingView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
     final queueVisible = ref.watch(queuePaneVisibleProvider);
+    final lyricsVisible = ref.watch(lyricsPaneVisibleProvider);
 
     return ArtworkBackdrop(
       storedPath: player.current?.imagePath,
@@ -68,6 +74,14 @@ class NowPlayingView extends ConsumerWidget {
             onOpenAlbum: onOpenAlbum,
           );
 
+          // One slot, two possible contents. Three columns in the app's
+          // minimum window leaves none of them readable, and the toggles keep
+          // meaning the same thing at every width because of it.
+          final sideVisible = queueVisible || lyricsVisible;
+          final side = lyricsVisible
+              ? LyricsPane(onEditTrack: onEditTrack)
+              : const _QueuePane();
+
           return Column(
             children: [
               SizedBox(height: topInset),
@@ -78,7 +92,11 @@ class NowPlayingView extends ConsumerWidget {
                     ? Row(
                         children: [
                           Expanded(child: artwork),
-                          _QueueSlide(visible: queueVisible, width: 400),
+                          _SideSlide(
+                            visible: sideVisible,
+                            width: lyricsVisible ? 480 : 400,
+                            child: side,
+                          ),
                         ],
                       )
                     // Too narrow for two: the queue takes the whole pane, so
@@ -89,11 +107,14 @@ class NowPlayingView extends ConsumerWidget {
                         duration: const Duration(milliseconds: 240),
                         switchInCurve: Curves.easeOut,
                         switchOutCurve: Curves.easeIn,
-                        child: queueVisible
-                            ? const Padding(
-                                key: ValueKey('queue'),
-                                padding: EdgeInsets.fromLTRB(12, 4, 12, 12),
-                                child: _QueueCard(),
+                        child: sideVisible
+                            ? Padding(
+                                key: ValueKey(
+                                  lyricsVisible ? 'lyrics' : 'queue',
+                                ),
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                                child: _SideCard(child: side),
                               )
                             : KeyedSubtree(
                                 key: const ValueKey('artwork'),
@@ -288,11 +309,18 @@ class _LinkState extends State<_Link> {
 ///
 /// A clip whose width is animated, rather than a translation: the artwork pane
 /// gives up its room as the panel arrives, so nothing is ever drawn over.
-class _QueueSlide extends StatelessWidget {
-  const _QueueSlide({required this.visible, required this.width});
+class _SideSlide extends StatelessWidget {
+  const _SideSlide({
+    required this.visible,
+    required this.width,
+    required this.child,
+  });
 
   final bool visible;
   final double width;
+
+  /// The queue or the lyrics: one pane, two possible contents.
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -329,11 +357,11 @@ class _QueueSlide extends StatelessWidget {
                     ),
                   ),
                 ),
-                child: const ClipRRect(
-                  borderRadius: BorderRadius.only(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(18),
                   ),
-                  child: _QueuePane(),
+                  child: child,
                 ),
               ),
             ),
@@ -344,9 +372,11 @@ class _QueueSlide extends StatelessWidget {
   }
 }
 
-/// The queue as a floating card, for windows too narrow to hold two panes.
-class _QueueCard extends StatelessWidget {
-  const _QueueCard();
+/// A side pane as a floating card, for windows too narrow to hold two.
+class _SideCard extends StatelessWidget {
+  const _SideCard({required this.child});
+
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -360,9 +390,9 @@ class _QueueCard extends StatelessWidget {
           color: scheme.outlineVariant.withValues(alpha: 0.4),
         ),
       ),
-      child: const ClipRRect(
-        borderRadius: BorderRadius.all(Radius.circular(18)),
-        child: _QueuePane(),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        child: child,
       ),
     );
   }

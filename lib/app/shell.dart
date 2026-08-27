@@ -187,9 +187,12 @@ class _AppShellState extends ConsumerState<AppShell>
     });
 
     if (Platform.environment['MARMELADE_NOW_PLAYING'] == '1') {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _toggleShade(open: true),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _toggleShade(open: true);
+        if (Platform.environment['MARMELADE_LYRICS'] == '1') {
+          _showSidePane(lyrics: true);
+        }
+      });
     }
 
     // Debug affordance: reproduce a library refresh without driving the UI.
@@ -252,9 +255,7 @@ class _AppShellState extends ConsumerState<AppShell>
 
   void _toggleShade({bool? open, bool showQueue = false}) {
     final target = open ?? !_shadeOpen;
-    if (target && showQueue) {
-      ref.read(queuePaneVisibleProvider.notifier).set(true);
-    }
+    if (target && showQueue) _showSidePane(queue: true);
     target ? _shade.forward() : _shade.reverse();
   }
 
@@ -556,31 +557,58 @@ class _AppShellState extends ConsumerState<AppShell>
     );
   }
 
-  /// The shade's queue toggle, for the caption strip.
+  /// The shade's lyrics and queue toggles, for the caption strip.
   Widget? _shadeTrailing() {
     final opacity = _shadeControlsOpacity();
     if (opacity == null) return null;
     final queueVisible = ref.watch(queuePaneVisibleProvider);
+    final lyricsVisible = ref.watch(lyricsPaneVisibleProvider);
     final queueLength = ref.watch(playerProvider.select((s) => s.queue.length));
 
     return Opacity(
       opacity: opacity,
       child: Padding(
         padding: const EdgeInsets.only(right: 4),
-        child: IconButton(
-          // The count lives in the tooltip rather than a badge: a permanent
-          // red dot on a control that is not a notification reads as an alert
-          // about nothing.
-          tooltip: queueVisible
-              ? 'Hide the queue'
-              : 'Show the queue (${pluralize(queueLength, 'track')})',
-          isSelected: queueVisible,
-          onPressed: () =>
-              ref.read(queuePaneVisibleProvider.notifier).toggle(),
-          icon: const Icon(Icons.queue_music),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: lyricsVisible ? 'Hide the lyrics' : 'Show the lyrics',
+              isSelected: lyricsVisible,
+              onPressed: () => _showSidePane(lyrics: !lyricsVisible),
+              icon: const Icon(Icons.lyrics_outlined),
+            ),
+            IconButton(
+              // The count lives in the tooltip rather than a badge: a permanent
+              // red dot on a control that is not a notification reads as an
+              // alert about nothing.
+              tooltip: queueVisible
+                  ? 'Hide the queue'
+                  : 'Show the queue (${pluralize(queueLength, 'track')})',
+              isSelected: queueVisible,
+              onPressed: () => _showSidePane(queue: !queueVisible),
+              icon: const Icon(Icons.queue_music),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  /// Shows one of the shade's side panes, which share a slot.
+  ///
+  /// Turning one on turns the other off. They occupy the same column, so
+  /// leaving both on would mean the second one silently replacing the first --
+  /// a toggle whose effect depends on hidden state is worse than one that
+  /// visibly swaps.
+  void _showSidePane({bool? queue, bool? lyrics}) {
+    if (queue != null) {
+      ref.read(queuePaneVisibleProvider.notifier).set(queue);
+      if (queue) ref.read(lyricsPaneVisibleProvider.notifier).set(false);
+    }
+    if (lyrics != null) {
+      ref.read(lyricsPaneVisibleProvider.notifier).set(lyrics);
+      if (lyrics) ref.read(queuePaneVisibleProvider.notifier).set(false);
+    }
   }
 
   /// The now-playing shade, drawn up from the bottom edge.
@@ -617,6 +645,7 @@ class _AppShellState extends ConsumerState<AppShell>
                     topInset: WindowChrome.height,
                     onOpenArtist: _openArtist,
                     onOpenAlbum: _openAlbum,
+                    onEditTrack: _editTrack,
                   ),
                 ),
               ),

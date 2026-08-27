@@ -9,6 +9,7 @@ import '../data/db/database.dart';
 import '../data/indexer/library_indexer.dart';
 import '../data/indexer/search_indexer.dart';
 import '../data/repositories/library_repository.dart';
+import '../data/repositories/lyrics_repository.dart';
 import '../data/repositories/queue_repository.dart';
 import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
@@ -380,6 +381,49 @@ final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
 ///
 /// Lives outside the view so the player bar's queue button can open the shade
 /// with the panel already up, and so the choice survives closing and reopening.
+/// Reads and writes lyrics.
+final lyricsRepositoryProvider = Provider<LyricsRepository>(
+  (ref) => LyricsRepository(ref.watch(databaseProvider)),
+);
+
+/// Every lyrics document a track has, parsed.
+final trackLyricsProvider =
+    StreamProvider.family<TrackLyrics, int>((ref, trackId) {
+  return ref.watch(lyricsRepositoryProvider).watch(trackId);
+});
+
+/// Which paragraph of the current track's lyrics is being sung.
+///
+/// Derived rather than computed in the view: the position stream ticks twelve
+/// times a second and the answer changes once a verse, and a Provider only
+/// notifies when its value actually changes. The pane therefore rebuilds when
+/// the words move, not on every tick -- which also keeps the accessibility
+/// bridge out of the flood that a per-frame rebuild would cause.
+final activeLyricsBlockProvider =
+    Provider.family<int?, ({int trackId, String? language})>((ref, key) {
+  final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
+  final entry =
+      ref.watch(trackLyricsProvider(key.trackId)).value?.forLanguage(key.language);
+  if (entry == null) return null;
+  return entry.document.activeBlock(position, extraOffset: entry.offset);
+});
+
+/// Whether the shade's side pane is showing lyrics.
+///
+/// Lyrics and the queue share that pane: three columns in the app's minimum
+/// window leaves none of them readable, and a toggle that means different
+/// things at different widths is worse than one that always means the same.
+final lyricsPaneVisibleProvider =
+    NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(false));
+
+/// Which language the lyrics pane is showing, null being the original.
+final lyricsLanguageProvider =
+    NotifierProvider<ViewSetting<String?>, String?>(() => ViewSetting(null));
+
+/// Whether to show the original beside the translation.
+final lyricsBilingualProvider =
+    NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(true));
+
 final queuePaneVisibleProvider =
     NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(true));
 
