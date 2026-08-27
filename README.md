@@ -31,6 +31,10 @@ name you can't type.
 - **Player**: queue, shuffle, per-track and global gain, 10-band parametric EQ,
   playback speed, synced lyrics, a spectrum visualizer, mini-player and
   fullscreen modes
+- **Lyrics**: markdown, with a timestamp where a paragraph starts, so the words
+  follow the music a verse at a time. Translations sit beside the original and
+  can be read together. A file can be linked instead of pasted, and then the
+  file stays the source of truth
 - **Search**: one field over artists, songs, albums, tags and playlists at
   once. Prefixes match as you type, diacritics fold (`Bjork` finds `Björk`),
   substrings and Japanese work, and a song is found under every artist credited

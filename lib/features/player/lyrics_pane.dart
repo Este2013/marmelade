@@ -281,9 +281,7 @@ class _Paragraph extends StatelessWidget {
       );
     }
 
-    final colour = isActive
-        ? scheme.onSurface
-        : scheme.onSurface.withValues(alpha: isDimmed ? 0.45 : 0.82);
+    final colour = isActive ? scheme.onSurface : scheme.onSurfaceVariant;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -300,30 +298,38 @@ class _Paragraph extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          // Animated rather than switched, so the words brighten as they arrive
-          // instead of snapping between two greys.
-          AnimatedDefaultTextStyle(
+          // Opacity, not size. Animating the text *style* between two font
+          // sizes re-lays out the paragraph on every frame of the transition
+          // and moves every semantics rectangle with it: measured at three
+          // times the accessibility-bridge errors, on the same bridge that a
+          // zero-area node once crashed outright. Opacity animates a render
+          // object and leaves layout alone.
+          AnimatedOpacity(
+            opacity: isDimmed ? 0.45 : 1,
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOut,
-            style: (isActive
-                    ? theme.textTheme.headlineSmall
-                    : theme.textTheme.titleMedium)!
-                .copyWith(color: colour, height: 1.45),
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  for (var i = 0; i < block.lines.length; i++) ...[
-                    if (i > 0) const TextSpan(text: '\n'),
-                    for (final span in block.lines[i].spans)
-                      TextSpan(
-                        text: span.text,
-                        style: TextStyle(
-                          fontWeight: span.bold ? FontWeight.w700 : null,
-                          fontStyle: span.italic ? FontStyle.italic : null,
+            // Never dropped from the tree at zero: adding and removing a node
+            // per transition is exactly the churn being avoided here.
+            alwaysIncludeSemantics: true,
+            child: DefaultTextStyle(
+              style: theme.textTheme.titleLarge!
+                  .copyWith(color: colour, height: 1.45),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    for (var i = 0; i < block.lines.length; i++) ...[
+                      if (i > 0) const TextSpan(text: '\n'),
+                      for (final span in block.lines[i].spans)
+                        TextSpan(
+                          text: span.text,
+                          style: TextStyle(
+                            fontWeight: span.bold ? FontWeight.w700 : null,
+                            fontStyle: span.italic ? FontStyle.italic : null,
+                          ),
                         ),
-                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

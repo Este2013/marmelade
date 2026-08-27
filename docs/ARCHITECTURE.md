@@ -185,6 +185,36 @@ A *hybrid* playlist is the query's results plus rows added by hand, minus
 explicit exclusions. The exclusion is the reason hybrid exists: one otherwise
 perfect query with one song you never want to hear.
 
+### Lyrics: markdown with timestamps
+
+One format covering the three states lyrics actually arrive in -- a block of
+text pasted from anywhere, an LRC file where every line is timed, and the one
+this app is for: markdown where a timestamp on its own line starts a new
+paragraph, so a song scrolls a verse at a time rather than a word at a time.
+
+Markdown is deliberately a subset: headings, emphasis, `>` notes, paragraphs.
+Lyrics are short structured text with the occasional aside, and every construct
+beyond that list is one more thing that renders differently from what someone
+typed. Nothing throws -- files come from strangers and the editor feeds it text
+that is half-typed by definition, so a malformed timestamp becomes text.
+
+Translations are separate rows keyed by `(track, language)`, aligned to the
+original by timestamp when both are timed and by position when they are not. A
+verse the translation skipped stays untranslated rather than pairing with
+whatever timestamp is nearest.
+
+A document can be pasted or linked. When it is linked the file is the source of
+truth and the stored text is a cache, re-read when the file is newer; saving in
+the editor takes ownership back and unlinks. A document cannot be both, because
+one of the two would silently win on the next refresh.
+
+**The highlight animates opacity, not text style.** Animating between two font
+sizes re-lays out the paragraph on every frame of the transition and moves every
+semantics rectangle with it -- measured at three times the accessibility-bridge
+errors (17 against a baseline of 5), on the same bridge where a zero-area node
+once crashed the app outright. Opacity animates a render object and leaves
+layout alone.
+
 ## Testing strategy
 
 - `domain/` is covered by plain `dart test` — separator tokenizing and artist

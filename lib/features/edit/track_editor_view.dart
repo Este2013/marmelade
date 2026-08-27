@@ -8,6 +8,7 @@ import '../../data/repositories/tag_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import 'edit_widgets.dart';
+import 'lyrics_section.dart';
 import 'tag_section.dart';
 import 'picture_section.dart';
 
@@ -288,6 +289,7 @@ class _EditorState extends ConsumerState<_Editor> {
                         ref.read(editRepositoryProvider).removeTrackAlias(id),
                   ),
                   TagSection(target: TagTarget.track, id: edit.id),
+                  LyricsSection(trackId: edit.id),
                   _creditsSection(),
                 ],
               ),

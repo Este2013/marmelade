@@ -151,7 +151,13 @@ class _LyricsSectionState extends ConsumerState<LyricsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Wrapped, not a Row: a language picker that grows with every
+          // translation plus two labelled buttons runs out of width on the
+          // narrowest window this app allows.
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (languages.length > 1)
                 SegmentedButton<String?>(
@@ -172,13 +178,11 @@ class _LyricsSectionState extends ConsumerState<LyricsSection> {
                             _controller.clear();
                           }),
                 ),
-              if (languages.length > 1) const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _addTranslation,
                 icon: const Icon(Icons.translate, size: 18),
                 label: const Text('Add a translation'),
               ),
-              const Spacer(),
               if (entry != null)
                 IconButton(
                   tooltip: 'Delete these lyrics',
@@ -220,26 +224,30 @@ class _LyricsSectionState extends ConsumerState<LyricsSection> {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // Not just "Save": the page has its own, and two buttons with
+              // one label doing different things is a trap. This one writes
+              // the lyrics, like the tag and picture sections beside it, which
+              // also save on their own.
               FilledButton.icon(
                 onPressed: _busy || !_dirty ? null : _save,
                 icon: const Icon(Icons.check, size: 18),
-                label: const Text('Save'),
+                label: const Text('Save lyrics'),
               ),
-              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _link,
                 icon: const Icon(Icons.attach_file, size: 18),
                 label: const Text('Link a file'),
               ),
-              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _lookNextToTheFile,
                 icon: const Icon(Icons.folder_open_outlined, size: 18),
-                label: const Text('Look next to the audio'),
+                label: const Text('Look next to the file'),
               ),
-              const Spacer(),
               if (_dirty)
                 Text(
                   'Unsaved',
