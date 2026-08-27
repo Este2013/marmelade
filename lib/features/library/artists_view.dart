@@ -13,9 +13,16 @@ import '../../widgets/time_text.dart';
 /// group *is* an artist - the same table, the same crediting - and hiding them
 /// in a separate list would misrepresent the model.
 class ArtistsView extends ConsumerWidget {
-  const ArtistsView({super.key, required this.onOpenArtist});
+  const ArtistsView({
+    super.key,
+    required this.onOpenArtist,
+    this.onOpenReview,
+  });
 
   final void Function(int artistId) onOpenArtist;
+
+  /// Opens the credit review queue, when there is anything in it.
+  final VoidCallback? onOpenReview;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,8 +30,12 @@ class ArtistsView extends ConsumerWidget {
     final sort = ref.watch(artistSortProvider);
     final theme = Theme.of(context);
 
+    final pendingCredits = ref.watch(pendingCreditCountProvider).value ?? 0;
+
     return Column(
       children: [
+        if (pendingCredits > 0 && onOpenReview != null)
+          _ReviewBanner(count: pendingCredits, onOpen: onOpenReview!),
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
           child: Row(
@@ -197,4 +208,49 @@ class _CircleClipper extends CustomClipper<Path> {
 
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+
+/// Says how many credits the resolver could not decide, and opens the queue.
+///
+/// This list is where an unsplit credit does its damage -- a composite name
+/// sitting among the real artists -- so this is where the offer to fix it
+/// belongs. It disappears entirely once the queue is empty.
+class _ReviewBanner extends StatelessWidget {
+  const _ReviewBanner({required this.count, required this.onOpen});
+
+  final int count;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Material(
+      color: scheme.secondaryContainer,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 16, 12),
+          child: Row(
+            children: [
+              Icon(Icons.rule, size: 20, color: scheme.onSecondaryContainer),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${pluralize(count, 'credit')} could not be split '
+                  'confidently, so ${count == 1 ? 'it is' : 'they are'} '
+                  'waiting on you.',
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onSecondaryContainer),
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(onPressed: onOpen, child: const Text('Review')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

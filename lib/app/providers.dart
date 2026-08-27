@@ -10,6 +10,7 @@ import '../data/indexer/library_indexer.dart';
 import '../data/indexer/search_indexer.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/queue_repository.dart';
+import '../data/repositories/review_repository.dart';
 import '../domain/models/library_views.dart';
 import '../services/art/art_store.dart';
 import '../services/audio/playback_engine.dart';
@@ -49,6 +50,34 @@ final queueRepositoryProvider = Provider<QueueRepository>(
 final searchIndexerProvider = Provider<SearchIndexer>(
   (ref) => SearchIndexer(ref.watch(databaseProvider)),
 );
+
+final reviewRepositoryProvider = Provider<ReviewRepository>(
+  (ref) => ReviewRepository(
+    db: ref.watch(databaseProvider),
+    searchIndexer: ref.watch(searchIndexerProvider),
+  ),
+);
+
+/// Credits the resolver would not decide on, grouped by the string itself.
+final pendingCreditsProvider =
+    StreamProvider<List<PendingCreditGroup>>((ref) {
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(reviewRepositoryProvider).watchPending(),
+  );
+});
+
+/// How many credits are waiting, for the rail badge.
+///
+/// Deliberately not derived from [pendingCreditsProvider]: the badge is always
+/// mounted, and a count is one cheap row where the full list is a join over
+/// every parked credit.
+final pendingCreditCountProvider = StreamProvider<int>((ref) {
+  return _unlessIndexing(
+    ref,
+    () => ref.watch(reviewRepositoryProvider).watchPendingCount(),
+  );
+});
 
 final libraryIndexerProvider = Provider<LibraryIndexer>(
   (ref) => LibraryIndexer(
@@ -223,6 +252,18 @@ final albumTracksProvider =
   return ref
       .watch(libraryRepositoryProvider)
       .watchTracks(albumId: albumId, sort: sort);
+});
+
+/// One track with its credits as individual, tappable artists.
+///
+/// The player's own snapshot carries a pre-joined artist line, which is right
+/// for the compact bar and wrong for the now-playing view: a name on screen
+/// there has to be one click from its page.
+final trackRowProvider = StreamProvider.family<TrackRow?, int>((ref, trackId) {
+  return ref
+      .watch(libraryRepositoryProvider)
+      .watchTracks(trackId: trackId)
+      .map((rows) => rows.isEmpty ? null : rows.first);
 });
 
 final albumDetailProvider =

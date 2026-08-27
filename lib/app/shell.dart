@@ -7,7 +7,9 @@ import '../features/library/album_detail_view.dart';
 import '../features/library/albums_view.dart';
 import '../features/library/artist_detail_view.dart';
 import '../features/library/artists_view.dart';
+import '../features/library/credit_review_view.dart';
 import '../features/library/songs_view.dart';
+import '../features/player/now_playing_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
@@ -51,6 +53,42 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     Screenshotter.scheduleIfRequested();
+
+    // Debug affordance: open a section, and optionally the credit review page,
+    // without driving the mouse. Pixel-hunting a navigation rail from a script
+    // is fragile; naming the destination is not.
+    if (Platform.environment['MARMELADE_PLAY'] == '1') {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        AppLog.instance.warn('play requested by MARMELADE_PLAY');
+        await ref.read(playerProvider.notifier).togglePlayPause();
+        final player = ref.read(playerProvider);
+        AppLog.instance.info('play requested', fields: {
+          'status': player.status.name,
+          'track': player.current?.title ?? '(none)',
+          'error': player.errorMessage ?? '(none)',
+        });
+      });
+    }
+
+    final section = Platform.environment['MARMELADE_SECTION'];
+    if (section != null && section.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final target = LibrarySection.values
+            .where((s) => s.name == section)
+            .firstOrNull;
+        if (target == null) {
+          AppLog.instance.warn('unknown MARMELADE_SECTION', fields: {
+            'value': section,
+            'known': LibrarySection.values.map((s) => s.name).join(','),
+          });
+          return;
+        }
+        _select(target);
+        if (Platform.environment['MARMELADE_OPEN_REVIEW'] == '1') {
+          _openCreditReview();
+        }
+      });
+    }
     // Debug affordance: reproduce a library refresh without driving the UI.
     // Indexing is where the app does its heaviest work, and being able to
     // trigger it from a script is the difference between reading a crash log
@@ -96,10 +134,20 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
   }
 
-  void _push(Widget page) {
-    _navigatorKeys[_section]!.currentState?.push(
-          MaterialPageRoute(builder: (_) => page),
+  void _push(Widget page, {bool retry = true}) {
+    final navigator = _navigatorKeys[_section]!.currentState;
+    if (navigator == null) {
+      // A section selected in this same frame has no Navigator yet, so the
+      // push would silently do nothing. One retry after the tree is built is
+      // enough; failing twice means the section is genuinely not there.
+      if (retry) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _push(page, retry: false),
         );
+      }
+      return;
+    }
+    navigator.push(MaterialPageRoute(builder: (_) => page));
   }
 
   void _pop() => _navigatorKeys[_section]!.currentState?.maybePop();
@@ -109,6 +157,16 @@ class _AppShellState extends ConsumerState<AppShell> {
         onOpenArtist: _openArtist,
         onBack: _pop,
       ));
+
+  void _openCreditReview() {
+    // Lives inside the Artists stack: it is about who the artists are, and it
+    // keeps the rail at seven destinations rather than adding an eighth for
+    // something that is empty most of the time.
+    if (_section != LibrarySection.artists) {
+      _select(LibrarySection.artists);
+    }
+    _push(CreditReviewView(onBack: _pop));
+  }
 
   void _openArtist(int artistId) => _push(ArtistDetailView(
         artistId: artistId,
@@ -127,7 +185,12 @@ class _AppShellState extends ConsumerState<AppShell> {
           Expanded(
             child: Row(
               children: [
-                _Rail(selected: _section, onSelect: _select),
+                _Rail(
+                  selected: _section,
+                  onSelect: _select,
+                  pendingCredits:
+                      ref.watch(pendingCreditCountProvider).value ?? 0,
+                ),
                 VerticalDivider(
                   width: 1,
                   thickness: 1,
@@ -173,7 +236,10 @@ class _AppShellState extends ConsumerState<AppShell> {
             onOpenArtist: _openArtist,
             onOpenAlbum: _openAlbum,
           ),
-        LibrarySection.artists => ArtistsView(onOpenArtist: _openArtist),
+        LibrarySection.artists => ArtistsView(
+            onOpenArtist: _openArtist,
+            onOpenReview: _openCreditReview,
+          ),
         LibrarySection.tags => const _NotYetView(
             icon: Icons.label_outline,
             title: 'Tags',
@@ -182,9 +248,9 @@ class _AppShellState extends ConsumerState<AppShell> {
             icon: Icons.playlist_play_outlined,
             title: 'Playlists',
           ),
-        LibrarySection.queue => const _NotYetView(
-            icon: Icons.queue_music_outlined,
-            title: 'Play queue',
+        LibrarySection.queue => NowPlayingView(
+            onOpenArtist: _openArtist,
+            onOpenAlbum: _openAlbum,
           ),
         LibrarySection.settings => const SettingsView(),
       };
@@ -192,10 +258,17 @@ class _AppShellState extends ConsumerState<AppShell> {
 
 /// The navigation rail, with the app name at the top.
 class _Rail extends StatelessWidget {
-  const _Rail({required this.selected, required this.onSelect});
+  const _Rail({
+    required this.selected,
+    required this.onSelect,
+    this.pendingCredits = 0,
+  });
 
   final LibrarySection selected;
   final ValueChanged<LibrarySection> onSelect;
+
+  /// Credits waiting to be reviewed, badged onto Artists.
+  final int pendingCredits;
 
   @override
   Widget build(BuildContext context) {
@@ -232,8 +305,8 @@ class _Rail extends StatelessWidget {
               destinations: [
                 for (final section in LibrarySection.values)
                   NavigationRailDestination(
-                    icon: Icon(section.icon),
-                    selectedIcon: Icon(section.selectedIcon),
+                    icon: _badged(section, section.icon),
+                    selectedIcon: _badged(section, section.selectedIcon),
                     label: Text(section.label),
                   ),
               ],
@@ -241,6 +314,20 @@ class _Rail extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Badges the Artists destination with the number of credits awaiting review.
+  ///
+  /// A count that nobody sees is a count nobody acts on, and the review queue
+  /// is invisible by nature: the library looks finished either way.
+  Widget _badged(LibrarySection section, IconData icon) {
+    if (section != LibrarySection.artists || pendingCredits == 0) {
+      return Icon(icon);
+    }
+    return Badge(
+      label: Text('$pendingCredits'),
+      child: Icon(icon),
     );
   }
 }

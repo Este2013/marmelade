@@ -11,6 +11,7 @@ import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/queue_repository.dart';
+import 'package:marmelade/data/repositories/review_repository.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
@@ -106,6 +107,90 @@ class _IdlePlayer extends PlayerController {
   @override
   PlayerSnapshot build() => const PlayerSnapshot();
 }
+
+/// A player with a track loaded and a queue behind it.
+///
+/// The now-playing view is mostly empty states until something is playing, so
+/// an idle player would not exercise the part worth testing.
+class _PlayingPlayer extends PlayerController {
+  _PlayingPlayer(MarmeladeDatabase db)
+      : super(
+          engine: _SilentEngine(),
+          queueRepository: QueueRepository(db),
+          libraryRepository: LibraryRepository(db),
+          db: db,
+        );
+
+  @override
+  PlayerSnapshot build() => const PlayerSnapshot(
+        status: PlaybackStatus.playing,
+        currentIndex: 0,
+        duration: Duration(minutes: 3, seconds: 22),
+        queue: _queue,
+        // Points at the collaboration fixture on purpose, so the credits
+        // actually resolve to two artists instead of falling back to the
+        // pre-joined line the player snapshot carries.
+        current: PlayableTrack(
+          trackId: 4,
+          filePath: 'C:/nowhere/cross-separator.flac',
+          title: 'Cross Separator',
+          artistLine: 'Camellia x Nanahira',
+          durationMs: 202000,
+          albumId: 2,
+          albumTitle: 'Comic and Cosmic',
+        ),
+      );
+}
+
+const _queue = [
+  QueueEntry(
+    itemId: 1,
+    trackId: 4,
+    position: 1000,
+    title: 'Cross Separator',
+    artistLine: 'Camellia x Nanahira',
+    durationMs: 202000,
+    source: 'album',
+    albumTitle: 'Comic and Cosmic',
+  ),
+  QueueEntry(
+    itemId: 2,
+    trackId: 11,
+    position: 2000,
+    title: 'Kanraku',
+    artistLine: 'PinocchioP',
+    durationMs: 200000,
+    source: 'album',
+    albumTitle: 'Antenna',
+  ),
+];
+
+/// Two parked credits: one with a split to offer, one without.
+const _pending = [
+  PendingCreditGroup(
+    rawCredit: 'Koiflower,Bangler',
+    pendingIds: [1],
+    trackIds: [10, 11],
+    reason: 'separator "," also occurs inside real names',
+    confidence: 0.4,
+    whole: [CreditOption(creditedAs: 'Koiflower,Bangler', role: 'main')],
+    parts: [
+      CreditOption(creditedAs: 'Koiflower', role: 'main'),
+      CreditOption(creditedAs: 'Bangler', role: 'main'),
+    ],
+    sampleTitles: ['Feel Right'],
+  ),
+  PendingCreditGroup(
+    rawCredit: 'Earth, Wind and Fire',
+    pendingIds: [2],
+    trackIds: [12],
+    reason: 'the whole string recurs on its own',
+    confidence: 0.4,
+    whole: [CreditOption(creditedAs: 'Earth, Wind and Fire', role: 'main')],
+    parts: [],
+    sampleTitles: ['September'],
+  ),
+];
 
 // ---------------------------------------------------------------- fixtures
 
@@ -225,13 +310,25 @@ void main() {
   Widget buildApp({
     List<AlbumCard> albums = const [_antenna, _comic],
     List<TrackRow> tracks = _allTracks,
+    List<PendingCreditGroup> pending = const [],
+    bool playing = false,
   }) {
     return ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
         artStoreProvider.overrideWithValue(ArtStore(artRoot)),
         playbackEngineProvider.overrideWithValue(_SilentEngine()),
-        playerProvider.overrideWith(() => _IdlePlayer(db)),
+        playerProvider.overrideWith(
+          () => playing ? _PlayingPlayer(db) : _IdlePlayer(db),
+        ),
+        pendingCreditsProvider.overrideWith((ref) => Stream.value(pending)),
+        pendingCreditCountProvider
+            .overrideWith((ref) => Stream.value(pending.length)),
+        trackRowProvider.overrideWith(
+          (ref, trackId) => Stream.value(
+            tracks.where((t) => t.id == trackId).firstOrNull,
+          ),
+        ),
         albumsProvider.overrideWith((ref) => Stream.value(albums)),
         allTracksProvider.overrideWith((ref) => Stream.value(tracks)),
         artistsProvider.overrideWith((ref) => Stream.value(_artists)),
@@ -416,6 +513,97 @@ void main() {
     expect(find.text('No music yet'), findsOneWidget);
 
     await capture(tester, '06-empty');
+  });
+
+  testWidgets('the review queue is offered where the damage shows',
+      (tester) async {
+    await open(tester, app: buildApp(pending: _pending));
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+
+    // The banner belongs on the artists list: that is where an unsplit credit
+    // sits among the real artists.
+    expect(find.textContaining('could not be split confidently'), findsOne);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationRail),
+        matching: find.text('2'),
+      ),
+      findsOne,
+      reason: 'the rail should badge Artists with the pending count',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the review page offers a split, an accept and a skip',
+      (tester) async {
+    await open(tester, app: buildApp(pending: _pending));
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+    await tester.tap(find.text('Review'));
+    await settle(tester);
+
+    expect(find.text('Credits to review'), findsOne);
+    expect(find.text('Koiflower,Bangler'), findsOne);
+    // The resolver reasoning is what makes the question answerable.
+    expect(find.textContaining('also occurs inside real names'), findsOne);
+    // The parts are editable, not just yes or no.
+    expect(find.widgetWithText(TextField, 'Koiflower'), findsOne);
+    expect(find.widgetWithText(TextField, 'Bangler'), findsOne);
+    expect(find.text('Keep as one artist'), findsExactly(2));
+    // No alternative reading was recorded for the second one, so no split.
+    expect(find.text('Split'), findsOne);
+    expect(tester.takeException(), isNull);
+    await capture(tester, 'review');
+  });
+
+  testWidgets('now playing shows the art, the credits and the queue',
+      (tester) async {
+    await open(tester, app: buildApp(playing: true));
+    await tester.tap(railItem('Queue'));
+    await settle(tester);
+
+    expect(find.text('Play queue'), findsOne);
+    expect(find.text('Kanraku'), findsOne);
+    // Every credited artist is its own target in the now-playing pane. The
+    // snapshot's own artist line reads "Camellia x Nanahira" as one string --
+    // still correct for the compact bar and the queue rows -- so finding the
+    // two names standing alone is what proves the credits were resolved.
+    expect(find.text('Camellia'), findsWidgets);
+    expect(find.text('Nanahira'), findsWidgets);
+    expect(find.byTooltip('Remove from queue'), findsExactly(_queue.length));
+    expect(find.byTooltip('Drag to reorder'), findsExactly(_queue.length));
+    expect(tester.takeException(), isNull);
+    await capture(tester, 'now-playing');
+  });
+
+  testWidgets('now playing with nothing queued shows an empty state',
+      (tester) async {
+    await open(tester);
+    await tester.tap(railItem('Queue'));
+    await settle(tester);
+
+    expect(find.text('Nothing queued'), findsOne);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the queue pane folds away on a narrow window', (tester) async {
+    // Both panes in the minimum window makes both unusable, so below the
+    // breakpoint they are shown one at a time.
+    await open(
+      tester,
+      app: buildApp(playing: true),
+      size: const Size(880, 640),
+    );
+    await tester.tap(railItem('Queue'));
+    await settle(tester);
+
+    expect(find.byType(SegmentedButton<bool>), findsOne);
+    expect(find.text('Play queue'), findsNothing);
+    await tester.tap(find.text('Queue').last);
+    await settle(tester);
+    expect(find.text('Play queue'), findsOne);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the narrowest allowed window does not overflow', (tester) async {

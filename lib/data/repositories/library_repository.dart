@@ -181,12 +181,17 @@ class LibraryRepository {
     int? albumId,
     int? artistId,
     int? tagId,
+    int? trackId,
     LibrarySort sort = LibrarySort.nameAscending,
     int? limit,
   }) {
     final where = <String>[];
     final variables = <Variable<Object>>[];
 
+    if (trackId != null) {
+      where.add('t.id = ?');
+      variables.add(Variable(trackId));
+    }
     if (albumId != null) {
       where.add('t.album_id = ?');
       variables.add(Variable(albumId));

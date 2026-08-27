@@ -131,14 +131,19 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   /// Guards against a completion event arriving while an advance is in flight.
   var _advancing = false;
 
+  /// Completes once the persisted queue has been read back.
+  Future<void>? _restored;
+
   @override
   PlayerSnapshot build() {
     _completionSubscription = engine.onCompleted.listen((_) => _onCompleted());
     ref.onDispose(() {
       _completionSubscription?.cancel();
     });
-    // Restore the persisted queue without starting playback.
-    Future.microtask(_restoreQueue);
+    // Restore the persisted queue without starting playback. The future is
+    // kept so a play pressed before the restore lands can wait for it rather
+    // than quietly doing nothing.
+    _restored = Future.microtask(_restoreQueue);
     return const PlayerSnapshot();
   }
 
@@ -220,6 +225,10 @@ class PlayerController extends Notifier<PlayerSnapshot> {
 
   Future<void> togglePlayPause() async {
     if (!state.hasTrack) {
+      // Pressing play in the first moments after launch would otherwise be a
+      // silent no-op: the queue is still being read out of the database, so
+      // there is nothing yet to start.
+      if (!state.hasQueue) await _restored;
       if (state.hasQueue) await playAt(0);
       return;
     }

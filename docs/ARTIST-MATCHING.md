@@ -214,6 +214,37 @@ to the canonical artist that also answers to "PinocchioP".
 Because credits are rows, "every mention of an artist is one click from their
 page" is not a feature that needs building — it falls out of the schema.
 
+## Reviewing what is left
+
+Whatever the rules do, some credits come down to knowledge the library does not
+contain. Those are parked in `pending_credits` rather than guessed at, and the
+Artists list offers them for review -- badged on the rail and bannered above the
+list, because that list is where an unsplit credit does its damage.
+
+The queue is grouped by the credit *string*, not by track. The same field
+usually appears on every track of a release, and answering the same question
+twenty times is not review, it is data entry. Each card shows the resolver's own
+reasoning, how many tracks it affects, and three choices:
+
+| Choice | What it does |
+|---|---|
+| **Split** | Rewrites the credit on every affected track. The suggested parts are editable first, since a parked credit is often parked because it needs a small fix. |
+| **Keep as one artist** | Accepts it as a name and sets `never_split` + `is_verified`, so a rescan stops asking. Without the flag the review would not stick. |
+| **Skip** | Marks the rows decided without changing anything. It will return if a rescan meets the same impasse, which is honest: nothing was settled. |
+
+Two details that matter more than they look:
+
+* **The role comes off the row being replaced, not the suggestion.** The stored
+  suggestion records tokenizer roles (`main`, `featured`), not the field's own
+  role, so rewriting a composer field from the suggestion alone would turn two
+  composers into two main artists.
+* **The composite artist row is deleted after a split**, if it is childless and
+  unverified. A leftover "Koiflower,Bangler" with no tracks is exactly the mess
+  the review exists to clear up.
+
+Split credits are written with `source = user`, so a later rescan leaves them
+alone.
+
 ## Settings that affect this
 
 - **Aggressive splitting** (default off) — act on ambiguous separators without
