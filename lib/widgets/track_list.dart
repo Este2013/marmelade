@@ -209,6 +209,9 @@ class _TrackTileState extends ConsumerState<TrackTile> {
                 AnimatedOpacity(
                   opacity: _hovering ? 1 : 0,
                   duration: const Duration(milliseconds: 120),
+                  // See the note in albums_view: dropping semantics at zero
+                  // opacity churns the accessibility tree on every hover.
+                  alwaysIncludeSemantics: true,
                   child: _RowActions(track: track, enabled: _hovering),
                 ),
                 const SizedBox(width: 8),

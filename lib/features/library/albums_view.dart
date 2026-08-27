@@ -241,6 +241,15 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
                       child: AnimatedOpacity(
                         opacity: _hovering ? 1 : 0,
                         duration: const Duration(milliseconds: 140),
+                        // Kept in the semantics tree at every opacity. By
+                        // default AnimatedOpacity drops its child's semantics
+                        // at zero, so hovering added and removed a node per
+                        // tile per frame - which floods the Windows
+                        // accessibility bridge with tree updates it cannot
+                        // apply, and eventually crashes it. Always including
+                        // it is also plainly better: a screen reader can reach
+                        // the play button without having to hover.
+                        alwaysIncludeSemantics: true,
                         child: _PlayOverlayButton(album: album),
                       ),
                     ),

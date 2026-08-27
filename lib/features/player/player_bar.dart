@@ -84,13 +84,16 @@ class _NowPlayingSummary extends ConsumerWidget {
       return Row(
         children: [
           const SizedBox(width: 4),
-          Icon(Icons.music_note_outlined,
-              color: theme.colorScheme.onSurfaceVariant),
+          Icon(
+            Icons.music_note_outlined,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 12),
           Text(
             player.hasQueue ? 'Ready to play' : 'Nothing playing',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       );
@@ -127,8 +130,9 @@ class _NowPlayingSummary extends ConsumerWidget {
                     track.artistLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -158,8 +162,8 @@ class _TransportControls extends ConsumerWidget {
           tooltip: 'Shuffle the queue once',
           onPressed: player.hasQueue
               ? () => player.isShuffled
-                  ? controller.unshuffleQueue()
-                  : controller.shuffleQueue()
+                    ? controller.unshuffleQueue()
+                    : controller.shuffleQueue()
               : null,
           icon: Icon(
             Icons.shuffle,
@@ -191,11 +195,8 @@ class _TransportControls extends ConsumerWidget {
           },
           onPressed: controller.cycleRepeat,
           icon: Icon(
-            player.repeat == QueueRepeat.one
-                ? Icons.repeat_one
-                : Icons.repeat,
-            color:
-                player.repeat == QueueRepeat.off ? null : scheme.primary,
+            player.repeat == QueueRepeat.one ? Icons.repeat_one : Icons.repeat,
+            color: player.repeat == QueueRepeat.off ? null : scheme.primary,
           ),
         ),
       ],
@@ -288,10 +289,7 @@ class _RightControls extends ConsumerWidget {
       children: [
         const _PositionLabel(),
         const SizedBox(width: 12),
-        _VolumeControl(
-          value: player.volume,
-          onChanged: controller.setVolume,
-        ),
+        _VolumeControl(value: player.volume, onChanged: controller.setVolume),
         IconButton(
           tooltip: 'Play queue',
           onPressed: onExpand,
@@ -318,16 +316,15 @@ class _PositionLabel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final duration = ref.watch(playerProvider.select((s) => s.duration));
-    final position =
-        ref.watch(playbackPositionProvider).value ?? Duration.zero;
+    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
     if (duration == Duration.zero) return const SizedBox.shrink();
 
     return Text(
       '${formatDuration(position)} / ${formatDuration(duration)}',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
     );
   }
 }
@@ -364,25 +361,39 @@ class _VolumeControlState extends State<_VolumeControl> {
           ),
           // Expanding on hover keeps the bar uncluttered while leaving the
           // slider one movement away rather than behind a menu.
+          //
+          // The collapsed state must leave the slider out of the tree, not
+          // keep it at zero width. A zero-area Slider is a control that
+          // cannot be seen, pointed at or described, and Windows'
+          // accessibility bridge rejects the node it produces: the update is
+          // dropped with "will not be in the tree and is not the new root",
+          // the bridge's tree diverges from Flutter's, and the process dies
+          // in native code on the next full semantics rebuild -- which is
+          // what dragging the window to another monitor triggers. The
+          // symptom was a hard, silent crash with nothing in the Dart log.
           AnimatedSize(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            child: SizedBox(
-              width: _hovering ? 96 : 0,
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 3,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape:
-                      const RoundSliderOverlayShape(overlayRadius: 12),
-                ),
-                child: Slider(
-                  value: widget.value,
-                  onChanged: widget.onChanged,
-                ),
-              ),
-            ),
+            child: _hovering
+                ? SizedBox(
+                    width: 96,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 12,
+                        ),
+                      ),
+                      child: Slider(
+                        value: widget.value,
+                        onChanged: widget.onChanged,
+                      ),
+                    ),
+                  )
+                : const SizedBox(width: 0, height: 24),
           ),
         ],
       ),
@@ -406,12 +417,12 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
   @override
   Widget build(BuildContext context) {
     final duration = ref.watch(playerProvider.select((s) => s.duration));
-    final position =
-        ref.watch(playbackPositionProvider).value ?? Duration.zero;
+    final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
     final scheme = Theme.of(context).colorScheme;
 
     final totalMs = duration.inMilliseconds;
-    final value = _dragValue ??
+    final value =
+        _dragValue ??
         (totalMs == 0
             ? 0.0
             : (position.inMilliseconds / totalMs).clamp(0.0, 1.0));
@@ -436,9 +447,9 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
               ? null
               : (next) => setState(() => _dragValue = next),
           onChangeEnd: (next) {
-            ref.read(playerProvider.notifier).seek(
-                  Duration(milliseconds: (next * totalMs).round()),
-                );
+            ref
+                .read(playerProvider.notifier)
+                .seek(Duration(milliseconds: (next * totalMs).round()));
             setState(() => _dragValue = null);
           },
         ),

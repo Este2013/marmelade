@@ -113,13 +113,11 @@ class Artwork extends ConsumerWidget {
           );
 
     if (heroTag != null) {
-      content = Hero(
-        tag: heroTag!,
-        // The default hero flight clips oddly against rounded corners; a
-        // fade-through keeps the corner radius stable through the transition.
-        flightShuttleBuilder: (_, _, _, _, _) => content,
-        child: content,
-      );
+      // No custom flightShuttleBuilder. Returning the same widget instance for
+      // the shuttle put one widget in two places in the tree at once, which
+      // confuses semantics; the default shuttle handles the rounded corners
+      // well enough.
+      content = Hero(tag: heroTag!, child: content);
     }
 
     return size == null
