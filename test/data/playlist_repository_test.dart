@@ -253,6 +253,85 @@ void main() {
     });
   });
 
+  group('adding an album', () {
+    Future<int> albumWithTracks(String title, List<String> titles) async {
+      final albumId = await db.into(db.albums).insert(
+            AlbumsCompanion.insert(
+              title: title,
+              nameKey: title.toLowerCase(),
+            ),
+          );
+      // Inserted out of running order on purpose.
+      for (var i = titles.length; i > 0; i--) {
+        await db.into(db.tracks).insert(
+              TracksCompanion.insert(
+                title: titles[i - 1],
+                nameKey: titles[i - 1].toLowerCase(),
+                albumId: Value(albumId),
+                trackNo: Value(i),
+              ),
+            );
+      }
+      return albumId;
+    }
+
+    test('an album is added in its running order, not insertion order',
+        () async {
+      final playlist = (await repository.create('Mix'))!;
+      final albumId = await albumWithTracks('A release', ['One', 'Two', 'Three']);
+
+      expect(await repository.addAlbum(playlist, albumId), 3);
+      expect(await titlesOf(playlist), ['One', 'Two', 'Three']);
+    });
+
+    test('an album with no tracks adds nothing and says so', () async {
+      final playlist = (await repository.create('Mix'))!;
+      final albumId = await albumWithTracks('Empty', const []);
+      expect(await repository.addAlbum(playlist, albumId), 0);
+      expect(await titlesOf(playlist), isEmpty);
+    });
+
+    test('an album appends after what is already there', () async {
+      final playlist = (await repository.create('Mix'))!;
+      await repository.addTracks(playlist, [await track('Existing')]);
+      final albumId = await albumWithTracks('A release', ['One', 'Two']);
+
+      await repository.addAlbum(playlist, albumId);
+      expect(await titlesOf(playlist), ['Existing', 'One', 'Two']);
+    });
+  });
+
+  group('pickers', () {
+    test('albums are found by title and by alias', () async {
+      final albumId = await db.into(db.albums).insert(
+            AlbumsCompanion.insert(
+              title: 'AD:HOUSE Winter 4',
+              nameKey: 'ad house winter 4',
+            ),
+          );
+      await db.into(db.albumAliases).insert(
+            AlbumAliasesCompanion.insert(
+              albumId: albumId,
+              alias: 'アドハウス',
+              aliasKey: 'アドハウス',
+            ),
+          );
+
+      expect((await repository.findAlbums('house')).map((a) => a.id),
+          contains(albumId));
+      expect((await repository.findAlbums('アドハウス')).map((a) => a.id),
+          contains(albumId));
+      expect(await repository.findAlbums('  '), isEmpty);
+    });
+
+    test('tracks are found by title', () async {
+      final id = await track('Feel Right');
+      expect((await repository.findTracks('feel')).map((t) => t.id),
+          contains(id));
+      expect(await repository.findTracks(''), isEmpty);
+    });
+  });
+
   group('reparenting', () {
     test('a playlist can be moved and returned to the top level', () async {
       final parent = (await repository.create('Parent'))!;

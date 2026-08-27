@@ -7,6 +7,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
+import '../../features/playlists/playlist_pickers.dart';
 import '../../widgets/track_list.dart';
 
 /// One album: large artwork, its details, and its tracks.
@@ -130,6 +131,16 @@ class _AlbumHeader extends ConsumerWidget {
                   icon: const Icon(Icons.arrow_back),
                 ),
                 const Spacer(),
+                IconButton(
+                  tooltip: 'Add this album to a playlist',
+                  onPressed: () => showAddAlbumToPlaylist(
+                    context,
+                    ref,
+                    album.id,
+                    albumTitle: album.title,
+                  ),
+                  icon: const Icon(Icons.library_add_outlined),
+                ),
                 if (onEdit != null)
                   IconButton(
                     tooltip: 'Edit this album',

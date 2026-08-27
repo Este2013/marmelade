@@ -9,6 +9,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import 'playlist_pickers.dart';
 import 'playlists_view.dart';
 
 /// One playlist: its rows in order, and everything you can do to them.
@@ -122,6 +123,26 @@ class _Header extends ConsumerWidget {
                 icon: const Icon(Icons.arrow_back),
               ),
               const Spacer(),
+              IconButton(
+                tooltip: 'Add songs',
+                onPressed: () => showAddTracksToPlaylist(
+                  context,
+                  ref,
+                  playlist.id,
+                  playlistName: playlist.name,
+                ),
+                icon: const Icon(Icons.music_note_outlined),
+              ),
+              IconButton(
+                tooltip: 'Add an album',
+                onPressed: () => showAddAlbumToThisPlaylist(
+                  context,
+                  ref,
+                  playlist.id,
+                  playlistName: playlist.name,
+                ),
+                icon: const Icon(Icons.album_outlined),
+              ),
               IconButton(
                 tooltip: 'Add a playlist inside this one',
                 onPressed: () => _includePlaylist(context, ref),

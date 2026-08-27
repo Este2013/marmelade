@@ -304,6 +304,104 @@ class PlaylistRepository {
     });
   }
 
+  /// Appends every track on an album, in its running order.
+  ///
+  /// Order comes from the album, not from whatever order the picker happened to
+  /// show: adding a release to a playlist means adding it as a release.
+  Future<int> addAlbum(int playlistId, int albumId) async {
+    final rows = await db
+        .customSelect(
+          'SELECT id FROM tracks WHERE album_id = ?1 '
+          'ORDER BY COALESCE(disc_no, 1), track_no IS NULL, track_no, title',
+          variables: [Variable(albumId)],
+          readsFrom: {db.tracks},
+        )
+        .get();
+    final ids = [for (final row in rows) row.read<int>('id')];
+    await addTracks(playlistId, ids);
+    return ids.length;
+  }
+
+  /// Albums whose title or alias matches [query], for a picker.
+  ///
+  /// A plain substring match on the normalised key, deliberately: the real
+  /// search grammar is a separate piece of work, and a picker needs to find a
+  /// release by typing part of its name, nothing more.
+  Future<List<({int id, String title, String? artistName, int trackCount})>>
+      findAlbums(String query) async {
+    final key = normalizeKey(query);
+    if (key.isEmpty) return const [];
+
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT DISTINCT al.id AS id, al.title AS title, ar.name AS artist_name,
+        (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id) AS track_count
+      FROM albums al
+      LEFT JOIN artists ar ON ar.id = al.album_artist_id
+      LEFT JOIN album_aliases aa ON aa.album_id = al.id
+      WHERE al.name_key LIKE ?1 OR aa.alias_key LIKE ?1
+      ORDER BY (al.name_key = ?2) DESC, al.sort_title, al.title
+      LIMIT 40
+      ''',
+          variables: [Variable('%$key%'), Variable(key)],
+          readsFrom: {db.albums, db.artists, db.albumAliases, db.tracks},
+        )
+        .get();
+
+    return [
+      for (final row in rows)
+        (
+          id: row.read<int>('id'),
+          title: row.read<String>('title'),
+          artistName: row.read<String?>('artist_name'),
+          trackCount: row.read<int>('track_count'),
+        ),
+    ];
+  }
+
+  /// Tracks whose title or alias matches [query], for a picker.
+  Future<List<({int id, String title, String? artistLine, String? albumTitle})>>
+      findTracks(String query) async {
+    final key = normalizeKey(query);
+    if (key.isEmpty) return const [];
+
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT DISTINCT t.id AS id, t.title AS title, alb.title AS album_title,
+        (SELECT group_concat(ar.name, ', ') FROM track_credits tc
+          JOIN artists ar ON ar.id = tc.artist_id
+         WHERE tc.track_id = t.id AND tc.role = 'mainArtist') AS artist_line
+      FROM tracks t
+      LEFT JOIN albums alb ON alb.id = t.album_id
+      LEFT JOIN track_aliases ta ON ta.track_id = t.id
+      WHERE t.name_key LIKE ?1 OR ta.alias_key LIKE ?1
+      ORDER BY (t.name_key = ?2) DESC, t.sort_title, t.title
+      LIMIT 60
+      ''',
+          variables: [Variable('%$key%'), Variable(key)],
+          readsFrom: {
+            db.tracks,
+            db.albums,
+            db.trackAliases,
+            db.trackCredits,
+            db.artists,
+          },
+        )
+        .get();
+
+    return [
+      for (final row in rows)
+        (
+          id: row.read<int>('id'),
+          title: row.read<String>('title'),
+          artistLine: row.read<String?>('artist_line'),
+          albumTitle: row.read<String?>('album_title'),
+        ),
+    ];
+  }
+
   /// Includes another playlist, whole, at the end.
   ///
   /// Refused when it would create a cycle: including a playlist that already

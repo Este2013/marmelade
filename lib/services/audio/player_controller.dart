@@ -283,8 +283,15 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     }
     // End of the queue.
     await _recordFinishedPlay();
-    engine.pause();
     state = state.copyWith(status: PlaybackStatus.completed);
+    // Pausing is only meaningful when the person pressed next at the end of the
+    // queue, where the voice really is still sounding. Arriving here from a
+    // completion event means the voice has already finished and SoLoud has
+    // freed its handle, so the call would be aimed at nothing -- and used to
+    // throw SoLoudSoundHandleNotFoundCppException out of the completion
+    // handler, stranding the snapshot at "playing" so the bar kept offering a
+    // pause button that threw again when pressed.
+    if (userInitiated) engine.pause();
   }
 
   /// Goes back a track, or restarts the current one.

@@ -175,7 +175,16 @@ class SoLoudEngine implements PlaybackEngine {
   @override
   void pause() {
     final handle = _handle;
-    if (handle == null) return;
+    // The handle has to be checked for validity, not just for null: when a
+    // track finishes, SoLoud frees the voice but this field still points at it.
+    // setPause on a freed voice throws SoLoudSoundHandleNotFoundCppException,
+    // which is every other control's reason for the same guard.
+    if (handle == null || !_soloud.getIsValidVoiceHandle(handle)) {
+      _lastKnownPosition = position;
+      // Nothing is sounding, so paused is the truth either way.
+      if (_status == PlaybackStatus.playing) _status = PlaybackStatus.paused;
+      return;
+    }
     _lastKnownPosition = position;
     _soloud.setPause(handle, true);
     _status = PlaybackStatus.paused;
