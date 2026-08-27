@@ -23,6 +23,7 @@ class TrackList extends ConsumerWidget {
     this.showArtwork = true,
     this.showAlbum = true,
     this.showTrackNumbers = false,
+    this.groupByAlbum = false,
     this.padding = const EdgeInsets.fromLTRB(24, 0, 24, 24),
     this.header,
     this.queueSource = QueueSource.user,
@@ -35,6 +36,14 @@ class TrackList extends ConsumerWidget {
   final bool showArtwork;
   final bool showAlbum;
   final bool showTrackNumbers;
+
+  /// Breaks the list into a headed section per release.
+  ///
+  /// Only sensible when [tracks] is already ordered by album -- the headings
+  /// mark where the album turns over, they do not sort anything. Pair it with
+  /// [LibrarySort.albumThenTrack].
+  final bool groupByAlbum;
+
   final EdgeInsets padding;
 
   /// Rendered above the list and scrolled with it.
@@ -49,31 +58,85 @@ class TrackList extends ConsumerWidget {
         ref.watch(playerProvider.select((s) => s.current?.trackId));
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
 
+    final rows = _buildRows();
+
     return ListView.builder(
       padding: padding,
       // One extra slot for the header, so it scrolls with the content instead
       // of eating vertical space permanently.
-      itemCount: tracks.length + (header == null ? 0 : 1),
+      itemCount: rows.length + (header == null ? 0 : 1),
       itemBuilder: (context, index) {
         if (header != null) {
           if (index == 0) return header!;
           index -= 1;
         }
-        final track = tracks[index];
+        final row = rows[index];
+
+        if (row is _HeadingRow) {
+          return _AlbumHeading(
+            title: row.title,
+            albumId: row.albumId,
+            trackCount: row.trackCount,
+            imagePath: row.imagePath,
+            isFirst: index == 0,
+            onOpenAlbum: onOpenAlbum,
+          );
+        }
+
+        final trackRow = row as _TrackRowSlot;
         return TrackTile(
-          track: track,
-          index: index,
-          isCurrent: track.id == currentTrackId,
+          track: trackRow.track,
+          index: trackRow.trackIndex,
+          isCurrent: trackRow.track.id == currentTrackId,
           isPlaying: isPlaying,
-          showArtwork: showArtwork,
-          showAlbum: showAlbum,
-          showTrackNumber: showTrackNumbers,
+          // Every track under a heading carries the same cover, so a column of
+          // identical thumbnails says nothing. The heading holds the artwork
+          // and the rows get their track numbers, which is the information
+          // actually missing from a grouped list.
+          showArtwork: showArtwork && !groupByAlbum,
+          showAlbum: showAlbum && !groupByAlbum,
+          showTrackNumber: showTrackNumbers || groupByAlbum,
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
-          onPlay: () => _playFrom(ref, index),
+          onPlay: () => _playFrom(ref, trackRow.trackIndex),
         );
       },
     );
+  }
+
+  /// Flattens the tracks into rows, inserting a heading where the album turns
+  /// over.
+  ///
+  /// Each track slot keeps its index *within the tracks list*, not within the
+  /// rows. That index is what play uses, and confusing the two would start
+  /// playback on the wrong song by however many headings came before it.
+  List<_Row> _buildRows() {
+    if (!groupByAlbum) {
+      return [
+        for (var i = 0; i < tracks.length; i++) _TrackRowSlot(tracks[i], i),
+      ];
+    }
+
+    final rows = <_Row>[];
+    var start = 0;
+    while (start < tracks.length) {
+      final albumId = tracks[start].albumId;
+      var end = start;
+      while (end < tracks.length && tracks[end].albumId == albumId) {
+        end += 1;
+      }
+      rows.add(_HeadingRow(
+        title: tracks[start].albumTitle ?? 'Not part of an album',
+        albumId: albumId,
+        trackCount: end - start,
+        imagePath: tracks[start].imagePath,
+      ));
+      for (var i = start; i < end; i++) {
+        rows.add(_TrackRowSlot(tracks[i], i));
+      }
+      start = end;
+    }
+    return rows;
   }
 
   /// Plays from [index], queueing the whole visible list.
@@ -87,6 +150,105 @@ class TrackList extends ConsumerWidget {
           source: queueSource,
           sourceRefId: queueSourceId,
         );
+  }
+}
+
+/// One slot in a [TrackList].
+sealed class _Row {
+  const _Row();
+}
+
+class _HeadingRow extends _Row {
+  const _HeadingRow({
+    required this.title,
+    required this.trackCount,
+    this.albumId,
+    this.imagePath,
+  });
+
+  final String title;
+  final int? albumId;
+  final int trackCount;
+  final String? imagePath;
+}
+
+class _TrackRowSlot extends _Row {
+  const _TrackRowSlot(this.track, this.trackIndex);
+
+  final TrackRow track;
+
+  /// Index into the tracks list, which is what play uses.
+  final int trackIndex;
+}
+
+/// Names the release a run of tracks belongs to.
+class _AlbumHeading extends StatelessWidget {
+  const _AlbumHeading({
+    required this.title,
+    required this.trackCount,
+    required this.isFirst,
+    this.albumId,
+    this.imagePath,
+    this.onOpenAlbum,
+  });
+
+  final String title;
+  final int? albumId;
+  final int trackCount;
+  final String? imagePath;
+  final bool isFirst;
+  final void Function(int albumId)? onOpenAlbum;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tappable = albumId != null && onOpenAlbum != null;
+
+    return Padding(
+      padding: EdgeInsets.only(top: isFirst ? 8 : 28, bottom: 8),
+      child: Row(
+        children: [
+          Artwork(
+            storedPath: imagePath,
+            size: 36,
+            borderRadius: 5,
+            fallbackSeed: title,
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: InkWell(
+              onTap: tappable ? () => onOpenAlbum!(albumId!) : null,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: tappable ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            pluralize(trackCount, 'track'),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Divider(
+              color: scheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

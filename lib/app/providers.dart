@@ -238,6 +238,13 @@ final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
   );
 });
 
+/// Whether the queue panel is showing inside the now-playing shade.
+///
+/// Lives outside the view so the player bar's queue button can open the shade
+/// with the panel already up, and so the choice survives closing and reopening.
+final queuePaneVisibleProvider =
+    NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(true));
+
 /// How an album's own track list is sorted.
 ///
 /// Separate from [albumSortProvider], which orders the grid of albums.
@@ -298,9 +305,18 @@ final artistsProvider = StreamProvider<List<ArtistCard>>((ref) {
   );
 });
 
+/// How an artist's own track list is sorted.
+final artistTrackSortProvider =
+    NotifierProvider<ViewSetting<LibrarySort>, LibrarySort>(
+  () => ViewSetting(LibrarySort.albumThenTrack),
+);
+
 final artistTracksProvider =
     StreamProvider.family<List<TrackRow>, int>((ref, artistId) {
-  return ref.watch(libraryRepositoryProvider).watchTracks(artistId: artistId);
+  final sort = ref.watch(artistTrackSortProvider);
+  return ref
+      .watch(libraryRepositoryProvider)
+      .watchTracks(artistId: artistId, sort: sort);
 });
 
 final artistAlbumsProvider =

@@ -279,6 +279,13 @@ enum LibrarySort {
   nameAscending,
   /// Disc then track number. Only meaningful within a single release.
   trackNumber,
+
+  /// Grouped by release, then disc and track number within it.
+  ///
+  /// The right default for an artist's tracks: an artist page lists work from
+  /// several releases, and alphabetical order scatters each album's running
+  /// order, which then becomes the play order too.
+  albumThenTrack,
   nameDescending,
   recentlyAdded,
   recentlyPlayed,
@@ -291,6 +298,7 @@ enum LibrarySort {
   String get label => switch (this) {
         LibrarySort.nameAscending => 'Name (A–Z)',
         LibrarySort.trackNumber => 'Track number',
+        LibrarySort.albumThenTrack => 'Album',
         LibrarySort.nameDescending => 'Name (Z–A)',
         LibrarySort.recentlyAdded => 'Recently added',
         LibrarySort.recentlyPlayed => 'Recently played',

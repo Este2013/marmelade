@@ -55,6 +55,12 @@ class ArtistDetailView extends ConsumerWidget {
             tracks: items,
             onOpenAlbum: onOpenAlbum,
             onOpenArtist: onOpenArtist,
+            // Headed sections per release, which is also the play order: the
+            // list is what gets queued, so scattering an album's running order
+            // scatters playback too.
+            groupByAlbum:
+                ref.watch(artistTrackSortProvider) ==
+                    LibrarySort.albumThenTrack,
             queueSource: QueueSource.artist,
             queueSourceId: artistId,
             header: _ArtistHeader(
@@ -238,7 +244,29 @@ class _ArtistHeader extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text('All tracks', style: theme.textTheme.titleMedium),
+            Row(
+              children: [
+                Text('All tracks', style: theme.textTheme.titleMedium),
+                const Spacer(),
+                PopupMenuButton<LibrarySort>(
+                  tooltip: 'Sort tracks',
+                  initialValue: ref.watch(artistTrackSortProvider),
+                  onSelected: (value) =>
+                      ref.read(artistTrackSortProvider.notifier).set(value),
+                  icon: const Icon(Icons.sort),
+                  itemBuilder: (context) => [
+                    for (final option in const [
+                      LibrarySort.albumThenTrack,
+                      LibrarySort.nameAscending,
+                      LibrarySort.releaseYear,
+                      LibrarySort.mostPlayed,
+                      LibrarySort.duration,
+                    ])
+                      PopupMenuItem(value: option, child: Text(option.label)),
+                  ],
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
           ],
         ],

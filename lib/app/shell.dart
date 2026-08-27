@@ -18,14 +18,17 @@ import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/empty_state.dart';
 import 'providers.dart';
 
-/// Top-level sections, in rail order.
+/// Top-level sections.
+///
+/// Now playing is deliberately absent. It is not a place in the library, it is
+/// the player itself, so it opens by drawing the player bar up over the content
+/// rather than by taking a rail slot alongside Albums and Artists.
 enum LibrarySection {
   albums('Albums', Icons.grid_view_outlined, Icons.grid_view_rounded),
   songs('Songs', Icons.music_note_outlined, Icons.music_note),
   artists('Artists', Icons.people_outline, Icons.people),
   tags('Tags', Icons.label_outline, Icons.label),
   playlists('Playlists', Icons.playlist_play_outlined, Icons.playlist_play),
-  queue('Queue', Icons.queue_music_outlined, Icons.queue_music),
   settings('Settings', Icons.settings_outlined, Icons.settings);
 
   const LibrarySection(this.label, this.icon, this.selectedIcon);
@@ -33,6 +36,12 @@ enum LibrarySection {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  /// The sections offered as rail destinations, in order.
+  ///
+  /// Settings is excluded and pinned to the foot of the rail instead: it is
+  /// where the app gets configured, not another way to browse music.
+  static const railDestinations = [albums, songs, artists, tags, playlists];
 }
 
 /// The application frame: navigation rail, content, and the player strip.
@@ -46,17 +55,23 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell>
+    with SingleTickerProviderStateMixin {
   var _section = LibrarySection.albums;
+
+  /// Drives the now-playing shade, drawn up out of the player bar.
+  late final AnimationController _shade = AnimationController(
+    duration: const Duration(milliseconds: 280),
+    reverseDuration: const Duration(milliseconds: 220),
+    vsync: this,
+  );
 
   @override
   void initState() {
     super.initState();
     Screenshotter.scheduleIfRequested();
 
-    // Debug affordance: open a section, and optionally the credit review page,
-    // without driving the mouse. Pixel-hunting a navigation rail from a script
-    // is fragile; naming the destination is not.
+    // Debug affordance: start playback without driving the mouse.
     if (Platform.environment['MARMELADE_PLAY'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         AppLog.instance.warn('play requested by MARMELADE_PLAY');
@@ -70,12 +85,14 @@ class _AppShellState extends ConsumerState<AppShell> {
       });
     }
 
+    // Debug affordance: open a section, the credit review page, or the
+    // now-playing shade without driving the mouse. Pixel-hunting a navigation
+    // rail from a script is fragile; naming the destination is not.
     final section = Platform.environment['MARMELADE_SECTION'];
     if (section != null && section.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final target = LibrarySection.values
-            .where((s) => s.name == section)
-            .firstOrNull;
+        final target =
+            LibrarySection.values.where((s) => s.name == section).firstOrNull;
         if (target == null) {
           AppLog.instance.warn('unknown MARMELADE_SECTION', fields: {
             'value': section,
@@ -87,8 +104,23 @@ class _AppShellState extends ConsumerState<AppShell> {
         if (Platform.environment['MARMELADE_OPEN_REVIEW'] == '1') {
           _openCreditReview();
         }
+        final artist = int.tryParse(
+          Platform.environment['MARMELADE_ARTIST'] ?? '',
+        );
+        if (artist != null) _openArtist(artist);
+        final album = int.tryParse(
+          Platform.environment['MARMELADE_ALBUM'] ?? '',
+        );
+        if (album != null) _openAlbum(album);
       });
     }
+
+    if (Platform.environment['MARMELADE_NOW_PLAYING'] == '1') {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _toggleShade(open: true),
+      );
+    }
+
     // Debug affordance: reproduce a library refresh without driving the UI.
     // Indexing is where the app does its heaviest work, and being able to
     // trigger it from a script is the difference between reading a crash log
@@ -109,6 +141,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  @override
+  void dispose() {
+    _shade.dispose();
+    super.dispose();
+  }
+
   /// One navigator key per section, so each keeps its own history.
   final _navigatorKeys = {
     for (final section in LibrarySection.values)
@@ -121,7 +159,23 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// costs nothing at all.
   final _visitedOrder = <LibrarySection>[LibrarySection.albums];
 
+  /// Whether the shade is open or on its way open.
+  bool get _shadeOpen =>
+      _shade.status == AnimationStatus.forward ||
+      _shade.status == AnimationStatus.completed;
+
+  void _toggleShade({bool? open, bool showQueue = false}) {
+    final target = open ?? !_shadeOpen;
+    if (target && showQueue) {
+      ref.read(queuePaneVisibleProvider.notifier).set(true);
+    }
+    target ? _shade.forward() : _shade.reverse();
+  }
+
   void _select(LibrarySection section) {
+    // Navigating anywhere closes the shade: it covers the very content being
+    // navigated to, so leaving it up would look like nothing happened.
+    _toggleShade(open: false);
     if (section == _section) {
       // Tapping the current section pops it back to its root, which is what
       // every other app with a rail does.
@@ -158,22 +212,22 @@ class _AppShellState extends ConsumerState<AppShell> {
         onBack: _pop,
       ));
 
-  void _openCreditReview() {
-    // Lives inside the Artists stack: it is about who the artists are, and it
-    // keeps the rail at seven destinations rather than adding an eighth for
-    // something that is empty most of the time.
-    if (_section != LibrarySection.artists) {
-      _select(LibrarySection.artists);
-    }
-    _push(CreditReviewView(onBack: _pop));
-  }
-
   void _openArtist(int artistId) => _push(ArtistDetailView(
         artistId: artistId,
         onOpenAlbum: _openAlbum,
         onOpenArtist: _openArtist,
         onBack: _pop,
       ));
+
+  void _openCreditReview() {
+    // Lives inside the Artists stack: it is about who the artists are, and it
+    // keeps the rail to five destinations rather than adding one for something
+    // that is empty most of the time.
+    if (_section != LibrarySection.artists) {
+      _select(LibrarySection.artists);
+    }
+    _push(CreditReviewView(onBack: _pop));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -197,32 +251,82 @@ class _AppShellState extends ConsumerState<AppShell> {
                   color: scheme.outlineVariant.withValues(alpha: 0.4),
                 ),
                 Expanded(
-                  // IndexedStack lays out every child, not just the visible
-                  // one, so a plain one would keep all seven sections querying
-                  // the database and decoding album art at all times. Sections
-                  // are therefore built on first visit and kept alive after,
-                  // which preserves their scroll position without paying for
-                  // the ones nobody has opened.
-                  child: IndexedStack(
-                    index: _visitedOrder.indexOf(_section),
+                  child: Stack(
                     children: [
-                      for (final section in _visitedOrder)
-                        Navigator(
-                          key: _navigatorKeys[section],
-                          onGenerateRoute: (settings) => MaterialPageRoute(
-                            settings: settings,
-                            builder: (_) => _rootFor(section),
-                          ),
-                        ),
+                      Positioned.fill(child: _sections()),
+                      // The shade covers the content area but not the rail: it
+                      // is opened from the player bar and closed the same way,
+                      // and losing every means of navigation would be worse
+                      // than the extra immersion is worth.
+                      Positioned.fill(child: _shadeLayer()),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          PlayerBar(onExpand: () => _select(LibrarySection.queue)),
+          PlayerBar(
+            expanded: _shadeOpen,
+            onToggleExpanded: () => _toggleShade(),
+            onOpenQueue: () => _toggleShade(open: true, showQueue: true),
+          ),
         ],
       ),
+    );
+  }
+
+  /// The library sections, one navigation stack each.
+  ///
+  /// IndexedStack lays out every child, not just the visible one, so a plain
+  /// one would keep all sections querying the database and decoding album art
+  /// at all times. Sections are therefore built on first visit and kept alive
+  /// after, which preserves their scroll position without paying for the ones
+  /// nobody has opened.
+  Widget _sections() => IndexedStack(
+        index: _visitedOrder.indexOf(_section),
+        children: [
+          for (final section in _visitedOrder)
+            Navigator(
+              key: _navigatorKeys[section],
+              onGenerateRoute: (settings) => MaterialPageRoute(
+                settings: settings,
+                builder: (_) => _rootFor(section),
+              ),
+            ),
+        ],
+      );
+
+  /// The now-playing shade, drawn up from the bottom edge.
+  ///
+  /// Built only while it is showing, so the view's providers subscribe to
+  /// nothing at all while it is closed.
+  Widget _shadeLayer() {
+    return AnimatedBuilder(
+      animation: _shade,
+      builder: (context, _) {
+        if (_shade.value == 0) return const SizedBox.shrink();
+        final progress = Curves.easeOutCubic.transform(_shade.value);
+        return LayoutBuilder(
+          builder: (context, constraints) => ClipRect(
+            // An Align with a heightFactor reveals a full-size child from the
+            // bottom up. Shrinking the child instead would reflow every line
+            // of text on the way, which reads as a glitch rather than a slide.
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              heightFactor: progress,
+              child: SizedBox(
+                height: constraints.maxHeight,
+                width: constraints.maxWidth,
+                child: NowPlayingView(
+                  onOpenArtist: _openArtist,
+                  onOpenAlbum: _openAlbum,
+                  onClose: () => _toggleShade(open: false),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -248,15 +352,11 @@ class _AppShellState extends ConsumerState<AppShell> {
             icon: Icons.playlist_play_outlined,
             title: 'Playlists',
           ),
-        LibrarySection.queue => NowPlayingView(
-            onOpenArtist: _openArtist,
-            onOpenAlbum: _openAlbum,
-          ),
         LibrarySection.settings => const SettingsView(),
       };
 }
 
-/// The navigation rail, with the app name at the top.
+/// The navigation rail: the app name at the top, Settings at the foot.
 class _Rail extends StatelessWidget {
   const _Rail({
     required this.selected,
@@ -273,47 +373,50 @@ class _Rail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final destinations = LibrarySection.railDestinations;
+    final selectedIndex = destinations.indexOf(selected);
 
-    // NavigationRail does not scroll, and seven labelled destinations plus the
-    // logo do not fit once the player strip has taken its share of a short
-    // window. Without this the rail overflows at the minimum window size the
-    // app itself allows.
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: IntrinsicHeight(
-            child: NavigationRail(
-              selectedIndex: LibrarySection.values.indexOf(selected),
-              onDestinationSelected: (index) =>
-                  onSelect(LibrarySection.values[index]),
-              labelType: NavigationRailLabelType.all,
-              backgroundColor: theme.colorScheme.surfaceContainerLow,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                child: Tooltip(
-                  message: 'marmelade',
-                  child: Text(
-                    'm',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w300,
-                    ),
-                  ),
-                ),
-              ),
-              destinations: [
-                for (final section in LibrarySection.values)
-                  NavigationRailDestination(
-                    icon: _badged(section, section.icon),
-                    selectedIcon: _badged(section, section.selectedIcon),
-                    label: Text(section.label),
-                  ),
-              ],
+    return NavigationRail(
+      // Settings is not one of the destinations, so nothing in the rail proper
+      // is selected while it is open. A null index says exactly that.
+      selectedIndex: selectedIndex < 0 ? null : selectedIndex,
+      onDestinationSelected: (index) => onSelect(destinations[index]),
+      labelType: NavigationRailLabelType.all,
+      backgroundColor: theme.colorScheme.surfaceContainerLow,
+      // The rail's own scrolling, rather than a wrapper: labelled destinations
+      // plus the logo and Settings do not fit once the player strip has taken
+      // its share of a short window.
+      scrollable: true,
+      trailingAtBottom: true,
+      leading: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Tooltip(
+          message: 'marmelade',
+          child: Text(
+            'm',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w300,
             ),
           ),
         ),
       ),
+      trailing: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: _RailFootButton(
+          section: LibrarySection.settings,
+          selected: selected == LibrarySection.settings,
+          onTap: () => onSelect(LibrarySection.settings),
+        ),
+      ),
+      destinations: [
+        for (final section in destinations)
+          NavigationRailDestination(
+            icon: _badged(section, section.icon),
+            selectedIcon: _badged(section, section.selectedIcon),
+            label: Text(section.label),
+          ),
+      ],
     );
   }
 
@@ -325,9 +428,76 @@ class _Rail extends StatelessWidget {
     if (section != LibrarySection.artists || pendingCredits == 0) {
       return Icon(icon);
     }
-    return Badge(
-      label: Text('$pendingCredits'),
-      child: Icon(icon),
+    return Badge(label: Text('$pendingCredits'), child: Icon(icon));
+  }
+}
+
+/// A rail entry pinned below the destinations.
+///
+/// NavigationRail only bottom-aligns its `trailing` widget, and a destination
+/// is always part of the scrolling group, so a bottom-aligned Settings has to
+/// be built by hand. It is shaped to match a real destination -- pill
+/// indicator, icon, label underneath -- because looking like a different kind
+/// of control would suggest it does a different kind of thing.
+class _RailFootButton extends StatelessWidget {
+  const _RailFootButton({
+    required this.section,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final LibrarySection section;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return SizedBox(
+      width: 72,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 56,
+                height: 32,
+                decoration: ShapeDecoration(
+                  shape: const StadiumBorder(),
+                  color: selected
+                      ? scheme.secondaryContainer
+                      : Colors.transparent,
+                ),
+                child: Center(
+                  child: Icon(
+                    selected ? section.selectedIcon : section.icon,
+                    size: 24,
+                    color: selected
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                section.label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

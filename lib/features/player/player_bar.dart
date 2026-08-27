@@ -12,10 +12,21 @@ import '../../widgets/time_text.dart';
 /// Tapping anywhere that is not a control opens the full now-playing view, so
 /// the bar doubles as the entry point to it.
 class PlayerBar extends ConsumerWidget {
-  const PlayerBar({super.key, required this.onExpand});
+  const PlayerBar({
+    super.key,
+    required this.expanded,
+    required this.onToggleExpanded,
+    required this.onOpenQueue,
+  });
 
-  /// Opens the full-window now-playing view.
-  final VoidCallback onExpand;
+  /// Whether the now-playing shade is currently drawn up over the content.
+  final bool expanded;
+
+  /// Opens the shade, or closes it when it is already up.
+  final VoidCallback onToggleExpanded;
+
+  /// Opens the shade with the queue panel showing.
+  final VoidCallback onOpenQueue;
 
   static const height = 84.0;
 
@@ -53,9 +64,17 @@ class PlayerBar extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     children: [
-                      Expanded(child: _NowPlayingSummary(onTap: onExpand)),
+                      Expanded(
+                        child: _NowPlayingSummary(onTap: onToggleExpanded),
+                      ),
                       const _TransportControls(),
-                      Expanded(child: _RightControls(onExpand: onExpand)),
+                      Expanded(
+                        child: _RightControls(
+                          expanded: expanded,
+                          onToggleExpanded: onToggleExpanded,
+                          onOpenQueue: onOpenQueue,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -275,9 +294,15 @@ class _PlayPauseButtonState extends State<_PlayPauseButton>
 
 /// Volume, queue and expand controls.
 class _RightControls extends ConsumerWidget {
-  const _RightControls({required this.onExpand});
+  const _RightControls({
+    required this.expanded,
+    required this.onToggleExpanded,
+    required this.onOpenQueue,
+  });
 
-  final VoidCallback onExpand;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
+  final VoidCallback onOpenQueue;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -292,7 +317,7 @@ class _RightControls extends ConsumerWidget {
         _VolumeControl(value: player.volume, onChanged: controller.setVolume),
         IconButton(
           tooltip: 'Play queue',
-          onPressed: onExpand,
+          onPressed: onOpenQueue,
           icon: Badge(
             isLabelVisible: player.queue.length > 1,
             label: Text('${player.queue.length}'),
@@ -300,9 +325,21 @@ class _RightControls extends ConsumerWidget {
           ),
         ),
         IconButton(
-          tooltip: 'Open now playing',
-          onPressed: player.hasTrack ? onExpand : null,
-          icon: const Icon(Icons.expand_less),
+          tooltip: expanded ? 'Close now playing' : 'Open now playing',
+          // Enabled whenever there is anything to look at. Requiring a loaded
+          // track meant a restored queue could not be opened before pressing
+          // play, which is the one moment you most want to look at it.
+          onPressed: player.hasTrack || player.hasQueue
+              ? onToggleExpanded
+              : null,
+          // Rotates rather than swapping glyphs, so the button reads as the
+          // same control in two states instead of two different buttons.
+          icon: AnimatedRotation(
+            turns: expanded ? 0.5 : 0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: const Icon(Icons.expand_less),
+          ),
         ),
       ],
     );

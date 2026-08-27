@@ -16,6 +16,8 @@ import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
 import 'package:marmelade/services/audio/player_controller.dart';
+import 'package:marmelade/widgets/artwork.dart';
+import 'package:marmelade/widgets/track_list.dart';
 import 'package:path/path.dart' as p;
 
 /// Renders the real app shell and checks it builds, lays out and paints.
@@ -557,12 +559,39 @@ void main() {
     await capture(tester, 'review');
   });
 
-  testWidgets('now playing shows the art, the credits and the queue',
+  testWidgets('now playing is not a rail destination', (tester) async {
+    // It is the player, not a place in the library, so it opens out of the
+    // player bar rather than sitting in the rail beside Albums and Artists.
+    await open(tester, app: buildApp(playing: true));
+    expect(railItem('Queue'), findsNothing);
+    expect(find.text('Play queue'), findsNothing);
+    expect(find.byTooltip('Open now playing'), findsOne);
+  });
+
+  testWidgets('settings sits at the foot of the rail, below the destinations',
+      (tester) async {
+    await open(tester);
+
+    final railBox = tester.getRect(find.byType(NavigationRail));
+    final settings = tester.getRect(find.text('Settings'));
+    final playlists = tester.getRect(railItem('Playlists'));
+
+    expect(settings.top, greaterThan(playlists.bottom));
+    // Pinned to the bottom, not merely last: the gap below it should be far
+    // smaller than the gap above.
+    expect(railBox.bottom - settings.bottom, lessThan(60));
+    expect(settings.top - playlists.bottom, greaterThan(100));
+  });
+
+  testWidgets('the player bar draws the now-playing shade up over the content',
       (tester) async {
     await open(tester, app: buildApp(playing: true));
-    await tester.tap(railItem('Queue'));
+    expect(find.text('Now playing'), findsNothing);
+
+    await tester.tap(find.byTooltip('Open now playing'));
     await settle(tester);
 
+    expect(find.text('Now playing'), findsOne);
     expect(find.text('Play queue'), findsOne);
     expect(find.text('Kanraku'), findsOne);
     // Every credited artist is its own target in the now-playing pane. The
@@ -573,37 +602,88 @@ void main() {
     expect(find.text('Nanahira'), findsWidgets);
     expect(find.byTooltip('Remove from queue'), findsExactly(_queue.length));
     expect(find.byTooltip('Drag to reorder'), findsExactly(_queue.length));
+    // No transport in the shade: those controls are in the bar that opened it.
+    expect(find.byTooltip('Close now playing'), findsOne);
     expect(tester.takeException(), isNull);
     await capture(tester, 'now-playing');
+
+    await tester.tap(find.byTooltip('Close now playing'));
+    await settle(tester);
+    expect(find.text('Now playing'), findsNothing);
   });
 
-  testWidgets('now playing with nothing queued shows an empty state',
-      (tester) async {
-    await open(tester);
-    await tester.tap(railItem('Queue'));
+  testWidgets('the queue can be collapsed inside the shade', (tester) async {
+    await open(tester, app: buildApp(playing: true));
+    await tester.tap(find.byTooltip('Open now playing'));
     await settle(tester);
+    expect(find.text('Play queue'), findsOne);
 
-    expect(find.text('Nothing queued'), findsOne);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the queue pane folds away on a narrow window', (tester) async {
-    // Both panes in the minimum window makes both unusable, so below the
-    // breakpoint they are shown one at a time.
-    await open(
-      tester,
-      app: buildApp(playing: true),
-      size: const Size(880, 640),
-    );
-    await tester.tap(railItem('Queue'));
+    await tester.tap(find.byTooltip('Hide the queue'));
     await settle(tester);
-
-    expect(find.byType(SegmentedButton<bool>), findsOne);
     expect(find.text('Play queue'), findsNothing);
-    await tester.tap(find.text('Queue').last);
+    // Still obviously recoverable.
+    expect(find.byTooltip('Show the queue'), findsOne);
+
+    await tester.tap(find.byTooltip('Show the queue'));
     await settle(tester);
     expect(find.text('Play queue'), findsOne);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a narrow shade shows one pane at a time', (tester) async {
+    // Artwork and queue together in the app's minimum window leaves neither
+    // usable, so below the breakpoint the queue toggle swaps between them
+    // rather than adding a second column.
+    await open(
+      tester,
+      app: buildApp(playing: true),
+      size: const Size(880, 700),
+    );
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    // Titles are no discriminator here: the same track name is in the player
+    // bar and the queue row too. The big cover is what the artwork pane is
+    // for, so its presence is what actually distinguishes the two panes.
+    bool bigCoverShown() => tester
+        .widgetList<Artwork>(find.byType(Artwork))
+        .any((a) => (a.size ?? 0) > 300);
+
+    // Queue visible by default, so the artwork pane stands aside.
+    expect(find.text('Play queue'), findsOne);
+    expect(bigCoverShown(), isFalse);
+
+    await tester.tap(find.byTooltip('Hide the queue'));
+    await settle(tester);
+    expect(find.text('Play queue'), findsNothing);
+    expect(bigCoverShown(), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('nothing to play means nothing to open', (tester) async {
+    await open(tester);
+    final button = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byTooltip('Open now playing'),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('an artist page groups its tracks by release', (tester) async {
+    // The list is what gets queued, so scattering an album's running order
+    // scatters playback with it.
+    await open(tester, app: buildApp(playing: true));
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+    await tester.tap(find.text('PinocchioP').first);
+    await settle(tester);
+
+    final list = tester.widget<TrackList>(find.byType(TrackList));
+    expect(list.groupByAlbum, isTrue);
+    expect(tester.takeException(), isNull);
+    await capture(tester, 'artist');
   });
 
   testWidgets('the narrowest allowed window does not overflow', (tester) async {

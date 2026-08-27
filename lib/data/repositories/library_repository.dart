@@ -222,6 +222,11 @@ class LibraryRepository {
       // first, since a NULL track number means "unknown", not "track zero".
       LibrarySort.trackNumber =>
         'COALESCE(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.title',
+      // By release, then running order within it. Tracks belonging to no album
+      // gather at the end rather than under a blank heading at the top.
+      LibrarySort.albumThenTrack => 't.album_id IS NULL, alb.sort_title, '
+          'alb.title, COALESCE(t.disc_no, 1), t.track_no IS NULL, t.track_no, '
+          't.title',
       _ => 't.sort_title, t.title',
     };
 
