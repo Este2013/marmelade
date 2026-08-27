@@ -50,32 +50,40 @@ class PlayerBar extends ConsumerWidget {
                 // competing with the buttons.
                 if (player.isPlaying)
                   const Positioned.fill(
-                    child: IgnorePointer(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: SpectrumBars(
-                          opacity: 0.22,
-                          alignment: Alignment.bottomCenter,
+                    child: ExcludeSemantics(
+                      child: IgnorePointer(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: SpectrumBars(
+                            opacity: 0.22,
+                            alignment: Alignment.bottomCenter,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _NowPlayingSummary(onTap: onToggleExpanded),
-                      ),
-                      const _TransportControls(),
-                      Expanded(
-                        child: _RightControls(
-                          expanded: expanded,
-                          onToggleExpanded: onToggleExpanded,
-                          onOpenQueue: onOpenQueue,
+                // Filling the stack, not merely sitting in it: a plain child
+                // is aligned to the top and sized to its tallest child, so
+                // with no artwork to set the height the play button rode up
+                // against the top edge of the bar.
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _NowPlayingSummary(onTap: onToggleExpanded),
                         ),
-                      ),
-                    ],
+                        const _TransportControls(),
+                        Expanded(
+                          child: _RightControls(
+                            expanded: expanded,
+                            onToggleExpanded: onToggleExpanded,
+                            onOpenQueue: onOpenQueue,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -100,21 +108,22 @@ class _NowPlayingSummary extends ConsumerWidget {
     final theme = Theme.of(context);
 
     if (track == null) {
-      return Row(
-        children: [
-          const SizedBox(width: 4),
-          Icon(
-            Icons.music_note_outlined,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 12),
-          Text(
-            player.hasQueue ? 'Ready to play' : 'Nothing playing',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+      // A placeholder the size of a cover, and no caption. The bar only exists
+      // when there is something queued, so a label saying so is a sentence
+      // nobody needs to read twice -- and giving the row its full height here
+      // is what keeps the transport centred either way.
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: const [
+            Artwork(
+              storedPath: null,
+              size: 56,
+              borderRadius: 6,
+              fallbackIcon: Icons.music_note_outlined,
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -359,11 +368,17 @@ class _PositionLabel extends ConsumerWidget {
     final position = ref.watch(playbackPositionProvider).value ?? Duration.zero;
     if (duration == Duration.zero) return const SizedBox.shrink();
 
-    return Text(
-      '${formatDuration(position)} / ${formatDuration(duration)}',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontFeatures: const [FontFeature.tabularFigures()],
+    // Excluded from semantics: it changes twelve times a second, and the seek
+    // bar beside it already announces the position -- coarsely, on purpose.
+    // Two nodes racing to say the same thing is what the accessibility bridge
+    // cannot keep up with.
+    return ExcludeSemantics(
+      child: Text(
+        '${formatDuration(position)} / ${formatDuration(duration)}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
   }
@@ -454,6 +469,30 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
   /// back to whatever the engine last reported.
   double? _dragValue;
 
+  /// How coarsely the position is reported to the accessibility tree.
+  ///
+  /// The playhead moves twelve times a second, and a Slider rebuilds its
+  /// semantics node every time its value changes. On Windows that meant twelve
+  /// semantics updates a second, which the accessibility bridge cannot keep up
+  /// with while the tree is also being rebuilt -- moving the window to another
+  /// monitor produced around 155 "Nodes left pending by the update" errors and
+  /// left the bridge's tree out of step with Flutter's. That divergence is
+  /// exactly what used to end in a hard crash.
+  ///
+  /// Five seconds is also simply better to listen to: a value announced twelve
+  /// times a second tells you nothing.
+  static const _semanticsStep = Duration(seconds: 5);
+
+  /// How far the increase and decrease actions move the playhead.
+  static const _seekStep = Duration(seconds: 10);
+
+  void _seekTo(Duration position, Duration duration) {
+    final clamped = position < Duration.zero
+        ? Duration.zero
+        : (position > duration ? duration : position);
+    ref.read(playerProvider.notifier).seek(clamped);
+  }
+
   @override
   Widget build(BuildContext context) {
     final duration = ref.watch(playerProvider.select((s) => s.duration));
@@ -467,31 +506,64 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
             ? 0.0
             : (position.inMilliseconds / totalMs).clamp(0.0, 1.0));
 
-    return SizedBox(
-      height: 12,
-      child: SliderTheme(
-        data: SliderThemeData(
-          trackHeight: 3,
-          thumbShape: RoundSliderThumbShape(
-            enabledThumbRadius: _dragValue == null ? 0 : 7,
-            disabledThumbRadius: 0,
+    // Quantised, so this node changes every five seconds instead of every
+    // eighty milliseconds. The bar the eye sees is still smooth.
+    final announced = Duration(
+      seconds:
+          (position.inSeconds ~/ _semanticsStep.inSeconds) *
+          _semanticsStep.inSeconds,
+    );
+
+    String spoken(Duration at) {
+      final clamped = at < Duration.zero
+          ? Duration.zero
+          : (at > duration ? duration : at);
+      return '${formatDuration(clamped)} of ${formatDuration(duration)}';
+    }
+
+    final loaded = totalMs != 0;
+
+    return Semantics(
+      container: true,
+      slider: true,
+      enabled: loaded,
+      label: 'Playback position',
+      // A node carrying an increase action must carry increasedValue and
+      // decreasedValue as well, or the framework asserts. Empty strings all
+      // round while nothing is loaded, which is the other half of that rule.
+      value: loaded ? spoken(announced) : '',
+      increasedValue: loaded ? spoken(announced + _seekStep) : '',
+      decreasedValue: loaded ? spoken(announced - _seekStep) : '',
+      onIncrease: loaded ? () => _seekTo(position + _seekStep, duration) : null,
+      onDecrease: loaded ? () => _seekTo(position - _seekStep, duration) : null,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          height: 12,
+          child: SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 3,
+              thumbShape: RoundSliderThumbShape(
+                enabledThumbRadius: _dragValue == null ? 0 : 7,
+                disabledThumbRadius: 0,
+              ),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              activeTrackColor: scheme.primary,
+              inactiveTrackColor: scheme.surfaceContainerHighest,
+              padding: EdgeInsets.zero,
+            ),
+            child: Slider(
+              value: value,
+              onChanged: totalMs == 0
+                  ? null
+                  : (next) => setState(() => _dragValue = next),
+              onChangeEnd: (next) {
+                ref
+                    .read(playerProvider.notifier)
+                    .seek(Duration(milliseconds: (next * totalMs).round()));
+                setState(() => _dragValue = null);
+              },
+            ),
           ),
-          overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-          activeTrackColor: scheme.primary,
-          inactiveTrackColor: scheme.surfaceContainerHighest,
-          padding: EdgeInsets.zero,
-        ),
-        child: Slider(
-          value: value,
-          onChanged: totalMs == 0
-              ? null
-              : (next) => setState(() => _dragValue = next),
-          onChangeEnd: (next) {
-            ref
-                .read(playerProvider.notifier)
-                .seek(Duration(milliseconds: (next * totalMs).round()));
-            setState(() => _dragValue = null);
-          },
         ),
       ),
     );

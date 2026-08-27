@@ -17,6 +17,7 @@ import '../core/logging/app_log.dart';
 import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/empty_state.dart';
 import 'providers.dart';
+import 'window_chrome.dart';
 
 /// Top-level sections.
 ///
@@ -24,7 +25,7 @@ import 'providers.dart';
 /// the player itself, so it opens by drawing the player bar up over the content
 /// rather than by taking a rail slot alongside Albums and Artists.
 enum LibrarySection {
-  albums('Albums', Icons.grid_view_outlined, Icons.grid_view_rounded),
+  albums('Albums', Icons.album_outlined, Icons.album),
   songs('Songs', Icons.music_note_outlined, Icons.music_note),
   artists('Artists', Icons.people_outline, Icons.people),
   tags('Tags', Icons.label_outline, Icons.label),
@@ -287,6 +288,8 @@ class _AppShellState extends ConsumerState<AppShell>
                 Positioned.fill(
                   child: Row(
                     children: [
+                      // The rail runs to the top edge of the window, which is
+                      // the point of drawing our own caption.
                       _Rail(
                         selected: _section,
                         onSelect: _select,
@@ -298,7 +301,18 @@ class _AppShellState extends ConsumerState<AppShell>
                         thickness: 1,
                         color: scheme.outlineVariant.withValues(alpha: 0.4),
                       ),
-                      Expanded(child: _sections()),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            // Room for the caption strip. The strip itself is
+                            // transparent and drawn on top, so this keeps the
+                            // content from scrolling underneath the window
+                            // buttons.
+                            const SizedBox(height: WindowChrome.height),
+                            Expanded(child: _sections()),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -307,6 +321,15 @@ class _AppShellState extends ConsumerState<AppShell>
                 // button in its header and the chevron in the bar below, both
                 // of which stay visible.
                 Positioned.fill(child: _shadeLayer()),
+                // Above everything, including the shade: a window that cannot
+                // be moved or closed because a panel is open would be a poor
+                // trade for the extra immersion.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: const WindowChrome(),
+                ),
               ],
             ),
           ),
@@ -392,6 +415,7 @@ class _AppShellState extends ConsumerState<AppShell>
                   height: constraints.maxHeight,
                   width: constraints.maxWidth,
                   child: NowPlayingView(
+                    topInset: WindowChrome.height,
                     onOpenArtist: _openArtist,
                     onOpenAlbum: _openAlbum,
                     onClose: () => _toggleShade(open: false),

@@ -20,10 +20,18 @@ import '../../widgets/time_text.dart';
 class NowPlayingView extends ConsumerWidget {
   const NowPlayingView({
     super.key,
+    this.topInset = 0,
     this.onOpenArtist,
     this.onOpenAlbum,
     this.onClose,
   });
+
+  /// Space to leave clear at the top for the window's caption strip.
+  ///
+  /// The shade covers the whole window, and the caption strip is drawn over it,
+  /// so without this the shade's own controls would sit under the window
+  /// buttons.
+  final double topInset;
 
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
@@ -62,6 +70,7 @@ class NowPlayingView extends ConsumerWidget {
 
           return Column(
             children: [
+              SizedBox(height: topInset),
               _ShadeBar(
                 queueVisible: queueVisible,
                 queueLength: player.queue.length,

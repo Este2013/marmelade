@@ -51,6 +51,11 @@ Future<void> main() async {
     imageCache.maximumSize = _imageCacheCount;
     log.info('image cache configured', fields: {'bytes': AppLog.formatBytes(_imageCacheBytes), 'entries': _imageCacheCount});
 
+    // The caption is hidden and rebuilt in Dart, so the navigation rail can
+    // run to the top edge and the window controls can sit on the app's own
+    // colours instead of Windows'. TitleBarStyle.hidden keeps the frame --
+    // border, shadow and resize edges all stay; setAsFrameless is the one that
+    // takes those away, and it is not what is wanted here.
     log.info('initialising window');
     await windowManager.ensureInitialized();
 
@@ -64,7 +69,7 @@ Future<void> main() async {
     final scale = PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0;
     log.info('window scale', fields: {'devicePixelRatio': scale, 'logical': '${_windowSize.width}x${_windowSize.height}', 'physical': '${(_windowSize.width * scale).round()}x${(_windowSize.height * scale).round()}'});
 
-    await windowManager.waitUntilReadyToShow(WindowOptions(size: _windowSize * scale, minimumSize: _minimumWindowSize * scale, center: true, title: 'marmelade', titleBarStyle: TitleBarStyle.normal), () async {
+    await windowManager.waitUntilReadyToShow(WindowOptions(size: _windowSize * scale, minimumSize: _minimumWindowSize * scale, center: true, title: 'marmelade', titleBarStyle: TitleBarStyle.hidden), () async {
       await windowManager.show();
       await windowManager.focus();
     });

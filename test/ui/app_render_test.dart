@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show ImageByteFormat;
 
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/app/shell.dart';
+import 'package:marmelade/app/window_chrome.dart';
 import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
@@ -18,6 +20,7 @@ import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
 import 'package:marmelade/services/audio/player_controller.dart';
 import 'package:marmelade/widgets/artwork.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:marmelade/widgets/track_list.dart';
 import 'package:path/path.dart' as p;
 
@@ -163,6 +166,20 @@ class _LongQueuePlayer extends PlayerController {
         ],
         current: _playing.current,
       );
+}
+
+/// Something queued, nothing loaded. The "ready to play" state.
+class _QueuedPlayer extends PlayerController {
+  _QueuedPlayer(MarmeladeDatabase db)
+      : super(
+          engine: _SilentEngine(),
+          queueRepository: QueueRepository(db),
+          libraryRepository: LibraryRepository(db),
+          db: db,
+        );
+
+  @override
+  PlayerSnapshot build() => const PlayerSnapshot(queue: _queue);
 }
 
 /// A player that starts with nothing and can be handed a track mid-test.
@@ -375,7 +392,9 @@ void main() {
     List<PendingCreditGroup> pending = const [],
     bool playing = false,
     bool stageable = false,
+    bool queuedOnly = false,
     ({int index, int length})? longQueue,
+    Stream<Duration>? positions,
   }) {
     return ProviderScope(
       overrides: [
@@ -387,9 +406,11 @@ void main() {
             (_, _, final q?) => _LongQueuePlayer(db, q.index, q.length),
             (_, true, _) => _StageablePlayer(db),
             (true, _, _) => _PlayingPlayer(db),
-            _ => _IdlePlayer(db),
+            _ => queuedOnly ? _QueuedPlayer(db) : _IdlePlayer(db),
           },
         ),
+        if (positions != null)
+          playbackPositionProvider.overrideWith((ref) => positions),
         pendingCreditsProvider.overrideWith((ref) => Stream.value(pending)),
         pendingCreditCountProvider
             .overrideWith((ref) => Stream.value(pending.length)),
@@ -791,6 +812,154 @@ void main() {
 
     expect(queueScroll(tester).pixels, 0);
     expect(queueScroll(tester).maxScrollExtent, 0);
+  });
+
+  group('window chrome', () {
+    testWidgets('the app draws its own caption, and the rail reaches the top',
+        (tester) async {
+      await open(tester);
+
+      expect(find.byType(WindowChrome), findsOne);
+      // Minimise, maximise, close.
+      expect(find.byType(WindowCaptionButton), findsExactly(3));
+
+      // The whole point of hiding the native caption: the rail runs to the
+      // very top edge rather than starting below a grey bar.
+      expect(tester.getRect(find.byType(NavigationRail)).top, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the whole top edge drags, and covers nothing that matters',
+        (tester) async {
+      await open(tester);
+
+      final drag = tester.getRect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byType(DragToMoveArea),
+        ),
+      );
+      // Runs from the left edge, over the rail's top as well.
+      expect(drag.left, 0);
+      // And no rail destination is underneath it, so nothing interactive is
+      // swallowed. This is the invariant that matters; the rail is wider than
+      // its minWidth once it has labels, so measuring it is the wrong test.
+      for (final label in ['Albums', 'Songs', 'Artists']) {
+        expect(
+          tester.getRect(railItem(label)).top,
+          greaterThanOrEqualTo(WindowChrome.height),
+          reason: '$label must not sit under the caption strip',
+        );
+      }
+    });
+
+    testWidgets('content starts below the caption, not underneath it',
+        (tester) async {
+      await open(tester);
+
+      // The section stack itself, rather than any text in it: "Albums" is
+      // also a rail label, and the question here is purely where the content
+      // area begins.
+      expect(tester.getRect(find.byType(IndexedStack)).top,
+          WindowChrome.height);
+    });
+  });
+
+  testWidgets('the ready-to-play bar is a bare cover, and stays centred',
+      (tester) async {
+    // Something queued, nothing loaded. The label said "Ready to play" and the
+    // row collapsed to the height of the play button, which then sat against
+    // the top edge of the bar.
+    await open(tester, app: buildApp(queuedOnly: true));
+
+    expect(find.byType(PlayerBar), findsOne);
+    expect(find.text('Ready to play'), findsNothing);
+    expect(find.text('Nothing playing'), findsNothing);
+
+    // A placeholder the size of a cover.
+    expect(
+      tester
+          .widgetList<Artwork>(find.byType(Artwork))
+          .where((a) => a.size == 56),
+      isNotEmpty,
+    );
+
+    // Centred in the controls row, not riding its top edge. The row is the
+    // bottom PlayerBar.height of the bar; the strip above it is the seek bar,
+    // which is deliberately not part of this.
+    final bar = tester.getRect(find.byType(PlayerBar));
+    final play = tester.getRect(find.byTooltip('Play'));
+    final controlsTop = bar.bottom - PlayerBar.height;
+    expect(
+      play.center.dy - controlsTop,
+      moreOrLessEquals(bar.bottom - play.center.dy, epsilon: 2),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  group('seek bar semantics', () {
+    /// The seek bar's semantics value, as a screen reader would read it.
+    String seekValue(WidgetTester tester) =>
+        tester.getSemantics(find.bySemanticsLabel('Playback position')).value;
+
+    testWidgets('the announced position is coarse, not per-frame',
+        (tester) async {
+      // The playhead moves twelve times a second and a Slider rebuilds its
+      // semantics node on every value change. On Windows that outran the
+      // accessibility bridge: moving the window to another monitor produced
+      // around 155 "Nodes left pending by the update" errors and left the
+      // bridge's tree out of step with Flutter's, which is the divergence that
+      // used to end in a hard crash. It is also unlistenable.
+      final handle = tester.ensureSemantics();
+
+      // Driven through the stream the app actually reads, in one mount.
+      // Swapping a provider override between pumps is not a path that happens
+      // in the app, and Riverpod does not reliably pick it up.
+      final positions = StreamController<Duration>.broadcast();
+      addTearDown(positions.close);
+
+      await open(tester, app: buildApp(playing: true, positions: positions.stream));
+
+      positions.add(const Duration(seconds: 1));
+      await settle(tester);
+      final atOneSecond = seekValue(tester);
+      expect(atOneSecond, contains('0:00'));
+
+      // Three seconds later, the same announcement.
+      positions.add(const Duration(seconds: 4));
+      await settle(tester);
+      expect(seekValue(tester), atOneSecond);
+
+      // Past the step, a new one.
+      positions.add(const Duration(seconds: 7));
+      await settle(tester);
+      expect(seekValue(tester), isNot(atOneSecond));
+      expect(seekValue(tester), contains('0:05'));
+      handle.dispose();
+    });
+
+    testWidgets('it is still a slider that can be seeked', (tester) async {
+      // Coarsening the announcement must not cost the control itself.
+      final handle = tester.ensureSemantics();
+
+      await open(
+        tester,
+        app: buildApp(
+          playing: true,
+          positions: Stream.value(const Duration(seconds: 30)),
+        ),
+      );
+
+      // hasAction lives on SemanticsData, not the node.
+      final data = tester
+          .getSemantics(find.bySemanticsLabel('Playback position'))
+          .getSemanticsData();
+      expect(data.hasFlag(SemanticsFlag.isSlider), isTrue);
+      expect(data.hasAction(SemanticsAction.increase), isTrue);
+      expect(data.hasAction(SemanticsAction.decrease), isTrue);
+      expect(data.value, contains('3:22'), reason: 'the total should be read');
+      handle.dispose();
+    });
   });
 
   testWidgets('the player bar stays away until there is something to play',
