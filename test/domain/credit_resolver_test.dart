@@ -86,6 +86,26 @@ void main() {
           [SegmentRole.main, SegmentRole.featured]);
     });
 
+    test('a dotted abbreviation does not need a space after it', () {
+      // Real tags from the library: the period is the boundary, and demanding
+      // whitespace after it left the whole field standing as one artist named
+      // "Tomoki Hirata feat.Crystal Mint".
+      final tokens = tokenizer.tokenize('Tomoki Hirata feat.Crystal Mint');
+      expect(tokens.segments.map((s) => s.text),
+          ['Tomoki Hirata', 'Crystal Mint']);
+      expect(tokens.segments.map((s) => s.role),
+          [SegmentRole.main, SegmentRole.featured]);
+      expect(segmentsOf('Kuraine ft.Nanahira'), ['Kuraine', 'Nanahira']);
+      expect(segmentsOf('Camellia vs.Kobaryo'), ['Camellia', 'Kobaryo']);
+    });
+
+    test('the left-hand guard still protects words ending in a marker', () {
+      // Dropping the trailing guard must not make "feat." match inside a word.
+      expect(segmentsOf('Agent Of Defeat.Exe'), ['Agent Of Defeat.Exe']);
+      // Bare markers keep both guards, so these stay whole.
+      expect(segmentsOf('Feats of Strength'), ['Feats of Strength']);
+    });
+
     test('the featured role is sticky across later separators', () {
       final tokens =
           tokenizer.tokenize('A feat. B & C');

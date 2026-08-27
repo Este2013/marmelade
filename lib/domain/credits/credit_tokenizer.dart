@@ -100,6 +100,15 @@ class CreditTokenizer {
 
   static final _whitespace = RegExp(r'\s+');
 
+  /// Whether [token] is a word-like abbreviation closed by a full stop.
+  ///
+  /// Deliberately narrow: it must end in a stop *and* contain a letter, so
+  /// "feat.", "ft." and "vs." qualify while "/", "+" and "&" keep both of
+  /// their whitespace guards -- those are what protect "AC/DC",
+  /// "t+pazolite" and "Earth & Fire".
+  static bool _endsWithStop(String token) =>
+      token.endsWith('.') && RegExp(r'[a-z]', caseSensitive: false).hasMatch(token);
+
   static RegExp? _buildPattern(List<SeparatorSpec> separators) {
     if (separators.isEmpty) return null;
     final alternatives = separators.map((s) {
@@ -107,7 +116,15 @@ class CreditTokenizer {
       if (!s.requiresSpaces) return escaped;
       // Must stand alone. Lookarounds keep the surrounding whitespace out of
       // the match, so adjacent separators cannot swallow each other.
-      return r'(?<=^|\s)' + escaped + r'(?=\s|$)';
+      //
+      // An abbreviation that ends in a full stop is its own right-hand
+      // boundary, though. Tags are written by hand and "Tomoki Hirata
+      // feat.Crystal Mint" -- no space after the period -- is common; demanding
+      // whitespace there matched nothing and left the whole field standing as
+      // one artist of that name. The left-hand guard still applies, so
+      // "defeat." cannot be mistaken for "feat.".
+      final trailing = _endsWithStop(s.token) ? '' : r'(?=\s|$)';
+      return r'(?<=^|\s)' + escaped + trailing;
     });
     return RegExp(alternatives.join('|'), caseSensitive: false);
   }
