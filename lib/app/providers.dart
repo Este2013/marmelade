@@ -56,6 +56,7 @@ final editRepositoryProvider = Provider<EditRepository>(
   (ref) => EditRepository(
     db: ref.watch(databaseProvider),
     searchIndexer: ref.watch(searchIndexerProvider),
+    artStore: ref.watch(artStoreProvider),
   ),
 );
 

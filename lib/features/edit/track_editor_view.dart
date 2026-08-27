@@ -7,6 +7,7 @@ import '../../data/repositories/edit_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import 'edit_widgets.dart';
+import 'picture_section.dart';
 
 /// Everything about one track that a person can change, credits included.
 class TrackEditorView extends ConsumerWidget {
@@ -255,6 +256,34 @@ class _EditorState extends ConsumerState<_Editor> {
                         ),
                       ],
                     ),
+                  ),
+                  PictureSection(
+                    imagePath: edit.imagePath,
+                    fallbackSeed: edit.albumTitle ?? edit.title,
+                    fallbackIcon: Icons.music_note_outlined,
+                    subtitle: 'A picture for this one track, which wins over '
+                        'the album sleeve.',
+                    onPick: (file) => ref
+                        .read(editRepositoryProvider)
+                        .setTrackPicture(edit.id, file),
+                    onClear: () => ref
+                        .read(editRepositoryProvider)
+                        .clearTrackPicture(edit.id),
+                  ),
+                  AliasSection(
+                    title: 'Other titles',
+                    subtitle: 'Alternative titles that should find this track: '
+                        'a native script title, a romanisation, or a name it '
+                        'is better known by.',
+                    aliases: edit.aliases,
+                    emptyMessage: 'No other titles yet.',
+                    addLabel: 'Add a title',
+                    enabled: !_saving,
+                    onAdd: (alias, kind) => ref
+                        .read(editRepositoryProvider)
+                        .addTrackAlias(edit.id, alias, kind: kind),
+                    onRemove: (id) =>
+                        ref.read(editRepositoryProvider).removeTrackAlias(id),
                   ),
                   _creditsSection(),
                 ],

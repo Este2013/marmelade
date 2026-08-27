@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 
 import '../../domain/text/normalize.dart';
 import '../db/database.dart';
+import '../../services/art/art_store.dart';
+import '../indexer/catalog_writer.dart';
 import '../indexer/search_indexer.dart';
 
 /// An alternative name for an artist, album or track.
@@ -114,6 +118,7 @@ class AlbumEdit {
     required this.isVariousArtists,
     required this.isVerified,
     required this.trackCount,
+    required this.aliases,
     this.sortTitle,
     this.releaseYear,
     this.albumArtistId,
@@ -126,6 +131,7 @@ class AlbumEdit {
   final bool isVariousArtists;
   final bool isVerified;
   final int trackCount;
+  final List<AliasRow> aliases;
   final String? sortTitle;
   final int? releaseYear;
   final int? albumArtistId;
@@ -164,6 +170,7 @@ class TrackEdit {
     required this.title,
     required this.isVerified,
     required this.credits,
+    required this.aliases,
     this.sortTitle,
     this.trackNo,
     this.discNo,
@@ -177,6 +184,7 @@ class TrackEdit {
   final String title;
   final bool isVerified;
   final List<CreditEdit> credits;
+  final List<AliasRow> aliases;
   final String? sortTitle;
   final int? trackNo;
   final int? discNo;
@@ -192,10 +200,15 @@ class TrackEdit {
 /// from quietly undoing the work: the indexer treats verified rows and
 /// user-sourced credits as authoritative.
 class EditRepository {
-  EditRepository({required this.db, required this.searchIndexer});
+  EditRepository({
+    required this.db,
+    required this.searchIndexer,
+    required this.artStore,
+  });
 
   final MarmeladeDatabase db;
   final SearchIndexer searchIndexer;
+  final ArtStore artStore;
 
   // ------------------------------------------------------------------ reading
 
@@ -403,10 +416,16 @@ class EditRepository {
       WHERE al.id = ?1
       ''',
           variables: [Variable(albumId)],
-          readsFrom: {db.albums, db.artists, db.images, db.tracks},
+          readsFrom: {
+            db.albums,
+            db.artists,
+            db.images,
+            db.tracks,
+            db.albumAliases,
+          },
         )
         .watchSingleOrNull()
-        .map((row) {
+        .asyncMap((row) async {
       if (row == null) return null;
       return AlbumEdit(
         id: row.read<int>('id'),
@@ -419,6 +438,7 @@ class EditRepository {
         isVerified: row.read<int>('is_verified') == 1,
         trackCount: row.read<int>('track_count'),
         imagePath: row.read<String?>('image_path'),
+        aliases: await _aliasesFrom('album_aliases', 'album_id', albumId),
       );
     });
   }
@@ -442,7 +462,13 @@ class EditRepository {
       WHERE t.id = ?1
       ''',
           variables: [Variable(trackId)],
-          readsFrom: {db.tracks, db.albums, db.images, db.trackCredits},
+          readsFrom: {
+            db.tracks,
+            db.albums,
+            db.images,
+            db.trackCredits,
+            db.trackAliases,
+          },
         )
         .watchSingleOrNull()
         .asyncMap((row) async {
@@ -459,6 +485,7 @@ class EditRepository {
         isVerified: row.read<int>('is_verified') == 1,
         imagePath: row.read<String?>('image_path'),
         credits: await _creditsOf(trackId),
+        aliases: await _aliasesFrom('track_aliases', 'track_id', trackId),
       );
     });
   }
@@ -829,6 +856,91 @@ class EditRepository {
     await searchIndexer.removeEntity('artist', artistId);
   }
 
+
+  // ----------------------------------------------------------------- pictures
+
+  /// Which kind of thing a picture is being set on.
+  ///
+  /// The three differ only in the table they write and the role recorded on the
+  /// image row, so they share one implementation. The *kind* is always
+  /// userProvided: that is provenance, and a hand-picked file has exactly one.
+  static const _artistPicture = ('artists', ImageRole.artist, 'artist');
+  static const _albumPicture = ('albums', ImageRole.front, 'album');
+  static const _trackPicture = ('tracks', ImageRole.front, 'track');
+
+  Future<bool> setArtistPicture(int artistId, File file) =>
+      _setPicture(_artistPicture, artistId, file);
+
+  Future<bool> setAlbumPicture(int albumId, File file) =>
+      _setPicture(_albumPicture, albumId, file);
+
+  Future<bool> setTrackPicture(int trackId, File file) =>
+      _setPicture(_trackPicture, trackId, file);
+
+  Future<void> clearArtistPicture(int artistId) =>
+      _clearPicture(_artistPicture, artistId);
+
+  Future<void> clearAlbumPicture(int albumId) =>
+      _clearPicture(_albumPicture, albumId);
+
+  Future<void> clearTrackPicture(int trackId) =>
+      _clearPicture(_trackPicture, trackId);
+
+  /// Copies [file] into the artwork store and points [id] at it.
+  ///
+  /// The store is content-addressed, so choosing a picture that is already in
+  /// the library costs nothing and cannot end up duplicated on disk. Returns
+  /// false when the file could not be read as an image, which is the one
+  /// outcome worth telling the person about.
+  Future<bool> _setPicture(
+    (String, ImageRole, String) target,
+    int id,
+    File file,
+  ) async {
+    final stored = await artStore.putFile(file);
+    if (stored == null) return false;
+
+    final (table, role, entity) = target;
+    final imageId = await CatalogWriter(db).upsertImage(
+      sha256: stored.sha256,
+      storedPath: stored.storedPath,
+      mimeType: stored.mimeType,
+      byteSize: stored.byteSize,
+      width: stored.width,
+      height: stored.height,
+      kind: ImageKind.userProvided,
+      role: role,
+      sourceDescription: 'chosen by hand: ${file.path}',
+    );
+
+    // Written as a statement because the column differs per table and drift's
+    // typed update API cannot be parameterised over that.
+    await db.customUpdate(
+      'UPDATE $table SET image_id = ?1, is_verified = 1 WHERE id = ?2',
+      variables: [Variable(imageId), Variable(id)],
+      updates: {db.artists, db.albums, db.tracks},
+    );
+    await searchIndexer.reindexEntity(entity, id);
+    return true;
+  }
+
+  /// Detaches the picture, leaving the fallback chain to find another.
+  ///
+  /// The file itself stays in the store: it is content-addressed and may be
+  /// shared with a track that still uses it. Pruning is the store's job.
+  Future<void> _clearPicture(
+    (String, ImageRole, String) target,
+    int id,
+  ) async {
+    final (table, _, entity) = target;
+    await db.customUpdate(
+      'UPDATE $table SET image_id = NULL, is_verified = 1 WHERE id = ?1',
+      variables: [Variable(id)],
+      updates: {db.artists, db.albums, db.tracks},
+    );
+    await searchIndexer.reindexEntity(entity, id);
+  }
+
   // ------------------------------------------------------------------- albums
 
   Future<void> saveAlbum(
@@ -859,6 +971,100 @@ class EditRepository {
       ),
     );
     await searchIndexer.reindexEntity('album', albumId);
+  }
+
+
+  /// Adds an alternative title to an album.
+  ///
+  /// Same reason as an artist's other names: a release is often titled in one
+  /// script on the sleeve and another in the files, and both should find it.
+  Future<void> addAlbumAlias(
+    int albumId,
+    String alias, {
+    AliasKind kind = AliasKind.alias,
+    String? locale,
+  }) async {
+    final trimmed = alias.trim();
+    if (trimmed.isEmpty) return;
+    await db.into(db.albumAliases).insert(
+          AlbumAliasesCompanion.insert(
+            albumId: albumId,
+            alias: trimmed,
+            aliasKey: normalizeKey(trimmed),
+            kind: Value(kind),
+            locale: Value(_orNull(locale)),
+            source: const Value(DataSource.user),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+    await searchIndexer.reindexEntity('album', albumId);
+  }
+
+  Future<void> removeAlbumAlias(int aliasId) async {
+    final albumId = await _scalar(
+      'SELECT album_id FROM album_aliases WHERE id = ?1',
+      aliasId,
+    );
+    await (db.delete(db.albumAliases)..where((t) => t.id.equals(aliasId))).go();
+    if (albumId != null) await searchIndexer.reindexEntity('album', albumId);
+  }
+
+  Future<void> addTrackAlias(
+    int trackId,
+    String alias, {
+    AliasKind kind = AliasKind.alias,
+    String? locale,
+  }) async {
+    final trimmed = alias.trim();
+    if (trimmed.isEmpty) return;
+    await db.into(db.trackAliases).insert(
+          TrackAliasesCompanion.insert(
+            trackId: trackId,
+            alias: trimmed,
+            aliasKey: normalizeKey(trimmed),
+            kind: Value(kind),
+            locale: Value(_orNull(locale)),
+            source: const Value(DataSource.user),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+    await searchIndexer.reindexEntity('track', trackId);
+  }
+
+  Future<void> removeTrackAlias(int aliasId) async {
+    final trackId = await _scalar(
+      'SELECT track_id FROM track_aliases WHERE id = ?1',
+      aliasId,
+    );
+    await (db.delete(db.trackAliases)..where((t) => t.id.equals(aliasId))).go();
+    if (trackId != null) await searchIndexer.reindexEntity('track', trackId);
+  }
+
+  Future<List<AliasRow>> _aliasesFrom(
+    String table,
+    String column,
+    int id,
+  ) async {
+    final rows = await db
+        .customSelect(
+          'SELECT id, alias, kind, locale FROM $table '
+          'WHERE $column = ?1 ORDER BY alias',
+          variables: [Variable(id)],
+          readsFrom: {db.albumAliases, db.trackAliases},
+        )
+        .get();
+    return [
+      for (final row in rows)
+        AliasRow(
+          id: row.read<int>('id'),
+          alias: row.read<String>('alias'),
+          kind: AliasKind.values.firstWhere(
+            (k) => k.name == row.read<String>('kind'),
+            orElse: () => AliasKind.alias,
+          ),
+          locale: row.read<String?>('locale'),
+        ),
+    ];
   }
 
   // ------------------------------------------------------------------- tracks

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/indexer/search_indexer.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart';
+import 'package:marmelade/services/art/art_store.dart';
+import 'dart:io';
 
 /// Hand corrections, and what they do to the catalog.
 ///
@@ -12,14 +14,23 @@ import 'package:marmelade/data/repositories/edit_repository.dart';
 void main() {
   late MarmeladeDatabase db;
   late EditRepository repository;
+  late Directory artRoot;
 
   setUp(() async {
     db = MarmeladeDatabase.memory();
     await db.customSelect('SELECT 1').get();
-    repository = EditRepository(db: db, searchIndexer: SearchIndexer(db));
+    artRoot = Directory.systemTemp.createTempSync('marmelade_edit_art_');
+    repository = EditRepository(
+      db: db,
+      searchIndexer: SearchIndexer(db),
+      artStore: ArtStore(artRoot),
+    );
   });
 
-  tearDown(() async => db.close());
+  tearDown(() async {
+    await db.close();
+    if (artRoot.existsSync()) artRoot.deleteSync(recursive: true);
+  });
 
   Future<int> artist(String name, {ArtistKind? kind}) => db
       .into(db.artists)
@@ -55,6 +66,9 @@ void main() {
         ));
     return id;
   }
+
+  Future<bool> artStoreHas(String storedPath) =>
+      File('${artRoot.path}/$storedPath').exists();
 
   Future<List<String>> artistNames() async {
     final rows =
@@ -408,6 +422,117 @@ void main() {
           )
           .getSingle();
       expect(row.read<int?>('track_no'), isNull);
+    });
+  });
+
+  group('pictures', () {
+    /// The smallest valid PNG: a 1x1 transparent pixel.
+    File writePng(String name) {
+      final file = File('${artRoot.path}/$name');
+      file.writeAsBytesSync(const [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, //
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+      ]);
+      return file;
+    }
+
+    test('a chosen picture is stored and attached', () async {
+      final id = await artist('LukHash');
+      expect(await repository.setArtistPicture(id, writePng('a.png')), isTrue);
+
+      final edit = (await repository.watchArtist(id).first)!;
+      expect(edit.imagePath, isNotNull);
+      // Touched by hand, so a rescan leaves it alone.
+      expect(edit.isVerified, isTrue);
+      // And the file actually landed in the store.
+      expect(await artStoreHas(edit.imagePath!), isTrue);
+    });
+
+    test('the same picture twice is stored once', () async {
+      // The store is content-addressed, so choosing a file already in the
+      // library must not duplicate it on disk or in the images table.
+      final one = await artist('One');
+      final two = await artist('Two');
+      await repository.setArtistPicture(one, writePng('same.png'));
+      await repository.setArtistPicture(two, writePng('same-copy.png'));
+
+      final images = await db.customSelect('SELECT COUNT(*) AS n FROM images')
+          .getSingle();
+      expect(images.read<int>('n'), 1);
+    });
+
+    test('a file that is not an image is refused', () async {
+      final id = await artist('Someone');
+      final junk = File('${artRoot.path}/notes.txt')
+        ..writeAsStringSync('this is not a picture');
+      expect(await repository.setArtistPicture(id, junk), isFalse);
+      expect((await repository.watchArtist(id).first)!.imagePath, isNull);
+    });
+
+    test('clearing detaches the picture but keeps the file', () async {
+      final id = await artist('LukHash');
+      await repository.setArtistPicture(id, writePng('b.png'));
+      final stored = (await repository.watchArtist(id).first)!.imagePath!;
+
+      await repository.clearArtistPicture(id);
+      expect((await repository.watchArtist(id).first)!.imagePath, isNull);
+      // Content-addressed and possibly shared, so the file stays; pruning is
+      // the store's job.
+      expect(await artStoreHas(stored), isTrue);
+    });
+
+    test('albums and tracks work the same way', () async {
+      final artistId = await artist('Someone');
+      final albumId = await album('A release');
+      final trackId = await track('A song', artistId: artistId);
+
+      expect(
+        await repository.setAlbumPicture(albumId, writePng('c.png')),
+        isTrue,
+      );
+      expect(
+        await repository.setTrackPicture(trackId, writePng('d.png')),
+        isTrue,
+      );
+      expect((await repository.watchAlbum(albumId).first)!.imagePath, isNotNull);
+      expect((await repository.watchTrack(trackId).first)!.imagePath, isNotNull);
+    });
+  });
+
+  group('album and track aliases', () {
+    test('an album alias is added, deduplicated and removed', () async {
+      final id = await album('AD:HOUSE Winter 4');
+      await repository.addAlbumAlias(id, 'アドハウス',
+          kind: AliasKind.nativeScript);
+      await repository.addAlbumAlias(id, 'アドハウス');
+
+      var edit = (await repository.watchAlbum(id).first)!;
+      expect(edit.aliases, hasLength(1));
+      expect(edit.aliases.single.kind, AliasKind.nativeScript);
+
+      await repository.removeAlbumAlias(edit.aliases.single.id);
+      edit = (await repository.watchAlbum(id).first)!;
+      expect(edit.aliases, isEmpty);
+    });
+
+    test('a track alias is added and removed', () async {
+      final artistId = await artist('Someone');
+      final id = await track('Feel Right', artistId: artistId);
+      await repository.addTrackAlias(id, 'フィールライト');
+
+      var edit = (await repository.watchTrack(id).first)!;
+      expect(edit.aliases.single.alias, 'フィールライト');
+
+      await repository.removeTrackAlias(edit.aliases.single.id);
+      edit = (await repository.watchTrack(id).first)!;
+      expect(edit.aliases, isEmpty);
     });
   });
 

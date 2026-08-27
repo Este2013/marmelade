@@ -7,6 +7,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
+import 'picture_section.dart';
 
 /// Everything about one album that a person can change.
 class AlbumEditorView extends ConsumerWidget {
@@ -210,6 +211,33 @@ class _EditorState extends ConsumerState<_Editor> {
                         ),
                       ],
                     ),
+                  ),
+                  PictureSection(
+                    imagePath: edit.imagePath,
+                    fallbackSeed: edit.title,
+                    subtitle: 'The sleeve. Every track on the release falls '
+                        'back to it when it has no picture of its own.',
+                    onPick: (file) => ref
+                        .read(editRepositoryProvider)
+                        .setAlbumPicture(edit.id, file),
+                    onClear: () => ref
+                        .read(editRepositoryProvider)
+                        .clearAlbumPicture(edit.id),
+                  ),
+                  AliasSection(
+                    title: 'Other titles',
+                    subtitle: 'Alternative titles that should find this '
+                        'release. A native script title, a romanisation, or '
+                        'just what the files happen to say.',
+                    aliases: edit.aliases,
+                    emptyMessage: 'No other titles yet.',
+                    addLabel: 'Add a title',
+                    enabled: !_saving,
+                    onAdd: (alias, kind) => ref
+                        .read(editRepositoryProvider)
+                        .addAlbumAlias(edit.id, alias, kind: kind),
+                    onRemove: (id) =>
+                        ref.read(editRepositoryProvider).removeAlbumAlias(id),
                   ),
                   EditSection(
                     title: 'Album artist',

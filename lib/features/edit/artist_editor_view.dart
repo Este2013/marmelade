@@ -8,6 +8,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
+import 'picture_section.dart';
 
 /// Everything about one artist that a person can change.
 ///
@@ -229,6 +230,19 @@ class _EditorState extends ConsumerState<_Editor> {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
                 children: [
                   _identity(),
+                  PictureSection(
+                    imagePath: edit.imagePath,
+                    fallbackSeed: edit.name,
+                    circular: true,
+                    fallbackIcon: edit.isGroup
+                        ? Icons.groups_outlined
+                        : Icons.person_outline,
+                    subtitle: 'A portrait for this artist. Tracks and albums '
+                        'with no picture of their own fall back to it.',
+                    onPick: (file) =>
+                        _repository.setArtistPicture(edit.id, file),
+                    onClear: () => _repository.clearArtistPicture(edit.id),
+                  ),
                   _aliases(edit),
                   if (edit.isGroup || edit.members.isNotEmpty) _members(edit),
                   _partOf(edit),

@@ -66,6 +66,9 @@ void main() {
     releaseYear: 2024,
     albumArtistId: 7,
     albumArtistName: 'Diverse System',
+    aliases: [
+      AliasRow(id: 1, alias: 'アドハウス', kind: AliasKind.nativeScript),
+    ],
   );
 
   const trackEdit = TrackEdit(
@@ -79,6 +82,7 @@ void main() {
       CreditEdit(artistId: 5, name: 'Koiflower', role: CreditRole.mainArtist),
       CreditEdit(artistId: 6, name: 'Bangler', role: CreditRole.featured),
     ],
+    aliases: [],
   );
 
   Widget wrap(
@@ -186,6 +190,9 @@ void main() {
             ],
           ),
         ),
+        // The sections are a lazy list and Members now sits below a picture
+        // section, so a short viewport never builds it.
+        size: const Size(1200, 1800),
       );
       expect(find.text('Members'), findsOne);
       expect(find.text('xi'), findsOne);
