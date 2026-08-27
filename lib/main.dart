@@ -116,20 +116,24 @@ class _ShutdownLogger extends WindowListener {
   }
 }
 
-class MarmeladeApp extends StatelessWidget {
+class MarmeladeApp extends ConsumerWidget {
   const MarmeladeApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Seeds the palette from the Windows accent colour, falling back to
-    // marmelade's own orange when the OS does not report one.
+  Widget build(BuildContext context, WidgetRef ref) {
+    final preference = ref.watch(themeSettingsProvider);
+
+    // The Windows accent colour, which the settings may or may not be asking
+    // for. Read either way: switching the source back should not need a
+    // restart, and the builder is what supplies it.
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
-        final seed = darkDynamic?.primary ?? lightDynamic?.primary ?? marmeladeSeed;
+        final systemAccent = darkDynamic?.primary ?? lightDynamic?.primary;
+        final seed = preference.seed(systemAccent);
         return MaterialApp(
           title: 'marmelade',
           debugShowCheckedModeBanner: false,
-          themeMode: ThemeMode.dark,
+          themeMode: preference.mode,
           theme: buildTheme(seed: seed, brightness: Brightness.light),
           darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
           // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility

@@ -10,6 +10,7 @@ import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
 import '../../data/indexer/library_indexer.dart';
 import '../../widgets/time_text.dart';
+import 'appearance_section.dart';
 
 /// Where the project lives, shown in settings and used by the updater.
 const repositoryUrl = 'https://github.com/Este2013/marmelade';
@@ -27,6 +28,8 @@ class SettingsView extends ConsumerWidget {
       children: [
         Text('Settings', style: theme.textTheme.headlineSmall),
         const SizedBox(height: 20),
+        const AppearanceSection(),
+        const SizedBox(height: 28),
         const _LibrarySection(),
         const SizedBox(height: 28),
         const _StatisticsSection(),
@@ -505,10 +508,10 @@ class _SearchIndexTileState extends ConsumerState<_SearchIndexTile> {
         switch (counts) {
           null => 'Counting...',
           final c when c.trigrams == 0 =>
-            '${pluralize(c.tokens, 'entry')} · no substring index, so '
-                'mid-word and Japanese search are unavailable',
-          final c => '${pluralize(c.tokens, 'entry')} · '
-              '${pluralize(c.trigrams, 'substring entry')}',
+            '${pluralize(c.tokens, 'entry', 'entries')} · no substring index, '
+                'so mid-word and Japanese search are unavailable',
+          final c => '${pluralize(c.tokens, 'entry', 'entries')} · '
+              '${pluralize(c.trigrams, 'substring entry', 'substring entries')}',
         },
       ),
       trailing: _rebuilding

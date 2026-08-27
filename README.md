@@ -31,6 +31,9 @@ name you can't type.
 - **Player**: queue, shuffle, per-track and global gain, 10-band parametric EQ,
   playback speed, synced lyrics, a spectrum visualizer, mini-player and
   fullscreen modes
+- **Appearance**: light, dark, or whatever Windows is doing, with the accent
+  taken from the Windows accent colour or picked from a set of colours that
+  build a readable palette in both
 - **Lyrics**: markdown, with a timestamp where a paragraph starts, so the words
   follow the music a verse at a time. Translations sit beside the original and
   can be read together. A file can be linked instead of pasted, and then the

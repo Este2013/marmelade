@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/material.dart' show Color, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db/database.dart';
@@ -15,9 +16,12 @@ import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
 import '../data/repositories/search_repository.dart';
+import '../data/repositories/settings_repository.dart';
 import '../data/repositories/smart_playlist_resolver.dart';
 import '../data/repositories/tag_repository.dart';
 import '../domain/models/library_views.dart';
+import 'theme/app_theme.dart' show marmeladeSeed;
+import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
 import '../services/audio/playback_engine.dart';
 import '../services/audio/player_controller.dart';
@@ -381,6 +385,68 @@ final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
 ///
 /// Lives outside the view so the player bar's queue button can open the shade
 /// with the panel already up, and so the choice survives closing and reopening.
+/// The application's settings, as a typed key/value store.
+final settingsRepositoryProvider = Provider<SettingsRepository>(
+  (ref) => SettingsRepository(ref.watch(databaseProvider)),
+);
+
+/// What the appearance settings currently say.
+///
+/// Stored, so the app opens looking the way it was left rather than flashing
+/// the default theme on every launch before the real one arrives. The
+/// [ThemePreference] value is read once and then kept in memory: the theme is
+/// consulted on every build of every screen, and a stream read per build would
+/// be a query per frame.
+class ThemeSettings extends Notifier<ThemePreference> {
+  @override
+  ThemePreference build() {
+    // The stored values arrive one frame later. Starting from the default and
+    // replacing it is what the loading state looks like for something that
+    // cannot show a spinner.
+    Future.microtask(_load);
+    return const ThemePreference();
+  }
+
+  SettingsRepository get _settings => ref.read(settingsRepositoryProvider);
+
+  Future<void> _load() async {
+    final mode = await _settings.get(SettingKeys.themeMode, ThemeMode.dark.name);
+    final accent =
+        await _settings.get(SettingKeys.accentSource, AccentSource.system.name);
+    final custom = await _settings.get(
+      SettingKeys.customAccent,
+      marmeladeSeed.toARGB32(),
+    );
+    state = ThemePreference(
+      mode: ThemeMode.values.where((m) => m.name == mode).firstOrNull ??
+          ThemeMode.dark,
+      accent: AccentSource.of(accent),
+      customAccent: Color(custom),
+    );
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    state = state.copyWith(mode: mode);
+    await _settings.set(SettingKeys.themeMode, mode.name);
+  }
+
+  Future<void> setAccent(AccentSource accent) async {
+    state = state.copyWith(accent: accent);
+    await _settings.set(SettingKeys.accentSource, accent.name);
+  }
+
+  /// Picking a colour also selects it, since picking one and having nothing
+  /// happen because the source is still "Windows accent" is a puzzle.
+  Future<void> setCustomAccent(Color color) async {
+    state = state.copyWith(accent: AccentSource.custom, customAccent: color);
+    await _settings.set(SettingKeys.customAccent, color.toARGB32());
+    await _settings.set(SettingKeys.accentSource, AccentSource.custom.name);
+  }
+}
+
+final themeSettingsProvider =
+    NotifierProvider<ThemeSettings, ThemePreference>(ThemeSettings.new);
+
 /// Reads and writes lyrics.
 final lyricsRepositoryProvider = Provider<LyricsRepository>(
   (ref) => LyricsRepository(ref.watch(databaseProvider)),

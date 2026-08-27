@@ -637,12 +637,25 @@ void main() {
     await settle(tester);
     expect(tester.takeException(), isNull);
 
+    // The theme controls are what the page opens on.
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Match Windows'), findsWidgets);
+
     expect(find.text('Music folders'), findsWidgets);
     expect(find.text('Add folder'), findsOneWidget);
     expect(find.text('No folders yet'), findsOneWidget);
-    expect(find.text('Source code'), findsOneWidget);
     // Anything waiting on the user is surfaced rather than hidden.
     expect(find.textContaining('to review'), findsOneWidget);
+
+    // Further down the page, and the list is lazy, so it has to be reached
+    // rather than merely looked for.
+    await tester.dragUntilVisible(
+      find.text('Source code'),
+      find.text('Add folder'),
+      const Offset(0, -200),
+    );
+    await settle(tester);
+    expect(find.text('Source code'), findsOneWidget);
 
     await capture(tester, '05-settings');
   });
