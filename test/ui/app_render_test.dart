@@ -12,6 +12,7 @@ import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/data/repositories/review_repository.dart';
+import 'package:marmelade/features/player/player_bar.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
@@ -124,25 +125,84 @@ class _PlayingPlayer extends PlayerController {
         );
 
   @override
-  PlayerSnapshot build() => const PlayerSnapshot(
+  PlayerSnapshot build() => _playing;
+}
+
+/// A player with a long queue, positioned wherever the test asks.
+///
+/// For the opening scroll offset, which only matters once the queue is longer
+/// than the panel.
+class _LongQueuePlayer extends PlayerController {
+  _LongQueuePlayer(MarmeladeDatabase db, this.index, this.length)
+      : super(
+          engine: _SilentEngine(),
+          queueRepository: QueueRepository(db),
+          libraryRepository: LibraryRepository(db),
+          db: db,
+        );
+
+  final int index;
+  final int length;
+
+  @override
+  PlayerSnapshot build() => PlayerSnapshot(
         status: PlaybackStatus.playing,
-        currentIndex: 0,
-        duration: Duration(minutes: 3, seconds: 22),
-        queue: _queue,
-        // Points at the collaboration fixture on purpose, so the credits
-        // actually resolve to two artists instead of falling back to the
-        // pre-joined line the player snapshot carries.
-        current: PlayableTrack(
-          trackId: 4,
-          filePath: 'C:/nowhere/cross-separator.flac',
-          title: 'Cross Separator',
-          artistLine: 'Camellia x Nanahira',
-          durationMs: 202000,
-          albumId: 2,
-          albumTitle: 'Comic and Cosmic',
-        ),
+        currentIndex: index,
+        duration: const Duration(minutes: 3),
+        queue: [
+          for (var i = 0; i < length; i++)
+            QueueEntry(
+              itemId: i + 1,
+              trackId: i + 1,
+              position: (i + 1) * 1000,
+              title: 'Track ${i + 1}',
+              artistLine: 'Someone',
+              durationMs: 180000,
+              source: 'album',
+            ),
+        ],
+        current: _playing.current,
       );
 }
+
+/// A player that starts with nothing and can be handed a track mid-test.
+///
+/// This is how the player bar's reveal is actually triggered in the app: the
+/// same notifier's state changes underneath it. Swapping the whole notifier
+/// out is not a path that ever happens.
+class _StageablePlayer extends PlayerController {
+  _StageablePlayer(MarmeladeDatabase db)
+      : super(
+          engine: _SilentEngine(),
+          queueRepository: QueueRepository(db),
+          libraryRepository: LibraryRepository(db),
+          db: db,
+        );
+
+  @override
+  PlayerSnapshot build() => const PlayerSnapshot();
+
+  void stageTrack() => state = _playing;
+}
+
+const _playing = PlayerSnapshot(
+  status: PlaybackStatus.playing,
+  currentIndex: 0,
+  duration: Duration(minutes: 3, seconds: 22),
+  queue: _queue,
+  // Points at the collaboration fixture on purpose, so the credits actually
+  // resolve to two artists instead of falling back to the pre-joined line the
+  // player snapshot carries.
+  current: PlayableTrack(
+    trackId: 4,
+    filePath: 'C:/nowhere/cross-separator.flac',
+    title: 'Cross Separator',
+    artistLine: 'Camellia x Nanahira',
+    durationMs: 202000,
+    albumId: 2,
+    albumTitle: 'Comic and Cosmic',
+  ),
+);
 
 const _queue = [
   QueueEntry(
@@ -314,6 +374,8 @@ void main() {
     List<TrackRow> tracks = _allTracks,
     List<PendingCreditGroup> pending = const [],
     bool playing = false,
+    bool stageable = false,
+    ({int index, int length})? longQueue,
   }) {
     return ProviderScope(
       overrides: [
@@ -321,7 +383,12 @@ void main() {
         artStoreProvider.overrideWithValue(ArtStore(artRoot)),
         playbackEngineProvider.overrideWithValue(_SilentEngine()),
         playerProvider.overrideWith(
-          () => playing ? _PlayingPlayer(db) : _IdlePlayer(db),
+          () => switch ((playing, stageable, longQueue)) {
+            (_, _, final q?) => _LongQueuePlayer(db, q.index, q.length),
+            (_, true, _) => _StageablePlayer(db),
+            (true, _, _) => _PlayingPlayer(db),
+            _ => _IdlePlayer(db),
+          },
         ),
         pendingCreditsProvider.overrideWith((ref) => Stream.value(pending)),
         pendingCreditCountProvider
@@ -439,10 +506,11 @@ void main() {
     expect(find.text('PinocchioP'), findsWidgets);
     expect(find.text('2023'), findsOneWidget);
 
-    // The rail and the player strip are both present.
+    // The rail is present. The player strip is not: nothing is playing and
+    // nothing is queued, so there is nothing for it to control.
     expect(railItem('Songs'), findsOneWidget);
     expect(railItem('Artists'), findsOneWidget);
-    expect(find.text('Nothing playing'), findsOneWidget);
+    expect(find.byType(PlayerBar), findsNothing);
 
     await capture(tester, '01-albums');
   });
@@ -602,8 +670,10 @@ void main() {
     expect(find.text('Nanahira'), findsWidgets);
     expect(find.byTooltip('Remove from queue'), findsExactly(_queue.length));
     expect(find.byTooltip('Drag to reorder'), findsExactly(_queue.length));
-    // No transport in the shade: those controls are in the bar that opened it.
+    // Two ways out, deliberately: the shade's own close button and the bar's
+    // chevron. They carry different labels so each reads unambiguously.
     expect(find.byTooltip('Close now playing'), findsOne);
+    expect(find.byTooltip('Hide now playing'), findsOne);
     expect(tester.takeException(), isNull);
     await capture(tester, 'now-playing');
 
@@ -621,10 +691,11 @@ void main() {
     await tester.tap(find.byTooltip('Hide the queue'));
     await settle(tester);
     expect(find.text('Play queue'), findsNothing);
-    // Still obviously recoverable.
-    expect(find.byTooltip('Show the queue'), findsOne);
+    // Still obviously recoverable. The count rides in the tooltip now, so
+    // match the prefix rather than pinning the fixture's track count.
+    expect(find.byTooltip(RegExp(r'^Show the queue')), findsOne);
 
-    await tester.tap(find.byTooltip('Show the queue'));
+    await tester.tap(find.byTooltip(RegExp(r'^Show the queue')));
     await settle(tester);
     expect(find.text('Play queue'), findsOne);
     expect(tester.takeException(), isNull);
@@ -658,17 +729,108 @@ void main() {
     expect(find.text('Play queue'), findsNothing);
     expect(bigCoverShown(), isTrue);
     expect(tester.takeException(), isNull);
+
+    // Back to the queue, and keep a picture of it: the app's own minimum
+    // window is wider than this breakpoint on a scaled display, so the test
+    // surface is the only place this layout can actually be looked at.
+    await tester.tap(find.byTooltip(RegExp(r'^Show the queue')));
+    await settle(tester);
+    await capture(tester, 'now-playing-narrow');
   });
 
-  testWidgets('nothing to play means nothing to open', (tester) async {
-    await open(tester);
-    final button = tester.widget<IconButton>(
-      find.ancestor(
-        of: find.byTooltip('Open now playing'),
-        matching: find.byType(IconButton),
-      ),
+  /// The scroll position of the queue list.
+  ScrollPosition queueScroll(WidgetTester tester) => tester
+      .state<ScrollableState>(
+        find.descendant(
+          of: find.byType(ReorderableListView),
+          matching: find.byType(Scrollable),
+        ),
+      )
+      .position;
+
+  testWidgets('the queue opens with the current track at the top',
+      (tester) async {
+    // A queue of forty otherwise opens at track one, which is nowhere near
+    // where you are.
+    await open(
+      tester,
+      app: buildApp(longQueue: (index: 20, length: 40)),
     );
-    expect(button.onPressed, isNull);
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    expect(
+      queueScroll(tester).pixels,
+      moreOrLessEquals(20 * 56, epsilon: 1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a track near the end scrolls only as far as the queue goes',
+      (tester) async {
+    // The offset for the last track is past the end of the list, and clamping
+    // has to wait until the list has been laid out and knows its own extent.
+    await open(
+      tester,
+      app: buildApp(longQueue: (index: 39, length: 40)),
+    );
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    final position = queueScroll(tester);
+    expect(position.pixels, position.maxScrollExtent);
+    expect(position.pixels, lessThan(39 * 56));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a queue shorter than the panel does not scroll at all',
+      (tester) async {
+    await open(tester, app: buildApp(longQueue: (index: 2, length: 3)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    expect(queueScroll(tester).pixels, 0);
+    expect(queueScroll(tester).maxScrollExtent, 0);
+  });
+
+  testWidgets('the player bar stays away until there is something to play',
+      (tester) async {
+    // Gone, not disabled: a permanent strip saying "Nothing playing" is a
+    // control that does nothing, and clipping it to zero height would leave
+    // every button in it as a zero-area node in the accessibility tree --
+    // which is what crashed this app on the Windows accessibility bridge.
+    await open(tester);
+    expect(find.byType(PlayerBar), findsNothing);
+    expect(find.byTooltip('Open now playing'), findsNothing);
+  });
+
+  testWidgets('the player bar rises into view when a track starts',
+      (tester) async {
+    await open(tester, app: buildApp(stageable: true));
+    expect(find.byType(PlayerBar), findsNothing);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AppShell)),
+    );
+    (container.read(playerProvider.notifier) as _StageablePlayer).stageTrack();
+
+    // Part-way through, the bar is present but not yet at full height: it is
+    // sliding, not appearing.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    final partial = tester.getSize(find.byType(PlayerBar));
+    final partialVisible = tester.getRect(find.byType(SizeTransition)).height;
+    expect(partialVisible, greaterThan(0));
+    expect(partialVisible, lessThan(partial.height));
+
+    await settle(tester);
+    expect(find.byType(PlayerBar), findsOne);
+    expect(find.byTooltip('Open now playing'), findsOne);
+    expect(
+      tester.getRect(find.byType(SizeTransition)).height,
+      moreOrLessEquals(partial.height, epsilon: 1),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('an artist page groups its tracks by release', (tester) async {

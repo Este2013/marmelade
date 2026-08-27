@@ -56,14 +56,27 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   var _section = LibrarySection.albums;
 
   /// Drives the now-playing shade, drawn up out of the player bar.
   late final AnimationController _shade = AnimationController(
-    duration: const Duration(milliseconds: 280),
-    reverseDuration: const Duration(milliseconds: 220),
+    duration: const Duration(milliseconds: 320),
+    reverseDuration: const Duration(milliseconds: 240),
     vsync: this,
+  );
+
+  /// Drives the player bar itself, which slides up the first time there is
+  /// something to play and stays out of the way until then.
+  late final AnimationController _bar = AnimationController(
+    duration: const Duration(milliseconds: 340),
+    reverseDuration: const Duration(milliseconds: 240),
+    vsync: this,
+  );
+
+  late final Animation<double> _barCurve = CurvedAnimation(
+    parent: _bar,
+    curve: Curves.easeOutCubic,
   );
 
   @override
@@ -77,11 +90,14 @@ class _AppShellState extends ConsumerState<AppShell>
         AppLog.instance.warn('play requested by MARMELADE_PLAY');
         await ref.read(playerProvider.notifier).togglePlayPause();
         final player = ref.read(playerProvider);
-        AppLog.instance.info('play requested', fields: {
-          'status': player.status.name,
-          'track': player.current?.title ?? '(none)',
-          'error': player.errorMessage ?? '(none)',
-        });
+        AppLog.instance.info(
+          'play requested',
+          fields: {
+            'status': player.status.name,
+            'track': player.current?.title ?? '(none)',
+            'error': player.errorMessage ?? '(none)',
+          },
+        );
       });
     }
 
@@ -91,13 +107,17 @@ class _AppShellState extends ConsumerState<AppShell>
     final section = Platform.environment['MARMELADE_SECTION'];
     if (section != null && section.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final target =
-            LibrarySection.values.where((s) => s.name == section).firstOrNull;
+        final target = LibrarySection.values
+            .where((s) => s.name == section)
+            .firstOrNull;
         if (target == null) {
-          AppLog.instance.warn('unknown MARMELADE_SECTION', fields: {
-            'value': section,
-            'known': LibrarySection.values.map((s) => s.name).join(','),
-          });
+          AppLog.instance.warn(
+            'unknown MARMELADE_SECTION',
+            fields: {
+              'value': section,
+              'known': LibrarySection.values.map((s) => s.name).join(','),
+            },
+          );
           return;
         }
         _select(target);
@@ -114,6 +134,12 @@ class _AppShellState extends ConsumerState<AppShell>
         if (album != null) _openAlbum(album);
       });
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final player = ref.read(playerProvider);
+      if (player.hasTrack || player.hasQueue) _bar.value = 1;
+    });
 
     if (Platform.environment['MARMELADE_NOW_PLAYING'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback(
@@ -144,7 +170,19 @@ class _AppShellState extends ConsumerState<AppShell>
   @override
   void dispose() {
     _shade.dispose();
+    _bar.dispose();
     super.dispose();
+  }
+
+  /// Shows or hides the player bar to match whether anything is playable.
+  void _syncBar(bool canPlay) {
+    if (canPlay) {
+      _bar.forward();
+      return;
+    }
+    _bar.reverse();
+    // Nothing to look at, so nothing to look at it in.
+    _toggleShade(open: false);
   }
 
   /// One navigator key per section, so each keeps its own history.
@@ -206,18 +244,18 @@ class _AppShellState extends ConsumerState<AppShell>
 
   void _pop() => _navigatorKeys[_section]!.currentState?.maybePop();
 
-  void _openAlbum(int albumId) => _push(AlbumDetailView(
-        albumId: albumId,
-        onOpenArtist: _openArtist,
-        onBack: _pop,
-      ));
+  void _openAlbum(int albumId) => _push(
+    AlbumDetailView(albumId: albumId, onOpenArtist: _openArtist, onBack: _pop),
+  );
 
-  void _openArtist(int artistId) => _push(ArtistDetailView(
-        artistId: artistId,
-        onOpenAlbum: _openAlbum,
-        onOpenArtist: _openArtist,
-        onBack: _pop,
-      ));
+  void _openArtist(int artistId) => _push(
+    ArtistDetailView(
+      artistId: artistId,
+      onOpenAlbum: _openAlbum,
+      onOpenArtist: _openArtist,
+      onBack: _pop,
+    ),
+  );
 
   void _openCreditReview() {
     // Lives inside the Artists stack: it is about who the artists are, and it
@@ -233,42 +271,69 @@ class _AppShellState extends ConsumerState<AppShell>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // Nothing playing and nothing queued means no player bar at all, rather
+    // than a permanent strip saying so.
+    ref.listen(
+      playerProvider.select((s) => s.hasTrack || s.hasQueue),
+      (_, canPlay) => _syncBar(canPlay),
+    );
+
     return Scaffold(
       body: Column(
         children: [
           Expanded(
-            child: Row(
+            child: Stack(
               children: [
-                _Rail(
-                  selected: _section,
-                  onSelect: _select,
-                  pendingCredits:
-                      ref.watch(pendingCreditCountProvider).value ?? 0,
-                ),
-                VerticalDivider(
-                  width: 1,
-                  thickness: 1,
-                  color: scheme.outlineVariant.withValues(alpha: 0.4),
-                ),
-                Expanded(
-                  child: Stack(
+                Positioned.fill(
+                  child: Row(
                     children: [
-                      Positioned.fill(child: _sections()),
-                      // The shade covers the content area but not the rail: it
-                      // is opened from the player bar and closed the same way,
-                      // and losing every means of navigation would be worse
-                      // than the extra immersion is worth.
-                      Positioned.fill(child: _shadeLayer()),
+                      _Rail(
+                        selected: _section,
+                        onSelect: _select,
+                        pendingCredits:
+                            ref.watch(pendingCreditCountProvider).value ?? 0,
+                      ),
+                      VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: scheme.outlineVariant.withValues(alpha: 0.4),
+                      ),
+                      Expanded(child: _sections()),
                     ],
                   ),
                 ),
+                // The shade covers the rail as well as the content, so the
+                // artwork gets the whole window. The way back is the close
+                // button in its header and the chevron in the bar below, both
+                // of which stay visible.
+                Positioned.fill(child: _shadeLayer()),
               ],
             ),
           ),
-          PlayerBar(
-            expanded: _shadeOpen,
-            onToggleExpanded: () => _toggleShade(),
-            onOpenQueue: () => _toggleShade(open: true, showQueue: true),
+          // Listens to both controllers: the bar's own reveal, and the shade's,
+          // because the bar's chevron points the other way while the shade is
+          // up and nothing else would rebuild it.
+          AnimatedBuilder(
+            animation: Listenable.merge([_bar, _shade]),
+            builder: (context, _) {
+              // Gone entirely, not merely zero pixels tall. A clipped bar would
+              // leave every transport control in the tree at zero height, and a
+              // zero-area interactive node is what crashed this app on the
+              // Windows accessibility bridge.
+              if (_bar.value == 0) return const SizedBox.shrink();
+              return SizeTransition(
+                sizeFactor: _barCurve,
+                axis: Axis.vertical,
+                // Bottom-aligned, so the bar's own bottom edge stays put and
+                // the rest of it rises into view.
+                alignment: Alignment.bottomCenter,
+                child: PlayerBar(
+                  expanded: _shadeOpen,
+                  onToggleExpanded: () => _toggleShade(),
+                  onOpenQueue: () => _toggleShade(open: true, showQueue: true),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -283,18 +348,18 @@ class _AppShellState extends ConsumerState<AppShell>
   /// after, which preserves their scroll position without paying for the ones
   /// nobody has opened.
   Widget _sections() => IndexedStack(
-        index: _visitedOrder.indexOf(_section),
-        children: [
-          for (final section in _visitedOrder)
-            Navigator(
-              key: _navigatorKeys[section],
-              onGenerateRoute: (settings) => MaterialPageRoute(
-                settings: settings,
-                builder: (_) => _rootFor(section),
-              ),
-            ),
-        ],
-      );
+    index: _visitedOrder.indexOf(_section),
+    children: [
+      for (final section in _visitedOrder)
+        Navigator(
+          key: _navigatorKeys[section],
+          onGenerateRoute: (settings) => MaterialPageRoute(
+            settings: settings,
+            builder: (_) => _rootFor(section),
+          ),
+        ),
+    ],
+  );
 
   /// The now-playing shade, drawn up from the bottom edge.
   ///
@@ -306,21 +371,31 @@ class _AppShellState extends ConsumerState<AppShell>
       builder: (context, _) {
         if (_shade.value == 0) return const SizedBox.shrink();
         final progress = Curves.easeOutCubic.transform(_shade.value);
-        return LayoutBuilder(
-          builder: (context, constraints) => ClipRect(
-            // An Align with a heightFactor reveals a full-size child from the
-            // bottom up. Shrinking the child instead would reflow every line
-            // of text on the way, which reads as a glitch rather than a slide.
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              heightFactor: progress,
-              child: SizedBox(
-                height: constraints.maxHeight,
-                width: constraints.maxWidth,
-                child: NowPlayingView(
-                  onOpenArtist: _openArtist,
-                  onOpenAlbum: _openAlbum,
-                  onClose: () => _toggleShade(open: false),
+        // Fades in over the first part of the reveal and out over the last, so
+        // the content is already legible while the panel is still travelling
+        // and does not blink out of existence at the end.
+        final opacity = Curves.easeOut.transform(
+          (_shade.value / 0.55).clamp(0.0, 1.0),
+        );
+        return Opacity(
+          opacity: opacity,
+          child: LayoutBuilder(
+            builder: (context, constraints) => ClipRect(
+              // An Align with a heightFactor reveals a full-size child from
+              // the bottom up. Shrinking the child instead would reflow every
+              // line of text on the way, which reads as a glitch rather than
+              // a slide.
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: progress,
+                child: SizedBox(
+                  height: constraints.maxHeight,
+                  width: constraints.maxWidth,
+                  child: NowPlayingView(
+                    onOpenArtist: _openArtist,
+                    onOpenAlbum: _openAlbum,
+                    onClose: () => _toggleShade(open: false),
+                  ),
                 ),
               ),
             ),
@@ -331,29 +406,29 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   Widget _rootFor(LibrarySection section) => switch (section) {
-        LibrarySection.albums => AlbumsView(
-            onOpenAlbum: _openAlbum,
-            onOpenTrack: (trackId) =>
-                ref.read(playerProvider.notifier).playTrack(trackId),
-          ),
-        LibrarySection.songs => SongsView(
-            onOpenArtist: _openArtist,
-            onOpenAlbum: _openAlbum,
-          ),
-        LibrarySection.artists => ArtistsView(
-            onOpenArtist: _openArtist,
-            onOpenReview: _openCreditReview,
-          ),
-        LibrarySection.tags => const _NotYetView(
-            icon: Icons.label_outline,
-            title: 'Tags',
-          ),
-        LibrarySection.playlists => const _NotYetView(
-            icon: Icons.playlist_play_outlined,
-            title: 'Playlists',
-          ),
-        LibrarySection.settings => const SettingsView(),
-      };
+    LibrarySection.albums => AlbumsView(
+      onOpenAlbum: _openAlbum,
+      onOpenTrack: (trackId) =>
+          ref.read(playerProvider.notifier).playTrack(trackId),
+    ),
+    LibrarySection.songs => SongsView(
+      onOpenArtist: _openArtist,
+      onOpenAlbum: _openAlbum,
+    ),
+    LibrarySection.artists => ArtistsView(
+      onOpenArtist: _openArtist,
+      onOpenReview: _openCreditReview,
+    ),
+    LibrarySection.tags => const _NotYetView(
+      icon: Icons.label_outline,
+      title: 'Tags',
+    ),
+    LibrarySection.playlists => const _NotYetView(
+      icon: Icons.playlist_play_outlined,
+      title: 'Playlists',
+    ),
+    LibrarySection.settings => const SettingsView(),
+  };
 }
 
 /// The navigation rail: the app name at the top, Settings at the foot.
@@ -517,7 +592,8 @@ class _NotYetView extends StatelessWidget {
     return EmptyState(
       icon: icon,
       title: title,
-      message: 'Not built yet. The data behind it is already indexed, so this '
+      message:
+          'Not built yet. The data behind it is already indexed, so this '
           'view is the only thing missing.',
     );
   }

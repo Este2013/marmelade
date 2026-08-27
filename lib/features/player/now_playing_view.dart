@@ -39,7 +39,6 @@ class NowPlayingView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
-    final scheme = Theme.of(context).colorScheme;
     final queueVisible = ref.watch(queuePaneVisibleProvider);
 
     return ArtworkBackdrop(
@@ -51,11 +50,15 @@ class NowPlayingView extends ConsumerWidget {
       overlayOpacity: 0.56,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final twoPane = constraints.maxWidth >= _twoPaneBreakpoint;
           // One toggle covers both layouts: on a wide window it adds or removes
           // the queue beside the artwork, on a narrow one it swaps between
           // them. Either way, "show the queue" means the same thing.
-          final showArtwork = !queueVisible || twoPane;
+          final twoPane = constraints.maxWidth >= _twoPaneBreakpoint;
+
+          final artwork = _NowPlayingPane(
+            onOpenArtist: onOpenArtist,
+            onOpenAlbum: onOpenAlbum,
+          );
 
           return Column(
             children: [
@@ -67,37 +70,34 @@ class NowPlayingView extends ConsumerWidget {
                 onClose: onClose,
               ),
               Expanded(
-                child: Row(
-                  children: [
-                    if (showArtwork)
-                      Expanded(
-                        child: _NowPlayingPane(
-                          onOpenArtist: onOpenArtist,
-                          onOpenAlbum: onOpenAlbum,
-                        ),
+                child: twoPane
+                    // Side by side: the queue slides in from the right edge
+                    // and the artwork gives up the room as it arrives.
+                    ? Row(
+                        children: [
+                          Expanded(child: artwork),
+                          _QueueSlide(visible: queueVisible, width: 400),
+                        ],
+                      )
+                    // Too narrow for two: the queue takes the whole pane, so
+                    // it cross-fades with the artwork instead of sliding in
+                    // beside it, and floats as a rounded card rather than
+                    // butting a bare strip of colour up against the header.
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: queueVisible
+                            ? const Padding(
+                                key: ValueKey('queue'),
+                                padding: EdgeInsets.fromLTRB(12, 4, 12, 12),
+                                child: _QueueCard(),
+                              )
+                            : KeyedSubtree(
+                                key: const ValueKey('artwork'),
+                                child: artwork,
+                              ),
                       ),
-                    if (queueVisible)
-                      SizedBox(
-                        // Sized when it sits beside the artwork, filling the
-                        // shade when it is the only pane.
-                        width: showArtwork ? 400 : constraints.maxWidth,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: scheme.surface.withValues(alpha: 0.5),
-                            border: showArtwork
-                                ? Border(
-                                    left: BorderSide(
-                                      color: scheme.outlineVariant
-                                          .withValues(alpha: 0.4),
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          child: const _QueuePane(),
-                        ),
-                      ),
-                  ],
-                ),
               ),
             ],
           );
@@ -143,14 +143,15 @@ class _ShadeBar extends StatelessWidget {
           ),
           const Spacer(),
           IconButton(
-            tooltip: queueVisible ? 'Hide the queue' : 'Show the queue',
+            // The count lives in the tooltip rather than a badge: a permanent
+            // red dot on a control that is not a notification reads as an
+            // alert about nothing.
+            tooltip: queueVisible
+                ? 'Hide the queue'
+                : 'Show the queue (${pluralize(queueLength, 'track')})',
             isSelected: queueVisible,
             onPressed: onToggleQueue,
-            icon: Badge(
-              isLabelVisible: !queueVisible && queueLength > 1,
-              label: Text('$queueLength'),
-              child: const Icon(Icons.queue_music),
-            ),
+            icon: const Icon(Icons.queue_music),
           ),
         ],
       ),
@@ -333,12 +334,134 @@ class _LinkState extends State<_Link> {
   }
 }
 
-/// The queue: reorderable, removable, and playable from any point.
-class _QueuePane extends ConsumerWidget {
-  const _QueuePane();
+/// The queue panel, sliding in from the right beside the artwork.
+///
+/// A clip whose width is animated, rather than a translation: the artwork pane
+/// gives up its room as the panel arrives, so nothing is ever drawn over.
+class _QueueSlide extends StatelessWidget {
+  const _QueueSlide({required this.visible, required this.width});
+
+  final bool visible;
+  final double width;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return TweenAnimationBuilder<double>(
+      // begin and end match on purpose. A tween's begin is used only on the
+      // very first build, so this mounts at its final width with no animation
+      // -- the shade is already rising at that moment -- and animates from
+      // wherever it is on every toggle after.
+      tween: Tween(begin: visible ? 1 : 0, end: visible ? 1 : 0),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      builder: (context, progress, _) {
+        if (progress == 0) return const SizedBox.shrink();
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.centerRight,
+            widthFactor: progress,
+            child: SizedBox(
+              width: width,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.5),
+                  // Rounded where it meets the shade's header, square where it
+                  // meets the window edge, so it reads as a panel that slid
+                  // in rather than a block that appeared.
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                  ),
+                  border: Border(
+                    left: BorderSide(
+                      color: scheme.outlineVariant.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+                child: const ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                  ),
+                  child: _QueuePane(),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The queue as a floating card, for windows too narrow to hold two panes.
+class _QueueCard extends StatelessWidget {
+  const _QueueCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.4),
+        ),
+      ),
+      child: const ClipRRect(
+        borderRadius: BorderRadius.all(Radius.circular(18)),
+        child: _QueuePane(),
+      ),
+    );
+  }
+}
+
+/// The queue: reorderable, removable, and playable from any point.
+class _QueuePane extends ConsumerStatefulWidget {
+  const _QueuePane();
+
+  /// Height of one row, fixed so the opening scroll offset is exact.
+  ///
+  /// A 40px thumbnail with 8px above and below. Declaring it also lets the list
+  /// skip measuring every row it scrolls past.
+  static const rowExtent = 56.0;
+
+  @override
+  ConsumerState<_QueuePane> createState() => _QueuePaneState();
+}
+
+class _QueuePaneState extends ConsumerState<_QueuePane> {
+  late final ScrollController _scroll;
+
+  @override
+  void initState() {
+    super.initState();
+    // Opens with the current track at the top. A queue of two hundred tracks
+    // otherwise opens at the beginning, which is nowhere near where you are.
+    final index = ref.read(playerProvider).currentIndex;
+    _scroll = ScrollController(
+      initialScrollOffset:
+          index <= 0 ? 0 : index * _QueuePane.rowExtent,
+    );
+    // The offset may be past the end of a short queue, and maxScrollExtent is
+    // not known until the list has been laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final max = _scroll.position.maxScrollExtent;
+      if (_scroll.offset > max) _scroll.jumpTo(max);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final player = ref.watch(playerProvider);
     final controller = ref.read(playerProvider.notifier);
     final theme = Theme.of(context);
@@ -400,6 +523,8 @@ class _QueuePane extends ConsumerWidget {
                   message: 'Tracks you play or add will line up here.',
                 )
               : ReorderableListView.builder(
+                  scrollController: _scroll,
+                  itemExtent: _QueuePane.rowExtent,
                   padding: const EdgeInsets.only(bottom: 24),
                   itemCount: player.queue.length,
                   // The default handles are overlaid at the trailing edge,

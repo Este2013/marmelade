@@ -316,16 +316,19 @@ class _RightControls extends ConsumerWidget {
         const SizedBox(width: 12),
         _VolumeControl(value: player.volume, onChanged: controller.setVolume),
         IconButton(
-          tooltip: 'Play queue',
+          // The count lives in the tooltip rather than a badge. A red dot on a
+          // control that is not a notification reads as an alert about
+          // nothing, and it sat there permanently.
+          tooltip: 'Play queue (${pluralize(player.queue.length, 'track')})',
           onPressed: onOpenQueue,
-          icon: Badge(
-            isLabelVisible: player.queue.length > 1,
-            label: Text('${player.queue.length}'),
-            child: const Icon(Icons.queue_music),
-          ),
+          icon: const Icon(Icons.queue_music),
         ),
         IconButton(
-          tooltip: expanded ? 'Close now playing' : 'Open now playing',
+          // Distinct from the shade's own close button, which does the same
+          // thing from the other corner. Two controls with one label is
+          // ambiguous to read out, and there is a real difference in feel:
+          // this one folds the shade back into the bar it came from.
+          tooltip: expanded ? 'Hide now playing' : 'Open now playing',
           // Enabled whenever there is anything to look at. Requiring a loaded
           // track meant a restored queue could not be opened before pressing
           // play, which is the one moment you most want to look at it.
