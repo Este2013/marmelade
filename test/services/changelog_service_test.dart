@@ -170,6 +170,24 @@ void main() {
       }
     });
 
+    test('a dated entry uses the format the site and the gate expect', () {
+      // '2026-8-31' would sort and render wrongly while looking fine in the
+      // source, and the release gate only checks that a date is *present*.
+      for (final release in changelog) {
+        if (release.date == null) continue;
+        expect(
+          RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(release.date!),
+          isTrue,
+          reason: '${release.version} has date "${release.date}"',
+        );
+        expect(
+          DateTime.tryParse(release.date!),
+          isNotNull,
+          reason: '${release.version} has an impossible date',
+        );
+      }
+    });
+
     test('versions appear once each, newest first', () {
       final versions = [for (final r in changelog) r.version];
       expect(versions.toSet().length, versions.length);

@@ -40,6 +40,14 @@ void main(List<String> arguments) {
   stderr.writeln('wrote ${args.first}');
 }
 
+/// Today, as the changelog writes dates.
+String _today() {
+  final now = DateTime.now();
+  final month = now.month.toString().padLeft(2, '0');
+  final day = now.day.toString().padLeft(2, '0');
+  return '${now.year}-$month-$day';
+}
+
 void _check(String version) {
   if (version.isEmpty) {
     stderr.writeln('usage: --check <version>');
@@ -56,10 +64,22 @@ void _check(String version) {
     exit(1);
   }
   if (!entry.isReleased) {
-    stderr.writeln(
-      'The changelog entry for $version has no date. Set it to the release '
-      'date before tagging.',
-    );
+    // The exact edit, because the person reading this is looking at a failed
+    // release and wants the fix, not a description of the rule.
+    stderr.writeln('''
+The changelog entry for $version has no date, so it still counts as unreleased.
+
+In lib/core/changelog/changelog.dart, add a date to the
+ReleaseNotes(version: '$version', ...) entry:
+
+    date: '${_today()}',
+
+Then commit, and move the tag onto that commit:
+
+    git commit -am "chore: date the $version changelog entry"
+    git tag -f v$version
+    git push origin main && git push -f origin v$version
+''');
     exit(1);
   }
   if (entry.changes.isEmpty) {

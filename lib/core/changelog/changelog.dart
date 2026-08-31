@@ -97,7 +97,12 @@ class ReleaseNotes {
 
 /// Newest first.
 const changelog = <ReleaseNotes>[
-  ReleaseNotes(version: '0.2.0-beta.1', headline: 'Testing our updates', changes: [Change.added('Changelogs')]),
+  ReleaseNotes(
+    version: '0.2.0-beta.1',
+    date: '2026-08-31',
+    headline: 'Testing our updates',
+    changes: [Change.added('Changelogs')],
+  ),
   ReleaseNotes(
     version: '0.1.0',
     headline: 'The first build worth handing to someone else.',
