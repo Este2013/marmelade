@@ -8,7 +8,7 @@ import '../../data/repositories/smart_playlist_resolver.dart' show smartPlaylist
 import '../../data/repositories/tag_repository.dart';
 import '../edit/tag_section.dart';
 import '../../domain/models/library_views.dart';
-import '../../widgets/artwork.dart';
+import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
@@ -172,11 +172,13 @@ class _Header extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Artwork(
+              ExpandableArtwork(
                 storedPath: playlist.imagePath,
                 size: 160,
                 borderRadius: 12,
-                fallbackSeed: playlist.name,
+                owner: PictureOwner.playlist,
+                id: playlist.id,
+                title: playlist.name,
                 fallbackIcon: Icons.playlist_play,
               ),
               const SizedBox(width: 24),

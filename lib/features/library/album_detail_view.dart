@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../features/playlists/playlist_pickers.dart';
@@ -174,12 +175,17 @@ class _AlbumHeader extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Artwork(
+              ExpandableArtwork(
                 storedPath: album.imagePath,
                 size: 200,
                 borderRadius: 12,
-                fallbackSeed: '${album.title}${album.artistName}',
+                owner: PictureOwner.album,
+                id: album.id,
+                title: album.title,
                 heroTag: 'album-art-${album.id}',
+                // Synthetic single cards carry a negative id and are not rows
+                // anything can be written to.
+                editable: album.id > 0,
               ),
               const SizedBox(width: 28),
               Expanded(

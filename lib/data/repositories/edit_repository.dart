@@ -973,6 +973,8 @@ class EditRepository {
       ('artists', ImageRole.artist, SearchEntity.artist);
   static const _albumPicture = ('albums', ImageRole.front, SearchEntity.album);
   static const _trackPicture = ('tracks', ImageRole.front, SearchEntity.track);
+  static const _playlistPicture =
+      ('playlists', ImageRole.front, SearchEntity.playlist);
 
   Future<bool> setArtistPicture(int artistId, File file) =>
       _setPicture(_artistPicture, artistId, file);
@@ -982,6 +984,12 @@ class EditRepository {
 
   Future<bool> setTrackPicture(int trackId, File file) =>
       _setPicture(_trackPicture, trackId, file);
+
+  Future<bool> setPlaylistPicture(int playlistId, File file) =>
+      _setPicture(_playlistPicture, playlistId, file);
+
+  Future<void> clearPlaylistPicture(int playlistId) =>
+      _clearPicture(_playlistPicture, playlistId);
 
   Future<void> clearArtistPicture(int artistId) =>
       _clearPicture(_artistPicture, artistId);
@@ -1024,7 +1032,7 @@ class EditRepository {
     await db.customUpdate(
       'UPDATE $table SET image_id = ?1, is_verified = 1 WHERE id = ?2',
       variables: [Variable(imageId), Variable(id)],
-      updates: {db.artists, db.albums, db.tracks},
+      updates: {db.artists, db.albums, db.tracks, db.playlists},
     );
     await searchIndexer.reindexEntity(entity, id);
     return true;
@@ -1042,7 +1050,7 @@ class EditRepository {
     await db.customUpdate(
       'UPDATE $table SET image_id = NULL, is_verified = 1 WHERE id = ?1',
       variables: [Variable(id)],
-      updates: {db.artists, db.albums, db.tracks},
+      updates: {db.artists, db.albums, db.tracks, db.playlists},
     );
     await searchIndexer.reindexEntity(entity, id);
   }

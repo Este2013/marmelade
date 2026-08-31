@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
@@ -138,17 +139,20 @@ class _ArtistHeader extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              ClipOval(
-                child: Artwork(
-                  storedPath: artist?.imagePath,
-                  size: 168,
-                  borderRadius: 999,
-                  fallbackSeed: artist?.name,
-                  fallbackIcon: (artist?.isGroup ?? false)
-                      ? Icons.groups_outlined
-                      : Icons.person_outline,
-                  heroTag: artist == null ? null : 'artist-art-${artist!.id}',
-                ),
+              // Not clipped to a circle any more: the hover button sits in
+              // the corner, and a clip would cut it in half.
+              ExpandableArtwork(
+                storedPath: artist?.imagePath,
+                size: 168,
+                borderRadius: 999,
+                owner: PictureOwner.artist,
+                id: artist?.id ?? 0,
+                title: artist?.name ?? 'Artist',
+                fallbackIcon: (artist?.isGroup ?? false)
+                    ? Icons.groups_outlined
+                    : Icons.person_outline,
+                heroTag: artist == null ? null : 'artist-art-${artist!.id}',
+                editable: artist != null,
               ),
               const SizedBox(width: 28),
               Expanded(

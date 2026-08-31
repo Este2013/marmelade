@@ -8,6 +8,7 @@ import 'lyrics_pane.dart';
 import '../../data/repositories/queue_repository.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 
@@ -173,12 +174,15 @@ class _NowPlayingPane extends ConsumerWidget {
               // through a queue does not strobe.
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 320),
-                child: Artwork(
+                child: ExpandableArtwork(
                   key: ValueKey(track.imagePath ?? track.trackId),
                   storedPath: track.imagePath,
                   size: side,
                   borderRadius: 18,
-                  fallbackSeed: track.albumTitle ?? track.title,
+                  owner: PictureOwner.track,
+                  id: track.trackId,
+                  title: track.title,
+                  fallbackIcon: Icons.music_note_outlined,
                 ),
               ),
               const SizedBox(height: 28),
