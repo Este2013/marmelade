@@ -612,6 +612,19 @@ final lyricsLanguageProvider =
 final lyricsBilingualProvider =
     NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(true));
 
+/// What is typed in each list's filter box.
+///
+/// One per list rather than one shared: filtering albums and then switching to
+/// Songs should not hide most of the songs for reasons that are off screen.
+/// They survive navigating away and back, which is what makes the box useful
+/// for "keep this narrowed while I work through it".
+final albumFilterProvider =
+    NotifierProvider<ViewSetting<String>, String>(() => ViewSetting(''));
+final songFilterProvider =
+    NotifierProvider<ViewSetting<String>, String>(() => ViewSetting(''));
+final artistFilterProvider =
+    NotifierProvider<ViewSetting<String>, String>(() => ViewSetting(''));
+
 final queuePaneVisibleProvider =
     NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(true));
 

@@ -6,6 +6,7 @@ import '../data/db/enums.dart' show QueueSource;
 import '../domain/models/library_views.dart';
 import '../features/playlists/playlists_view.dart';
 import 'artwork.dart';
+import 'selection.dart';
 import 'spectrum_bars.dart';
 import 'time_text.dart';
 
@@ -32,6 +33,8 @@ class TrackList extends ConsumerWidget {
     this.queueSourceId,
     this.onRemoveTrack,
     this.removeTooltip = 'Remove',
+    this.selectionScope,
+    this.menuFor,
   });
 
   final List<TrackRow> tracks;
@@ -68,8 +71,22 @@ class TrackList extends ConsumerWidget {
   /// What that removal is called here, since it differs by context.
   final String removeTooltip;
 
+  /// Set to make rows selectable with Ctrl and Shift.
+  ///
+  /// Left null in a playlist or a queue, where a row's position is part of what
+  /// it means and multi-select would need to answer questions -- which of two
+  /// copies did you pick? -- that the lists it is used in do not have.
+  final SelectionScope? selectionScope;
+
+  /// The right-click menu for a row, built when it opens so it can read the
+  /// selection as it is then.
+  final List<MenuAction> Function(TrackRow track)? menuFor;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The ids in display order, so Shift-click means between these two rows on
+    // screen rather than between by id.
+    final order = [for (final track in tracks) track.id];
     final currentTrackId =
         ref.watch(playerProvider.select((s) => s.current?.trackId));
     final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
@@ -118,6 +135,11 @@ class TrackList extends ConsumerWidget {
           onRemove: onRemoveTrack,
           removeTooltip: removeTooltip,
           onPlay: () => _playFrom(ref, trackRow.trackIndex),
+          selectionScope: selectionScope,
+          order: order,
+          menu: menuFor == null
+              ? null
+              : () => menuFor!(trackRow.track),
         );
       },
     );
@@ -288,6 +310,9 @@ class TrackTile extends ConsumerStatefulWidget {
     this.onEditTrack,
     this.onRemove,
     this.removeTooltip = 'Remove',
+    this.selectionScope,
+    this.order = const [],
+    this.menu,
   });
 
   final TrackRow track;
@@ -306,6 +331,10 @@ class TrackTile extends ConsumerStatefulWidget {
   final void Function(int trackId)? onRemove;
   final String removeTooltip;
 
+  final SelectionScope? selectionScope;
+  final List<int> order;
+  final List<MenuAction> Function()? menu;
+
   @override
   ConsumerState<TrackTile> createState() => _TrackTileState();
 }
@@ -319,17 +348,45 @@ class _TrackTileState extends ConsumerState<TrackTile> {
     final scheme = theme.colorScheme;
     final track = widget.track;
 
+    final scope = widget.selectionScope;
+    final selected = scope == null
+        ? false
+        : ref.watch(
+            selectionProvider(scope).select((s) => s.contains(track.id)),
+          );
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: Material(
-        color: widget.isCurrent
-            ? scheme.primaryContainer.withValues(alpha: 0.35)
-            : (_hovering ? scheme.surfaceContainerHighest : Colors.transparent),
+        // Selection outranks both the playing row and hover: it is the thing
+        // the next action will act on, so it has to be the thing that stands
+        // out.
+        color: selected
+            ? scheme.primary.withValues(alpha: 0.18)
+            : widget.isCurrent
+                ? scheme.primaryContainer.withValues(alpha: 0.35)
+                : (_hovering
+                    ? scheme.surfaceContainerHighest
+                    : Colors.transparent),
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: widget.onPlay,
+          onTap: () {
+            // Ctrl and Shift select; a plain click plays, as it always has.
+            if (scope == null ||
+                applyClick(ref, scope, track.id, widget.order)) {
+              widget.onPlay();
+            }
+          },
+          onSecondaryTapUp: widget.menu == null
+              ? null
+              : (details) {
+                  if (scope != null) {
+                    prepareContextMenu(ref, scope, track.id);
+                  }
+                  showItemMenu(context, details.globalPosition, widget.menu!());
+                },
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: Row(

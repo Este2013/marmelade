@@ -178,3 +178,22 @@ bool containsCjk(String text) {
   }
   return false;
 }
+
+/// Whether any of [fields] contains [query], ignoring case, accents and
+/// punctuation.
+///
+/// The per-view filter boxes use this. It normalises both sides with
+/// [normalizeKey], so "bjork" finds "Björk" and "adhouse" finds "AD:HOUSE" --
+/// the same folding the catalog keys itself by, rather than a second idea of
+/// what counts as the same text.
+///
+/// An empty query matches everything, so a cleared box shows the whole list.
+bool matchesQuery(String query, Iterable<String?> fields) {
+  final key = normalizeKey(query);
+  if (key.isEmpty) return true;
+  for (final field in fields) {
+    if (field == null) continue;
+    if (normalizeKey(field).contains(key)) return true;
+  }
+  return false;
+}

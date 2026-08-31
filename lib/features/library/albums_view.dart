@@ -5,7 +5,12 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
+import '../../widgets/filter_field.dart';
+import '../../widgets/selection.dart';
+import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
 
 /// The albums grid. The app's default view.
@@ -22,14 +27,27 @@ class AlbumsView extends ConsumerWidget {
     final albums = ref.watch(albumsProvider);
     final showSingles = ref.watch(showSinglesProvider);
     final sort = ref.watch(albumSortProvider);
+    final filter = ref.watch(albumFilterProvider);
+
+    // Filtered here rather than in SQL: the list is already in memory, the
+    // answer has to keep up with typing, and an album is matched on the two
+    // things visible on its card.
+    final all = albums.value ?? const <AlbumCard>[];
+    final shown = [
+      for (final album in all)
+        if (matchesQuery(filter, [album.title, album.artistName])) album,
+    ];
 
     return Column(
       children: [
         _AlbumsToolbar(
           sort: sort,
           showSingles: showSingles,
-          count: albums.value?.length ?? 0,
+          count: all.length,
+          shown: shown.length,
+          filter: filter,
         ),
+        _AlbumSelectionBar(albums: shown),
         Expanded(
           child: albums.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -42,8 +60,16 @@ class AlbumsView extends ConsumerWidget {
               if (items.isEmpty) {
                 return const LibraryEmptyState();
               }
+              if (shown.isEmpty) {
+                return FilteredEmpty(
+                  query: filter,
+                  noun: 'album',
+                  onClear: () =>
+                      ref.read(albumFilterProvider.notifier).set(''),
+                );
+              }
               return _AlbumGrid(
-                albums: items,
+                albums: shown,
                 onOpenAlbum: onOpenAlbum,
                 onOpenTrack: onOpenTrack,
               );
@@ -61,11 +87,19 @@ class _AlbumsToolbar extends ConsumerWidget {
     required this.sort,
     required this.showSingles,
     required this.count,
+    required this.shown,
+    required this.filter,
   });
 
   final LibrarySort sort;
   final bool showSingles;
   final int count;
+
+  /// How many survive the filter, which is what the count should say when one
+  /// is typed -- "437 albums" above eleven cards is a lie.
+  final int shown;
+
+  final String filter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,11 +111,31 @@ class _AlbumsToolbar extends ConsumerWidget {
           Text('Albums', style: theme.textTheme.headlineSmall),
           const SizedBox(width: 12),
           Text(
-            pluralize(count, 'album'),
+            filter.isEmpty
+                ? pluralize(count, 'album')
+                : '$shown of ${pluralize(count, 'album')}',
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
-          const Spacer(),
+          const SizedBox(width: 16),
+          // Takes the slack rather than a fixed width, and capped so it does
+          // not sprawl across a wide window.
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: FilterField(
+                  value: filter,
+                  width: null,
+                  hint: 'Filter albums',
+                  onChanged: (value) =>
+                      ref.read(albumFilterProvider.notifier).set(value),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           // A plain visible toggle rather than something buried in a menu: the
           // user asked for singles to be one click away.
           FilterChip(
@@ -132,6 +186,10 @@ class _AlbumGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The ids in the order shown, so a Shift-click means "between these two on
+    // screen" rather than between by id, which after any sort is meaningless.
+    final order = [for (final album in albums) album.id];
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // Aim for cards around 190 px: big enough for the artwork to carry the
@@ -154,14 +212,9 @@ class _AlbumGrid extends StatelessWidget {
             final album = albums[index];
             return _AlbumTile(
               album: album,
-              onTap: () {
-                // Negative ids mark synthetic single cards.
-                if (album.id < 0) {
-                  onOpenTrack?.call(-album.id);
-                } else {
-                  onOpenAlbum(album.id);
-                }
-              },
+              order: order,
+              onOpenAlbum: onOpenAlbum,
+              onOpenTrack: onOpenTrack,
             );
           },
         );
@@ -172,10 +225,17 @@ class _AlbumGrid extends StatelessWidget {
 
 /// One album card: cover, title, artist.
 class _AlbumTile extends ConsumerStatefulWidget {
-  const _AlbumTile({required this.album, required this.onTap});
+  const _AlbumTile({
+    required this.album,
+    required this.order,
+    required this.onOpenAlbum,
+    required this.onOpenTrack,
+  });
 
   final AlbumCard album;
-  final VoidCallback onTap;
+  final List<int> order;
+  final void Function(int albumId) onOpenAlbum;
+  final void Function(int trackId)? onOpenTrack;
 
   @override
   ConsumerState<_AlbumTile> createState() => _AlbumTileState();
@@ -183,6 +243,82 @@ class _AlbumTile extends ConsumerStatefulWidget {
 
 class _AlbumTileState extends ConsumerState<_AlbumTile> {
   var _hovering = false;
+
+  bool get _selected => ref.watch(
+        selectionProvider(SelectionScope.albums)
+            .select((s) => s.contains(widget.album.id)),
+      );
+
+  /// Negative ids mark synthetic single cards, which open their track.
+  void _open() {
+    final album = widget.album;
+    if (album.id < 0) {
+      widget.onOpenTrack?.call(-album.id);
+    } else {
+      widget.onOpenAlbum(album.id);
+    }
+  }
+
+  List<MenuAction> _menu() {
+    final selection = ref.read(selectionProvider(SelectionScope.albums));
+    final ids = selection.ids.where((id) => id > 0).toSet();
+    final many = ids.length > 1;
+    final player = ref.read(playerProvider.notifier);
+    final bulk = BulkActions(ref);
+
+    return [
+      if (!many)
+        MenuAction(
+          label: 'Open',
+          icon: Icons.open_in_new,
+          onSelected: _open,
+        ),
+      MenuAction(
+        label: many ? 'Play these ${ids.length} albums' : 'Play',
+        icon: Icons.play_arrow,
+        onSelected: () async {
+          final tracks = await bulk.tracksOfAlbums(ids);
+          if (tracks.isNotEmpty) {
+            await player.playAll(tracks, source: QueueSource.album);
+          }
+        },
+      ),
+      MenuAction(
+        label: 'Play next',
+        icon: Icons.playlist_play,
+        onSelected: () async =>
+            player.playNext(await bulk.tracksOfAlbums(ids)),
+      ),
+      MenuAction(
+        label: 'Add to the queue',
+        icon: Icons.playlist_add,
+        onSelected: () async =>
+            player.addToQueue(await bulk.tracksOfAlbums(ids)),
+      ),
+      const MenuAction.separator(),
+      MenuAction(
+        label: 'Add to a playlist',
+        icon: Icons.library_add_outlined,
+        onSelected: () async {
+          final tracks = await bulk.tracksOfAlbums(ids);
+          if (mounted) {
+            await addTracksToPlaylist(context, ref, tracks);
+          }
+        },
+      ),
+      MenuAction(
+        label: many ? 'Tag these ${ids.length} albums' : 'Add a tag',
+        icon: Icons.label_outline,
+        onSelected: () => tagSelection(
+          context,
+          ref,
+          target: TagTarget.album,
+          ids: ids,
+          noun: 'album',
+        ),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +331,17 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
       onExit: (_) => setState(() => _hovering = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: () {
+          // Ctrl and Shift manage the selection; a plain click keeps doing
+          // what this grid has always done, and clears it.
+          if (applyClick(ref, SelectionScope.albums, album.id, widget.order)) {
+            _open();
+          }
+        },
+        onSecondaryTapUp: (details) {
+          prepareContextMenu(ref, SelectionScope.albums, album.id);
+          showItemMenu(context, details.globalPosition, _menu());
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -213,6 +359,12 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
                       duration: const Duration(milliseconds: 160),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
+                        border: _selected
+                            ? Border.all(
+                                color: theme.colorScheme.primary,
+                                width: 3,
+                              )
+                            : null,
                         boxShadow: _hovering
                             ? [
                                 BoxShadow(
@@ -337,6 +489,62 @@ class _PlayOverlayButton extends ConsumerWidget {
       tracks.map((t) => t.id).toList(),
       source: QueueSource.album,
       sourceRefId: album.id,
+    );
+  }
+}
+
+/// The bulk actions for a selection of albums.
+class _AlbumSelectionBar extends ConsumerWidget {
+  const _AlbumSelectionBar({required this.albums});
+
+  /// The albums currently shown, so "Select all" means what is on screen --
+  /// including after a filter has narrowed it.
+  final List<AlbumCard> albums;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selection = ref.watch(selectionProvider(SelectionScope.albums));
+    // Synthetic single cards have negative ids and are not albums; they cannot
+    // be tagged or opened as one.
+    final ids = selection.ids.where((id) => id > 0).toSet();
+    final player = ref.read(playerProvider.notifier);
+    final bulk = BulkActions(ref);
+
+    return SelectionBar(
+      scope: SelectionScope.albums,
+      noun: 'album',
+      onSelectAll: () => ref
+          .read(selectionProvider(SelectionScope.albums).notifier)
+          .selectAll([for (final album in albums) album.id]),
+      actions: [
+        MenuAction(
+          label: 'Queue',
+          icon: Icons.playlist_add,
+          onSelected: () async =>
+              player.addToQueue(await bulk.tracksOfAlbums(ids)),
+        ),
+        MenuAction(
+          label: 'Playlist',
+          icon: Icons.library_add_outlined,
+          onSelected: () async {
+            final tracks = await bulk.tracksOfAlbums(ids);
+            if (context.mounted) {
+              await addTracksToPlaylist(context, ref, tracks);
+            }
+          },
+        ),
+        MenuAction(
+          label: 'Tag',
+          icon: Icons.label_outline,
+          onSelected: () => tagSelection(
+            context,
+            ref,
+            target: TagTarget.album,
+            ids: ids,
+            noun: 'album',
+          ),
+        ),
+      ],
     );
   }
 }

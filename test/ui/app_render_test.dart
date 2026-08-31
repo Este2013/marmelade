@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show ImageByteFormat;
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -423,6 +425,19 @@ void main() {
     db = MarmeladeDatabase.memory();
     await db.customSelect('SELECT 1').get();
     artRoot = Directory.systemTemp.createTempSync('marmelade_ui_art_');
+
+    // The fixture tracks, as rows. The lists are fed from overridden providers,
+    // but anything that *acts* on a track writes to the database -- playing
+    // one queues it -- and a queue row needs a track to point at.
+    for (final track in _allTracks) {
+      await db.into(db.tracks).insert(
+            TracksCompanion.insert(
+              id: Value(track.id),
+              title: track.title,
+              nameKey: track.title.toLowerCase(),
+            ),
+          );
+    }
   });
 
   tearDown(() async {
@@ -1167,6 +1182,289 @@ void main() {
     expect(find.text('Top result'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await capture(tester, '09-search-narrow');
+  });
+
+  group('filtering a list', () {
+    testWidgets('narrows the songs list and says how many are left',
+        (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      expect(find.text('Tokyo Mannequin'), findsOneWidget);
+      expect(find.text('Cross Separator'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter songs'),
+        'cross',
+      );
+      await settle(tester);
+
+      expect(find.text('Cross Separator'), findsOneWidget);
+      expect(find.text('Tokyo Mannequin'), findsNothing);
+      // The count follows the filter: "3 songs" above one row is a lie.
+      expect(find.text('1 of 3 songs'), findsOneWidget);
+    });
+
+    testWidgets('matches an artist, not only a title', (tester) async {
+      // A song is as likely to be looked for by who is on it.
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter songs'),
+        'nanahira',
+      );
+      await settle(tester);
+
+      expect(find.text('Cross Separator'), findsOneWidget);
+      expect(find.text('Tokyo Mannequin'), findsNothing);
+    });
+
+    testWidgets('says so when it has hidden everything', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter songs'),
+        'zzzzz',
+      );
+      await settle(tester);
+
+      expect(find.textContaining('No song matches'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('albums are filtered by title and by artist', (tester) async {
+      await open(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter albums'),
+        'comic',
+      );
+      await settle(tester);
+
+      expect(find.text('Comic and Cosmic'), findsOneWidget);
+      expect(find.text('Antenna'), findsNothing);
+    });
+  });
+
+  group('selecting several things', () {
+    /// Taps with a modifier held, the way a person does it.
+    Future<void> tapWith(
+      WidgetTester tester,
+      LogicalKeyboardKey modifier,
+      Finder target,
+    ) async {
+      await tester.sendKeyDownEvent(modifier);
+      await tester.tap(target);
+      await tester.sendKeyUpEvent(modifier);
+      await settle(tester);
+    }
+
+    testWidgets('ctrl-click selects, and the bulk actions appear',
+        (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      // Nothing selected: no bar, and no interactive nodes for one either.
+      expect(find.textContaining('selected'), findsNothing);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+
+      expect(find.text('1 song selected'), findsOneWidget);
+      expect(find.text('Tag'), findsOneWidget);
+      expect(find.text('Playlist'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('ctrl-click again unselects', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+
+      expect(find.textContaining('selected'), findsNothing);
+    });
+
+    testWidgets('shift-click takes everything between', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.shiftLeft,
+        find.text('Cross Separator'),
+      );
+
+      // Three rows in the fixture, first to last.
+      expect(find.text('3 songs selected'), findsOneWidget);
+    });
+
+    testWidgets('a plain click clears the selection and plays', (tester) async {
+      // The rule that keeps every existing habit working: plain click does
+      // what it always did.
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+      expect(find.text('1 song selected'), findsOneWidget);
+
+      await tester.tap(find.text('Motivation is Dead'));
+      await settle(tester);
+
+      expect(find.textContaining('selected'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('select all takes what the filter left', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter songs'),
+        'antenna',
+      );
+      await settle(tester);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Tokyo Mannequin'),
+      );
+      await tester.tap(find.text('Select all'));
+      await settle(tester);
+
+      // Two of the three fixture tracks are on Antenna.
+      expect(find.text('2 songs selected'), findsOneWidget);
+    });
+
+    testWidgets('albums can be selected too', (tester) async {
+      await open(tester);
+
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Antenna'),
+      );
+
+      expect(find.text('1 album selected'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a selection belongs to its own list', (tester) async {
+      // Selecting albums and switching to Songs must not leave songs
+      // mysteriously selected.
+      await open(tester);
+      await tapWith(
+        tester,
+        LogicalKeyboardKey.controlLeft,
+        find.text('Antenna'),
+      );
+      expect(find.text('1 album selected'), findsOneWidget);
+
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+      expect(find.textContaining('song selected'), findsNothing);
+    });
+  });
+
+  group('right-click menus', () {
+    testWidgets('a song row offers the actions its buttons do', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      final row = tester.getCenter(find.text('Tokyo Mannequin'));
+      final gesture = await tester.startGesture(row, buttons: 2);
+      await gesture.up();
+      await settle(tester);
+
+      expect(find.text('Play next'), findsOneWidget);
+      expect(find.text('Add to the queue'), findsOneWidget);
+      expect(find.text('Add to a playlist'), findsOneWidget);
+      expect(find.text('Add a tag'), findsOneWidget);
+      expect(find.text('Go to the album'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the hover buttons are still there', (tester) async {
+      // Both, on purpose: the buttons are faster once you know them, a menu is
+      // what someone tries first.
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      expect(find.byTooltip('Add to queue'), findsWidgets);
+      expect(find.byTooltip('Play next'), findsWidgets);
+    });
+
+    testWidgets('right-clicking outside a selection narrows it to that row',
+        (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('Tokyo Mannequin'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await settle(tester);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Cross Separator')),
+        buttons: 2,
+      );
+      await gesture.up();
+      await settle(tester);
+
+      // The menu acts on the row that was right-clicked, not on the one that
+      // happened to be selected.
+      expect(find.text('1 song selected'), findsOneWidget);
+    });
+
+    testWidgets('an album tile has a menu', (tester) async {
+      await open(tester);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Antenna')),
+        buttons: 2,
+      );
+      await gesture.up();
+      await settle(tester);
+
+      expect(find.text('Open'), findsOneWidget);
+      expect(find.text('Add to the queue'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('the narrowest allowed window does not overflow', (tester) async {

@@ -174,6 +174,24 @@ class _AppShellState extends ConsumerState<AppShell>
                 (_) => AppLog.instance.info('search index rebuilt on request'),
               );
         }
+        // Debug affordance: pre-fill a list's filter box, so a filtered view
+        // can be photographed without driving the keyboard.
+        final listFilter = Platform.environment['MARMELADE_FILTER'];
+        if (listFilter != null && listFilter.isNotEmpty) {
+          switch (target) {
+            case LibrarySection.albums:
+              ref.read(albumFilterProvider.notifier).set(listFilter);
+            case LibrarySection.songs:
+              ref.read(songFilterProvider.notifier).set(listFilter);
+            case LibrarySection.artists:
+              ref.read(artistFilterProvider.notifier).set(listFilter);
+            default:
+              AppLog.instance.warn(
+                'MARMELADE_FILTER does not apply to this section',
+                fields: {'section': target.name},
+              );
+          }
+        }
         final query = Platform.environment['MARMELADE_SEARCH'];
         if (query != null && query.isNotEmpty) {
           ref.read(searchQueryProvider.notifier).set(query);

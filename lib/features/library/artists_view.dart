@@ -4,7 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../data/db/enums.dart' show QueueSource;
+import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
+import '../../widgets/filter_field.dart';
+import '../../widgets/selection.dart';
+import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
 
 /// The artists and groups list.
@@ -28,7 +34,14 @@ class ArtistsView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final artists = ref.watch(artistsProvider);
     final sort = ref.watch(artistSortProvider);
+    final filter = ref.watch(artistFilterProvider);
     final theme = Theme.of(context);
+
+    final all = artists.value ?? const <ArtistCard>[];
+    final shown = [
+      for (final artist in all)
+        if (matchesQuery(filter, [artist.name])) artist,
+    ];
 
     final pendingCredits = ref.watch(pendingCreditCountProvider).value ?? 0;
 
@@ -43,11 +56,29 @@ class ArtistsView extends ConsumerWidget {
               Text('Artists', style: theme.textTheme.headlineSmall),
               const SizedBox(width: 12),
               Text(
-                pluralize(artists.value?.length ?? 0, 'artist'),
+                filter.isEmpty
+                    ? pluralize(all.length, 'artist')
+                    : '${shown.length} of ${pluralize(all.length, 'artist')}',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
-              const Spacer(),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 320),
+                    child: FilterField(
+                      value: filter,
+                      width: null,
+                      hint: 'Filter artists',
+                      onChanged: (value) =>
+                          ref.read(artistFilterProvider.notifier).set(value),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               PopupMenuButton<LibrarySort>(
                 tooltip: 'Sort',
                 initialValue: sort,
@@ -67,6 +98,7 @@ class ArtistsView extends ConsumerWidget {
             ],
           ),
         ),
+        _ArtistSelectionBar(artists: shown, onOpenArtist: onOpenArtist),
         Expanded(
           child: artists.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -75,13 +107,24 @@ class ArtistsView extends ConsumerWidget {
               title: 'Could not read the library',
               message: '$error',
             ),
-            data: (items) => items.isEmpty
-                ? const EmptyState(
-                    icon: Icons.person_outline,
-                    title: 'No artists yet',
-                    message: 'Artists appear once music has been indexed.',
-                  )
-                : _ArtistGrid(artists: items, onOpen: onOpenArtist),
+            data: (items) {
+              if (items.isEmpty) {
+                return const EmptyState(
+                  icon: Icons.person_outline,
+                  title: 'No artists yet',
+                  message: 'Artists appear once music has been indexed.',
+                );
+              }
+              if (shown.isEmpty) {
+                return FilteredEmpty(
+                  query: filter,
+                  noun: 'artist',
+                  onClear: () =>
+                      ref.read(artistFilterProvider.notifier).set(''),
+                );
+              }
+              return _ArtistGrid(artists: shown, onOpen: onOpenArtist);
+            },
           ),
         ),
       ],
@@ -97,6 +140,8 @@ class _ArtistGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final order = [for (final artist in artists) artist.id];
+
     return LayoutBuilder(
       builder: (context, constraints) {
         const target = 170.0;
@@ -112,7 +157,8 @@ class _ArtistGrid extends StatelessWidget {
           itemCount: artists.length,
           itemBuilder: (context, index) => _ArtistTile(
             artist: artists[index],
-            onTap: () => onOpen(artists[index].id),
+            order: order,
+            onOpen: onOpen,
           ),
         );
       },
@@ -120,49 +166,138 @@ class _ArtistGrid extends StatelessWidget {
   }
 }
 
-class _ArtistTile extends StatefulWidget {
-  const _ArtistTile({required this.artist, required this.onTap});
+class _ArtistTile extends ConsumerStatefulWidget {
+  const _ArtistTile({
+    required this.artist,
+    required this.order,
+    required this.onOpen,
+  });
 
   final ArtistCard artist;
-  final VoidCallback onTap;
+  final List<int> order;
+  final void Function(int artistId) onOpen;
 
   @override
-  State<_ArtistTile> createState() => _ArtistTileState();
+  ConsumerState<_ArtistTile> createState() => _ArtistTileState();
 }
 
-class _ArtistTileState extends State<_ArtistTile> {
+class _ArtistTileState extends ConsumerState<_ArtistTile> {
   var _hovering = false;
+
+  List<MenuAction> _menu() {
+    final ids = ref.read(selectionProvider(SelectionScope.artists)).ids;
+    final many = ids.length > 1;
+    final player = ref.read(playerProvider.notifier);
+    final bulk = BulkActions(ref);
+
+    return [
+      if (!many)
+        MenuAction(
+          label: 'Open',
+          icon: Icons.open_in_new,
+          onSelected: () => widget.onOpen(widget.artist.id),
+        ),
+      MenuAction(
+        label: many ? 'Play everything by these ${ids.length}' : 'Play all',
+        icon: Icons.play_arrow,
+        onSelected: () async {
+          final tracks = await bulk.tracksOfArtists(ids);
+          if (tracks.isNotEmpty) {
+            await player.playAll(tracks, source: QueueSource.artist);
+          }
+        },
+      ),
+      MenuAction(
+        label: 'Add to the queue',
+        icon: Icons.playlist_add,
+        onSelected: () async =>
+            player.addToQueue(await bulk.tracksOfArtists(ids)),
+      ),
+      const MenuAction.separator(),
+      MenuAction(
+        label: 'Add to a playlist',
+        icon: Icons.library_add_outlined,
+        onSelected: () async {
+          final tracks = await bulk.tracksOfArtists(ids);
+          if (mounted) await addTracksToPlaylist(context, ref, tracks);
+        },
+      ),
+      MenuAction(
+        label: many ? 'Tag these ${ids.length} artists' : 'Add a tag',
+        icon: Icons.label_outline,
+        onSelected: () => tagSelection(
+          context,
+          ref,
+          target: TagTarget.artist,
+          ids: ids,
+          noun: 'artist',
+        ),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final artist = widget.artist;
+    final selected = ref.watch(
+      selectionProvider(SelectionScope.artists)
+          .select((s) => s.contains(artist.id)),
+    );
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: () {
+          if (applyClick(
+            ref,
+            SelectionScope.artists,
+            artist.id,
+            widget.order,
+          )) {
+            widget.onOpen(artist.id);
+          }
+        },
+        onSecondaryTapUp: (details) {
+          prepareContextMenu(ref, SelectionScope.artists, artist.id);
+          showItemMenu(context, details.globalPosition, _menu());
+        },
         child: Column(
           children: [
             Expanded(
               child: AnimatedScale(
                 scale: _hovering ? 1.04 : 1,
                 duration: const Duration(milliseconds: 160),
+                // A ring rather than a rectangle: the portrait is round, and a
+                // square highlight around a circle reads as a rendering bug.
                 curve: Curves.easeOutCubic,
                 // Circular for people, rounded-square for groups: a shape
                 // difference reads faster than a label.
-                child: ClipPath(
-                  clipper: artist.isGroup ? null : const _CircleClipper(),
-                  child: Artwork(
-                    storedPath: artist.imagePath,
-                    borderRadius: artist.isGroup ? 12 : 999,
-                    fallbackSeed: artist.name,
-                    fallbackIcon: artist.isGroup
-                        ? Icons.groups_outlined
-                        : Icons.person_outline,
-                    heroTag: 'artist-art-${artist.id}',
+                child: Container(
+                  padding: selected ? const EdgeInsets.all(3) : EdgeInsets.zero,
+                  decoration: selected
+                      ? BoxDecoration(
+                          shape: artist.isGroup
+                              ? BoxShape.rectangle
+                              : BoxShape.circle,
+                          borderRadius:
+                              artist.isGroup ? BorderRadius.circular(15) : null,
+                          color: theme.colorScheme.primary,
+                        )
+                      : null,
+                  child: ClipPath(
+                    clipper: artist.isGroup ? null : const _CircleClipper(),
+                    child: Artwork(
+                      storedPath: artist.imagePath,
+                      borderRadius: artist.isGroup ? 12 : 999,
+                      fallbackSeed: artist.name,
+                      fallbackIcon: artist.isGroup
+                          ? Icons.groups_outlined
+                          : Icons.person_outline,
+                      heroTag: 'artist-art-${artist.id}',
+                    ),
                   ),
                 ),
               ),
@@ -250,6 +385,133 @@ class _ReviewBanner extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The bulk actions for a selection of artists.
+class _ArtistSelectionBar extends ConsumerWidget {
+  const _ArtistSelectionBar({
+    required this.artists,
+    required this.onOpenArtist,
+  });
+
+  final List<ArtistCard> artists;
+  final void Function(int artistId) onOpenArtist;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selection = ref.watch(selectionProvider(SelectionScope.artists));
+    final ids = selection.ids;
+    final player = ref.read(playerProvider.notifier);
+    final bulk = BulkActions(ref);
+
+    return SelectionBar(
+      scope: SelectionScope.artists,
+      noun: 'artist',
+      onSelectAll: () => ref
+          .read(selectionProvider(SelectionScope.artists).notifier)
+          .selectAll([for (final artist in artists) artist.id]),
+      actions: [
+        MenuAction(
+          label: 'Queue',
+          icon: Icons.playlist_add,
+          onSelected: () async =>
+              player.addToQueue(await bulk.tracksOfArtists(ids)),
+        ),
+        MenuAction(
+          label: 'Playlist',
+          icon: Icons.library_add_outlined,
+          onSelected: () async {
+            final tracks = await bulk.tracksOfArtists(ids);
+            if (context.mounted) {
+              await addTracksToPlaylist(context, ref, tracks);
+            }
+          },
+        ),
+        MenuAction(
+          label: 'Tag',
+          icon: Icons.label_outline,
+          onSelected: () => tagSelection(
+            context,
+            ref,
+            target: TagTarget.artist,
+            ids: ids,
+            noun: 'artist',
+          ),
+        ),
+        // Two or more of the same person under different spellings is the
+        // reason this library needs an artist editor at all, and selecting
+        // them is the fastest way to say so.
+        if (ids.length > 1)
+          MenuAction(
+            label: 'Merge',
+            icon: Icons.merge_type,
+            onSelected: () => _merge(context, ref, ids),
+          ),
+      ],
+    );
+  }
+
+  /// Asks which artist to keep, then moves every reference onto it.
+  Future<void> _merge(
+    BuildContext context,
+    WidgetRef ref,
+    Set<int> ids,
+  ) async {
+    final candidates = [
+      for (final artist in artists)
+        if (ids.contains(artist.id)) artist,
+    ]..sort((a, b) => b.trackCount.compareTo(a.trackCount));
+    if (candidates.length < 2) return;
+
+    final keep = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Merge ${candidates.length} artists'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Which name should survive? Every credit, alias, album and '
+                'tag from the others moves onto it, and the others are '
+                'deleted.',
+              ),
+              const SizedBox(height: 16),
+              for (final artist in candidates)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(artist.name),
+                  subtitle: Text(pluralize(artist.trackCount, 'track')),
+                  onTap: () => Navigator.of(context).pop(artist.id),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (keep == null) return;
+
+    await ref.read(editRepositoryProvider).mergeArtists(
+          keep,
+          ids.where((id) => id != keep).toList(),
+        );
+    ref.read(selectionProvider(SelectionScope.artists).notifier).clear();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Merged ${ids.length} artists into one.'),
       ),
     );
   }

@@ -97,6 +97,35 @@ class ReleaseNotes {
 
 /// Newest first.
 const changelog = <ReleaseNotes>[
+  // No date yet: this version is still being worked on. The release workflow
+  // refuses to build a tag whose entry is undated, which is what stops a
+  // release going out with nothing written down about it.
+  ReleaseNotes(
+    version: '0.2.0',
+    headline: 'Lists you can work through, and metadata you can fix in place.',
+    changes: [
+      Change.added(
+        'A filter box in Albums, Songs and Artists that narrows the list as '
+        'you type, matching titles, artists and albums, and folding accents.',
+      ),
+      Change.added(
+        'Right-click menus on songs, albums and artists: play, play next, '
+        'queue, add to a playlist, tag, and jump to the album or artist.',
+      ),
+      Change.added(
+        'Ctrl-click and Shift-click to select several rows, with bulk actions '
+        'for queueing, playlists and tagging. Selecting two or more artists '
+        'also offers to merge them.',
+      ),
+      Change.added(
+        'Artists and albums can be created from the pickers, so a credit can '
+        'be corrected without leaving the editor to go and make one first.',
+      ),
+      Change.added(
+        "A track's album can be changed or cleared from its editor.",
+      ),
+    ],
+  ),
   ReleaseNotes(
     version: '0.2.0-beta.1',
     date: '2026-08-31',
