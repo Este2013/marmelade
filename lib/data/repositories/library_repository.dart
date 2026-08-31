@@ -250,6 +250,9 @@ class LibraryRepository {
         t.album_id AS album_id, t.track_no AS track_no, t.disc_no AS disc_no,
         t.rating AS rating, t.is_favorite AS is_favorite,
         t.play_count AS play_count,
+        -- The track's own year when it has one, else the album's: a
+        -- compilation dates its tracks individually and most releases do not.
+        COALESCE(t.release_year, alb.release_year) AS release_year,
         alb.title AS album_title,
         ti.stored_path AS image_path,
         (SELECT MAX(mf.lossless) FROM media_files mf WHERE mf.track_id = t.id)
@@ -292,6 +295,7 @@ class LibraryRepository {
             rating: row.read<int?>('rating'),
             isFavorite: row.read<int>('is_favorite') == 1,
             playCount: row.read<int>('play_count'),
+            releaseYear: row.read<int?>('release_year'),
             isMissing: row.read<int>('present_files') == 0,
             lossless: (row.read<int?>('lossless') ?? 0) == 1,
           ),

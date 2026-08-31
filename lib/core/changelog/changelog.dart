@@ -124,6 +124,23 @@ const changelog = <ReleaseNotes>[
       Change.added(
         "A track's album can be changed or cleared from its editor.",
       ),
+      Change.added(
+        'Tags can be dragged between categories, and a category can be given '
+        'an icon and a colour.',
+      ),
+      Change.added(
+        'Clicking the artwork on an album, artist, playlist or now-playing '
+        'page opens it large; hovering it offers to change the picture.',
+      ),
+      Change.added(
+        'The smart playlist query field suggests what can come next, '
+        'including real artists, albums and tags from the library.',
+      ),
+      Change.added(
+        'Playlists can be sorted and grouped, and arranged by hand. An '
+        'arrangement is remembered, applies to tracks added later, and '
+        'survives a change to a smart playlist query.',
+      ),
     ],
   ),
   ReleaseNotes(

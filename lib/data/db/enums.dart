@@ -168,6 +168,63 @@ enum ImageRole {
 }
 
 /// Kind of playlist.
+/// How a playlist's tracks are ordered on screen.
+enum PlaylistSort {
+  /// The order they were put there, which is the default: a playlist is a
+  /// sequence somebody built, and rearranging it by default would throw that
+  /// away.
+  added,
+
+  /// An order arranged by hand, by dragging.
+  custom,
+
+  title,
+  artist,
+  album,
+  releaseYear,
+  duration,
+  rating,
+  playCount,
+  random;
+
+  /// What to call it in a menu.
+  String get label => switch (this) {
+        PlaylistSort.added => 'As added',
+        PlaylistSort.custom => 'Custom order',
+        PlaylistSort.title => 'Title',
+        PlaylistSort.artist => 'Artist',
+        PlaylistSort.album => 'Album',
+        PlaylistSort.releaseYear => 'Release year',
+        PlaylistSort.duration => 'Length',
+        PlaylistSort.rating => 'Rating',
+        PlaylistSort.playCount => 'Times played',
+        PlaylistSort.random => 'Shuffled',
+      };
+
+  static PlaylistSort of(String name) =>
+      PlaylistSort.values.where((s) => s.name == name).firstOrNull ??
+      PlaylistSort.added;
+}
+
+/// What a playlist's tracks are grouped under.
+enum PlaylistGrouping {
+  none,
+  album,
+  artist,
+  releaseYear;
+
+  String get label => switch (this) {
+        PlaylistGrouping.none => 'No groups',
+        PlaylistGrouping.album => 'By album',
+        PlaylistGrouping.artist => 'By artist',
+        PlaylistGrouping.releaseYear => 'By year',
+      };
+
+  static PlaylistGrouping of(String name) =>
+      PlaylistGrouping.values.where((g) => g.name == name).firstOrNull ??
+      PlaylistGrouping.none;
+}
+
 enum PlaylistKind {
   /// Explicit, ordered list of tracks the user curated.
   manual,

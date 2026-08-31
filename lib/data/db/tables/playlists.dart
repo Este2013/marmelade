@@ -52,6 +52,23 @@ class Playlists extends Table {
   /// Whether the smart query re-runs automatically as the library changes.
   BoolColumn get autoUpdate => boolean().withDefault(const Constant(true))();
 
+  /// How the tracks are ordered on screen, as a [PlaylistSort] name.
+  ///
+  /// Separate from [querySort], which orders what a smart query *finds*. This
+  /// one orders what is shown, and applies to manual playlists too -- so a
+  /// playlist can be kept in the order things were added while still being
+  /// read album by album.
+  TextColumn get displaySort =>
+      textEnum<PlaylistSort>().withDefault(const Constant('added'))();
+
+  /// Whether [displaySort] runs backwards.
+  BoolColumn get sortDescending =>
+      boolean().withDefault(const Constant(false))();
+
+  /// What the tracks are grouped under, as a [PlaylistGrouping] name.
+  TextColumn get groupBy =>
+      textEnum<PlaylistGrouping>().withDefault(const Constant('none'))();
+
   BoolColumn get isPinned => boolean().withDefault(const Constant(false))();
 
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
@@ -103,4 +120,35 @@ class PlaylistItems extends Table {
   List<String> get customConstraints => [
         'CHECK ((track_id IS NULL) <> (child_playlist_id IS NULL))',
       ];
+}
+
+/// A hand-made order for the tracks a query found.
+///
+/// Manual playlists do not need this: their rows already carry a position, and
+/// that position *is* the order. A smart playlist has no rows -- it is a query
+/// -- so an order someone arranged by hand has to be recorded against the
+/// tracks themselves.
+///
+/// Keyed by (playlist, track), which is why manual playlists cannot use it: a
+/// manual playlist may hold the same track twice on purpose, and two copies
+/// cannot share one key.
+///
+/// A track here that the query no longer finds is simply ignored, and its row
+/// left alone. That is what makes "the order survives a change to the query"
+/// work: narrow the query and widen it again, and the arrangement is still
+/// there.
+@TableIndex(name: 'idx_playlist_order', columns: {#playlistId, #position})
+class PlaylistTrackOrder extends Table {
+  @ReferenceName('trackOrderOfThisPlaylist')
+  IntColumn get playlistId =>
+      integer().references(Playlists, #id, onDelete: KeyAction.cascade)();
+
+  @ReferenceName('orderedInPlaylists')
+  IntColumn get trackId =>
+      integer().references(Tracks, #id, onDelete: KeyAction.cascade)();
+
+  IntColumn get position => integer()();
+
+  @override
+  Set<Column> get primaryKey => {playlistId, trackId};
 }

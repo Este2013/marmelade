@@ -59,6 +59,12 @@ class PlaylistRepository {
   /// to its manual rows rather than throwing, if it ever is not wired up.
   final SmartPlaylistResolver? smart;
 
+  /// The gap left between positions.
+  ///
+  /// Wide enough that inserting between two rows is one write rather than a
+  /// renumbering of everything after it.
+  static const _positionGap = 1000;
+
   /// How deep nesting may go.
   ///
   /// Not a technical limit -- the cycle check already makes recursion safe --
@@ -79,7 +85,8 @@ class PlaylistRepository {
       SELECT
         p.id AS id, p.name AS name, p.kind AS kind, p.parent_id AS parent_id,
         p.description AS description, p.query AS query,
-        p.query_sort AS query_sort,
+        p.query_sort AS query_sort, p.display_sort AS display_sort,
+        p.sort_descending AS sort_descending, p.group_by AS group_by,
         im.stored_path AS image_path,
         (SELECT COUNT(*) FROM playlist_items i
           WHERE i.playlist_id = p.id AND i.track_id IS NOT NULL
@@ -124,6 +131,9 @@ class PlaylistRepository {
             description: row.read<String?>('description'),
             query: row.read<String?>('query'),
             querySort: row.read<String?>('query_sort'),
+            displaySort: PlaylistSort.of(row.read<String>('display_sort')),
+            sortDescending: row.read<bool>('sort_descending'),
+            grouping: PlaylistGrouping.of(row.read<String>('group_by')),
             imagePath: row.read<String?>('image_path'),
             trackCount: row.read<int>('track_count'),
             childCount: row.read<int>('child_count'),
@@ -232,6 +242,7 @@ class PlaylistRepository {
       ];
     }
 
+
     // Hybrid: the query first, then the hand-picked rows that it missed, so
     // adding a track by hand does not reshuffle everything the query found.
     final manual = await resolveTrackIds(playlistId);
@@ -254,6 +265,224 @@ class PlaylistRepository {
       )
       .watch()
       .map((rows) => [for (final row in rows) row.read<int>('track_id')]);
+
+  /// How this playlist is ordered and grouped.
+  Future<({PlaylistSort sort, bool descending, PlaylistGrouping group})>
+      displayRules(int playlistId) async {
+    final row = await db
+        .customSelect(
+          'SELECT display_sort, sort_descending, group_by FROM playlists '
+          'WHERE id = ?1',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlists},
+        )
+        .getSingleOrNull();
+    if (row == null) {
+      return (
+        sort: PlaylistSort.added,
+        descending: false,
+        group: PlaylistGrouping.none,
+      );
+    }
+    return (
+      sort: PlaylistSort.of(row.read<String>('display_sort')),
+      descending: row.read<bool>('sort_descending'),
+      group: PlaylistGrouping.of(row.read<String>('group_by')),
+    );
+  }
+
+  /// Sets how the tracks are ordered, and whether they are grouped.
+  ///
+  /// Stored on the playlist, so it is applied to whatever the playlist holds
+  /// later as well -- adding a track to an album-grouped playlist puts it under
+  /// its album without anyone rearranging anything.
+  Future<void> setDisplayRules(
+    int playlistId, {
+    PlaylistSort? sort,
+    bool? descending,
+    PlaylistGrouping? group,
+  }) async {
+    await (db.update(db.playlists)..where((p) => p.id.equals(playlistId)))
+        .write(
+      PlaylistsCompanion(
+        displaySort: sort == null ? const Value.absent() : Value(sort),
+        sortDescending:
+            descending == null ? const Value.absent() : Value(descending),
+        groupBy: group == null ? const Value.absent() : Value(group),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  /// Records an order arranged by hand, and switches the playlist to it.
+  ///
+  /// [trackIds] is every track in the order it should appear. For a manual
+  /// playlist the rows already carry a position, so those are renumbered; a
+  /// smart playlist has no rows, so the order is recorded against the tracks in
+  /// `playlist_track_order`.
+  ///
+  /// Dragging is a statement about order, so it sets the sort to custom: a
+  /// playlist that snapped back to sorted-by-title the moment you let go would
+  /// be worse than not offering the drag.
+  Future<void> saveCustomOrder(int playlistId, List<int> trackIds) async {
+    final row = await db
+        .customSelect(
+          'SELECT kind FROM playlists WHERE id = ?1',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlists},
+        )
+        .getSingleOrNull();
+    if (row == null) return;
+    final kind = row.read<String>('kind');
+    final queried = kind == PlaylistKind.smart.name ||
+        kind == PlaylistKind.hybrid.name;
+
+    await db.transaction(() async {
+      if (queried) {
+        // Rewritten wholesale rather than patched: the incoming list is the
+        // whole order, and a leftover row from a previous arrangement would
+        // compete with it.
+        await db.customUpdate(
+          'DELETE FROM playlist_track_order WHERE playlist_id = ?1',
+          variables: [Variable(playlistId)],
+          updates: {db.playlistTrackOrder},
+          updateKind: UpdateKind.delete,
+        );
+        for (var i = 0; i < trackIds.length; i++) {
+          await db.into(db.playlistTrackOrder).insert(
+                PlaylistTrackOrderCompanion.insert(
+                  playlistId: playlistId,
+                  trackId: trackIds[i],
+                  position: i * _positionGap,
+                ),
+              );
+        }
+      }
+
+      if (!queried || kind == PlaylistKind.hybrid.name) {
+        // Manual rows keep their own order. Renumbered in the given sequence,
+        // and any row whose track is not mentioned is left where it was.
+        for (var i = 0; i < trackIds.length; i++) {
+          await db.customUpdate(
+            'UPDATE playlist_items SET position = ?1 '
+            'WHERE playlist_id = ?2 AND track_id = ?3 AND is_exclusion = 0',
+            variables: [
+              Variable(i * _positionGap),
+              Variable(playlistId),
+              Variable(trackIds[i]),
+            ],
+            updates: {db.playlistItems},
+          );
+        }
+      }
+    });
+
+    await setDisplayRules(playlistId, sort: PlaylistSort.custom);
+  }
+
+  /// The hand-made order for a queried playlist, best first.
+  Future<List<int>> customOrderOf(int playlistId) async {
+    final rows = await db
+        .customSelect(
+          'SELECT track_id FROM playlist_track_order '
+          'WHERE playlist_id = ?1 ORDER BY position',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlistTrackOrder},
+        )
+        .get();
+    return [for (final row in rows) row.read<int>('track_id')];
+  }
+
+  /// Puts [trackIds] in the order the playlist asks for.
+  ///
+  /// Custom order is applied by position, and anything the arrangement has
+  /// never seen goes to the end. That is what makes a hand-made order survive a
+  /// change to the query: the tracks that are still there keep their places,
+  /// and whatever the new query added arrives after them rather than scattering
+  /// the arrangement.
+  ///
+  /// Every other sort is applied by the library, so it agrees with how the same
+  /// column is sorted everywhere else.
+  Future<List<int>> applyOrder(
+    int playlistId,
+    List<int> trackIds, {
+    required Future<List<int>> Function(List<int> ids, PlaylistSort sort)
+        sortBy,
+  }) async {
+    if (trackIds.length < 2) return trackIds;
+    final rules = await displayRules(playlistId);
+
+    if (rules.sort == PlaylistSort.added) {
+      // Already in the order they were added: manual rows come back by
+      // position, and a query's results come back in the query's own order.
+      return rules.descending ? trackIds.reversed.toList() : trackIds;
+    }
+
+    if (rules.sort == PlaylistSort.custom) {
+      final arranged = await customOrderOf(playlistId);
+      if (arranged.isEmpty) return trackIds;
+
+      final rank = <int, int>{
+        for (var i = 0; i < arranged.length; i++) arranged[i]: i,
+      };
+      final known = <int>[];
+      final unknown = <int>[];
+      for (final id in trackIds) {
+        (rank.containsKey(id) ? known : unknown).add(id);
+      }
+      known.sort((a, b) => rank[a]!.compareTo(rank[b]!));
+      final ordered = [...known, ...unknown];
+      return rules.descending ? ordered.reversed.toList() : ordered;
+    }
+
+    final sorted = await sortBy(trackIds, rules.sort);
+    return rules.descending ? sorted.reversed.toList() : sorted;
+  }
+
+  /// The SQL that orders track ids for a sort.
+  ///
+  /// Here rather than in the provider so there is one definition of what "by
+  /// album" means for a playlist, and it is the same definition the library
+  /// grids use.
+  Future<List<int>> sortTrackIds(List<int> ids, PlaylistSort sort) async {
+    if (ids.length < 2) return ids;
+
+    final order = switch (sort) {
+      PlaylistSort.title => 't.sort_title, t.title',
+      PlaylistSort.artist =>
+        "(SELECT group_concat(a.name) FROM track_credits tc "
+            "JOIN artists a ON a.id = tc.artist_id "
+            "WHERE tc.track_id = t.id AND tc.role = 'mainArtist'), t.title",
+      PlaylistSort.album =>
+        'alb.sort_title, alb.title, COALESCE(t.disc_no, 1), '
+            't.track_no IS NULL, t.track_no, t.title',
+      PlaylistSort.releaseYear =>
+        'COALESCE(t.release_year, alb.release_year) IS NULL, '
+            'COALESCE(t.release_year, alb.release_year), t.title',
+      PlaylistSort.duration => 'COALESCE(t.duration_ms, 0), t.title',
+      PlaylistSort.rating => 't.rating IS NULL, t.rating DESC, t.title',
+      PlaylistSort.playCount => 't.play_count DESC, t.title',
+      PlaylistSort.random => 'RANDOM()',
+      // Handled by the caller: neither is a property of a track.
+      PlaylistSort.added || PlaylistSort.custom => 't.id',
+    };
+
+    final rows = await db
+        .customSelect(
+          'SELECT t.id AS id FROM tracks t '
+          'LEFT JOIN albums alb ON alb.id = t.album_id '
+          'WHERE t.id IN (${ids.join(',')}) '
+          'ORDER BY $order',
+          readsFrom: {db.tracks, db.albums, db.trackCredits, db.artists},
+        )
+        .get();
+
+    final sorted = [for (final row in rows) row.read<int>('id')];
+    // A track the query returned but the join lost would otherwise vanish from
+    // the playlist because of a sort.
+    final seen = sorted.toSet();
+    return [...sorted, ...ids.where((id) => !seen.contains(id))];
+  }
 
   /// Tracks this playlist explicitly does not want.
   Future<Set<int>> _exclusionsOf(int playlistId) async {

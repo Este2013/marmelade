@@ -84,6 +84,7 @@ enum SearchEntity {
     AlbumTags,
     ArtistTags,
     PlaylistTags,
+    PlaylistTrackOrder,
     // Playlists
     Playlists,
     PlaylistItems,
@@ -123,7 +124,7 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
       MarmeladeDatabase(NativeDatabase.memory(logStatements: logStatements));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// Set when the `trigram` FTS5 tokenizer is unavailable in the linked
   /// SQLite build. Search then falls back to token and prefix matching only,
@@ -143,6 +144,14 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
           // on every open, so only the real table needs a step here.
           if (from < 2) {
             await m.createTable(playlistTags);
+          }
+          // v3 gave playlists a display order and a grouping, and somewhere to
+          // record an order arranged by hand for the tracks a query found.
+          if (from < 3) {
+            await m.createTable(playlistTrackOrder);
+            await m.addColumn(playlists, playlists.displaySort);
+            await m.addColumn(playlists, playlists.sortDescending);
+            await m.addColumn(playlists, playlists.groupBy);
           }
         },
         beforeOpen: (details) async {

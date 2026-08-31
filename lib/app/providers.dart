@@ -145,7 +145,15 @@ final playlistTracksProvider =
   ref.watch(playlistProvider(playlistId));
   return repository.watchEntries(playlistId).asyncMap((_) async {
     final ids = await repository.resolveContents(playlistId);
-    return library.tracksByIds(ids);
+    // Membership first, then the order the playlist asks for. Two steps because
+    // ordering needs track data -- titles, years, ratings -- that the playlist
+    // tables do not have.
+    final ordered = await repository.applyOrder(
+      playlistId,
+      ids,
+      sortBy: repository.sortTrackIds,
+    );
+    return library.tracksByIds(ordered);
   });
 });
 

@@ -6,6 +6,8 @@
 /// widget layer independent of how storage happens to be arranged.
 library;
 
+import '../../data/db/enums.dart';
+
 /// A card in the albums grid.
 class AlbumCard {
   const AlbumCard({
@@ -59,6 +61,7 @@ class TrackRow {
     this.rating,
     this.isFavorite = false,
     this.playCount = 0,
+    this.releaseYear,
     this.isMissing = false,
     this.lossless = false,
   });
@@ -80,6 +83,9 @@ class TrackRow {
   final int? rating;
   final bool isFavorite;
   final int playCount;
+
+  /// The track's own release year, or its album's when it has none.
+  final int? releaseYear;
 
   /// True when every file holding this track is currently missing.
   final bool isMissing;
@@ -194,6 +200,9 @@ class PlaylistCard {
     this.imagePath,
     this.query,
     this.querySort,
+    this.displaySort = PlaylistSort.added,
+    this.sortDescending = false,
+    this.grouping = PlaylistGrouping.none,
     this.childCount = 0,
     this.isPinned = false,
     this.depth = 0,
@@ -216,6 +225,13 @@ class PlaylistCard {
 
   /// The order applied to what the query finds, as a stored sort key.
   final String? querySort;
+
+  /// How the tracks are ordered on screen.
+  final PlaylistSort displaySort;
+  final bool sortDescending;
+
+  /// What the tracks are grouped under on screen.
+  final PlaylistGrouping grouping;
 
   final int childCount;
   final bool isPinned;

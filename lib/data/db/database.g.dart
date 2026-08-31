@@ -12331,6 +12331,41 @@ class $PlaylistsTable extends Playlists
     ),
     defaultValue: const Constant(true),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<PlaylistSort, String>
+  displaySort = GeneratedColumn<String>(
+    'display_sort',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('added'),
+  ).withConverter<PlaylistSort>($PlaylistsTable.$converterdisplaySort);
+  static const VerificationMeta _sortDescendingMeta = const VerificationMeta(
+    'sortDescending',
+  );
+  @override
+  late final GeneratedColumn<bool> sortDescending = GeneratedColumn<bool>(
+    'sort_descending',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("sort_descending" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PlaylistGrouping, String>
+  groupBy = GeneratedColumn<String>(
+    'group_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('none'),
+  ).withConverter<PlaylistGrouping>($PlaylistsTable.$convertergroupBy);
   static const VerificationMeta _isPinnedMeta = const VerificationMeta(
     'isPinned',
   );
@@ -12395,6 +12430,9 @@ class $PlaylistsTable extends Playlists
     queryLimit,
     querySort,
     autoUpdate,
+    displaySort,
+    sortDescending,
+    groupBy,
     isPinned,
     sortOrder,
     createdAt,
@@ -12476,6 +12514,15 @@ class $PlaylistsTable extends Playlists
         autoUpdate.isAcceptableOrUnknown(data['auto_update']!, _autoUpdateMeta),
       );
     }
+    if (data.containsKey('sort_descending')) {
+      context.handle(
+        _sortDescendingMeta,
+        sortDescending.isAcceptableOrUnknown(
+          data['sort_descending']!,
+          _sortDescendingMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_pinned')) {
       context.handle(
         _isPinnedMeta,
@@ -12555,6 +12602,22 @@ class $PlaylistsTable extends Playlists
         DriftSqlType.bool,
         data['${effectivePrefix}auto_update'],
       )!,
+      displaySort: $PlaylistsTable.$converterdisplaySort.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}display_sort'],
+        )!,
+      ),
+      sortDescending: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sort_descending'],
+      )!,
+      groupBy: $PlaylistsTable.$convertergroupBy.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}group_by'],
+        )!,
+      ),
       isPinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_pinned'],
@@ -12581,6 +12644,14 @@ class $PlaylistsTable extends Playlists
 
   static JsonTypeConverter2<PlaylistKind, String, String> $converterkind =
       const EnumNameConverter<PlaylistKind>(PlaylistKind.values);
+  static JsonTypeConverter2<PlaylistSort, String, String>
+  $converterdisplaySort = const EnumNameConverter<PlaylistSort>(
+    PlaylistSort.values,
+  );
+  static JsonTypeConverter2<PlaylistGrouping, String, String>
+  $convertergroupBy = const EnumNameConverter<PlaylistGrouping>(
+    PlaylistGrouping.values,
+  );
 }
 
 class Playlist extends DataClass implements Insertable<Playlist> {
@@ -12611,6 +12682,20 @@ class Playlist extends DataClass implements Insertable<Playlist> {
 
   /// Whether the smart query re-runs automatically as the library changes.
   final bool autoUpdate;
+
+  /// How the tracks are ordered on screen, as a [PlaylistSort] name.
+  ///
+  /// Separate from [querySort], which orders what a smart query *finds*. This
+  /// one orders what is shown, and applies to manual playlists too -- so a
+  /// playlist can be kept in the order things were added while still being
+  /// read album by album.
+  final PlaylistSort displaySort;
+
+  /// Whether [displaySort] runs backwards.
+  final bool sortDescending;
+
+  /// What the tracks are grouped under, as a [PlaylistGrouping] name.
+  final PlaylistGrouping groupBy;
   final bool isPinned;
   final int sortOrder;
   final DateTime createdAt;
@@ -12627,6 +12712,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     this.queryLimit,
     this.querySort,
     required this.autoUpdate,
+    required this.displaySort,
+    required this.sortDescending,
+    required this.groupBy,
     required this.isPinned,
     required this.sortOrder,
     required this.createdAt,
@@ -12662,6 +12750,17 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       map['query_sort'] = Variable<String>(querySort);
     }
     map['auto_update'] = Variable<bool>(autoUpdate);
+    {
+      map['display_sort'] = Variable<String>(
+        $PlaylistsTable.$converterdisplaySort.toSql(displaySort),
+      );
+    }
+    map['sort_descending'] = Variable<bool>(sortDescending);
+    {
+      map['group_by'] = Variable<String>(
+        $PlaylistsTable.$convertergroupBy.toSql(groupBy),
+      );
+    }
     map['is_pinned'] = Variable<bool>(isPinned);
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -12694,6 +12793,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
           ? const Value.absent()
           : Value(querySort),
       autoUpdate: Value(autoUpdate),
+      displaySort: Value(displaySort),
+      sortDescending: Value(sortDescending),
+      groupBy: Value(groupBy),
       isPinned: Value(isPinned),
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
@@ -12720,6 +12822,13 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       queryLimit: serializer.fromJson<int?>(json['queryLimit']),
       querySort: serializer.fromJson<String?>(json['querySort']),
       autoUpdate: serializer.fromJson<bool>(json['autoUpdate']),
+      displaySort: $PlaylistsTable.$converterdisplaySort.fromJson(
+        serializer.fromJson<String>(json['displaySort']),
+      ),
+      sortDescending: serializer.fromJson<bool>(json['sortDescending']),
+      groupBy: $PlaylistsTable.$convertergroupBy.fromJson(
+        serializer.fromJson<String>(json['groupBy']),
+      ),
       isPinned: serializer.fromJson<bool>(json['isPinned']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -12743,6 +12852,13 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       'queryLimit': serializer.toJson<int?>(queryLimit),
       'querySort': serializer.toJson<String?>(querySort),
       'autoUpdate': serializer.toJson<bool>(autoUpdate),
+      'displaySort': serializer.toJson<String>(
+        $PlaylistsTable.$converterdisplaySort.toJson(displaySort),
+      ),
+      'sortDescending': serializer.toJson<bool>(sortDescending),
+      'groupBy': serializer.toJson<String>(
+        $PlaylistsTable.$convertergroupBy.toJson(groupBy),
+      ),
       'isPinned': serializer.toJson<bool>(isPinned),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -12762,6 +12878,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     Value<int?> queryLimit = const Value.absent(),
     Value<String?> querySort = const Value.absent(),
     bool? autoUpdate,
+    PlaylistSort? displaySort,
+    bool? sortDescending,
+    PlaylistGrouping? groupBy,
     bool? isPinned,
     int? sortOrder,
     DateTime? createdAt,
@@ -12778,6 +12897,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     queryLimit: queryLimit.present ? queryLimit.value : this.queryLimit,
     querySort: querySort.present ? querySort.value : this.querySort,
     autoUpdate: autoUpdate ?? this.autoUpdate,
+    displaySort: displaySort ?? this.displaySort,
+    sortDescending: sortDescending ?? this.sortDescending,
+    groupBy: groupBy ?? this.groupBy,
     isPinned: isPinned ?? this.isPinned,
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
@@ -12802,6 +12924,13 @@ class Playlist extends DataClass implements Insertable<Playlist> {
       autoUpdate: data.autoUpdate.present
           ? data.autoUpdate.value
           : this.autoUpdate,
+      displaySort: data.displaySort.present
+          ? data.displaySort.value
+          : this.displaySort,
+      sortDescending: data.sortDescending.present
+          ? data.sortDescending.value
+          : this.sortDescending,
+      groupBy: data.groupBy.present ? data.groupBy.value : this.groupBy,
       isPinned: data.isPinned.present ? data.isPinned.value : this.isPinned,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -12823,6 +12952,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
           ..write('queryLimit: $queryLimit, ')
           ..write('querySort: $querySort, ')
           ..write('autoUpdate: $autoUpdate, ')
+          ..write('displaySort: $displaySort, ')
+          ..write('sortDescending: $sortDescending, ')
+          ..write('groupBy: $groupBy, ')
           ..write('isPinned: $isPinned, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
@@ -12844,6 +12976,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
     queryLimit,
     querySort,
     autoUpdate,
+    displaySort,
+    sortDescending,
+    groupBy,
     isPinned,
     sortOrder,
     createdAt,
@@ -12864,6 +12999,9 @@ class Playlist extends DataClass implements Insertable<Playlist> {
           other.queryLimit == this.queryLimit &&
           other.querySort == this.querySort &&
           other.autoUpdate == this.autoUpdate &&
+          other.displaySort == this.displaySort &&
+          other.sortDescending == this.sortDescending &&
+          other.groupBy == this.groupBy &&
           other.isPinned == this.isPinned &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
@@ -12882,6 +13020,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
   final Value<int?> queryLimit;
   final Value<String?> querySort;
   final Value<bool> autoUpdate;
+  final Value<PlaylistSort> displaySort;
+  final Value<bool> sortDescending;
+  final Value<PlaylistGrouping> groupBy;
   final Value<bool> isPinned;
   final Value<int> sortOrder;
   final Value<DateTime> createdAt;
@@ -12898,6 +13039,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     this.queryLimit = const Value.absent(),
     this.querySort = const Value.absent(),
     this.autoUpdate = const Value.absent(),
+    this.displaySort = const Value.absent(),
+    this.sortDescending = const Value.absent(),
+    this.groupBy = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -12915,6 +13059,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     this.queryLimit = const Value.absent(),
     this.querySort = const Value.absent(),
     this.autoUpdate = const Value.absent(),
+    this.displaySort = const Value.absent(),
+    this.sortDescending = const Value.absent(),
+    this.groupBy = const Value.absent(),
     this.isPinned = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -12933,6 +13080,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     Expression<int>? queryLimit,
     Expression<String>? querySort,
     Expression<bool>? autoUpdate,
+    Expression<String>? displaySort,
+    Expression<bool>? sortDescending,
+    Expression<String>? groupBy,
     Expression<bool>? isPinned,
     Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
@@ -12950,6 +13100,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
       if (queryLimit != null) 'query_limit': queryLimit,
       if (querySort != null) 'query_sort': querySort,
       if (autoUpdate != null) 'auto_update': autoUpdate,
+      if (displaySort != null) 'display_sort': displaySort,
+      if (sortDescending != null) 'sort_descending': sortDescending,
+      if (groupBy != null) 'group_by': groupBy,
       if (isPinned != null) 'is_pinned': isPinned,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
@@ -12969,6 +13122,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     Value<int?>? queryLimit,
     Value<String?>? querySort,
     Value<bool>? autoUpdate,
+    Value<PlaylistSort>? displaySort,
+    Value<bool>? sortDescending,
+    Value<PlaylistGrouping>? groupBy,
     Value<bool>? isPinned,
     Value<int>? sortOrder,
     Value<DateTime>? createdAt,
@@ -12986,6 +13142,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
       queryLimit: queryLimit ?? this.queryLimit,
       querySort: querySort ?? this.querySort,
       autoUpdate: autoUpdate ?? this.autoUpdate,
+      displaySort: displaySort ?? this.displaySort,
+      sortDescending: sortDescending ?? this.sortDescending,
+      groupBy: groupBy ?? this.groupBy,
       isPinned: isPinned ?? this.isPinned,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
@@ -13031,6 +13190,19 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
     if (autoUpdate.present) {
       map['auto_update'] = Variable<bool>(autoUpdate.value);
     }
+    if (displaySort.present) {
+      map['display_sort'] = Variable<String>(
+        $PlaylistsTable.$converterdisplaySort.toSql(displaySort.value),
+      );
+    }
+    if (sortDescending.present) {
+      map['sort_descending'] = Variable<bool>(sortDescending.value);
+    }
+    if (groupBy.present) {
+      map['group_by'] = Variable<String>(
+        $PlaylistsTable.$convertergroupBy.toSql(groupBy.value),
+      );
+    }
     if (isPinned.present) {
       map['is_pinned'] = Variable<bool>(isPinned.value);
     }
@@ -13060,6 +13232,9 @@ class PlaylistsCompanion extends UpdateCompanion<Playlist> {
           ..write('queryLimit: $queryLimit, ')
           ..write('querySort: $querySort, ')
           ..write('autoUpdate: $autoUpdate, ')
+          ..write('displaySort: $displaySort, ')
+          ..write('sortDescending: $sortDescending, ')
+          ..write('groupBy: $groupBy, ')
           ..write('isPinned: $isPinned, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
@@ -13387,6 +13562,285 @@ class PlaylistTagsCompanion extends UpdateCompanion<PlaylistTag> {
           ..write('tagId: $tagId, ')
           ..write('source: $source, ')
           ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PlaylistTrackOrderTable extends PlaylistTrackOrder
+    with TableInfo<$PlaylistTrackOrderTable, PlaylistTrackOrderData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlaylistTrackOrderTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _playlistIdMeta = const VerificationMeta(
+    'playlistId',
+  );
+  @override
+  late final GeneratedColumn<int> playlistId = GeneratedColumn<int>(
+    'playlist_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES playlists (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _trackIdMeta = const VerificationMeta(
+    'trackId',
+  );
+  @override
+  late final GeneratedColumn<int> trackId = GeneratedColumn<int>(
+    'track_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tracks (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [playlistId, trackId, position];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'playlist_track_order';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlaylistTrackOrderData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('playlist_id')) {
+      context.handle(
+        _playlistIdMeta,
+        playlistId.isAcceptableOrUnknown(data['playlist_id']!, _playlistIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_playlistIdMeta);
+    }
+    if (data.containsKey('track_id')) {
+      context.handle(
+        _trackIdMeta,
+        trackId.isAcceptableOrUnknown(data['track_id']!, _trackIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_trackIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {playlistId, trackId};
+  @override
+  PlaylistTrackOrderData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlaylistTrackOrderData(
+      playlistId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}playlist_id'],
+      )!,
+      trackId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}track_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $PlaylistTrackOrderTable createAlias(String alias) {
+    return $PlaylistTrackOrderTable(attachedDatabase, alias);
+  }
+}
+
+class PlaylistTrackOrderData extends DataClass
+    implements Insertable<PlaylistTrackOrderData> {
+  final int playlistId;
+  final int trackId;
+  final int position;
+  const PlaylistTrackOrderData({
+    required this.playlistId,
+    required this.trackId,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['playlist_id'] = Variable<int>(playlistId);
+    map['track_id'] = Variable<int>(trackId);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  PlaylistTrackOrderCompanion toCompanion(bool nullToAbsent) {
+    return PlaylistTrackOrderCompanion(
+      playlistId: Value(playlistId),
+      trackId: Value(trackId),
+      position: Value(position),
+    );
+  }
+
+  factory PlaylistTrackOrderData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlaylistTrackOrderData(
+      playlistId: serializer.fromJson<int>(json['playlistId']),
+      trackId: serializer.fromJson<int>(json['trackId']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'playlistId': serializer.toJson<int>(playlistId),
+      'trackId': serializer.toJson<int>(trackId),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  PlaylistTrackOrderData copyWith({
+    int? playlistId,
+    int? trackId,
+    int? position,
+  }) => PlaylistTrackOrderData(
+    playlistId: playlistId ?? this.playlistId,
+    trackId: trackId ?? this.trackId,
+    position: position ?? this.position,
+  );
+  PlaylistTrackOrderData copyWithCompanion(PlaylistTrackOrderCompanion data) {
+    return PlaylistTrackOrderData(
+      playlistId: data.playlistId.present
+          ? data.playlistId.value
+          : this.playlistId,
+      trackId: data.trackId.present ? data.trackId.value : this.trackId,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaylistTrackOrderData(')
+          ..write('playlistId: $playlistId, ')
+          ..write('trackId: $trackId, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(playlistId, trackId, position);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlaylistTrackOrderData &&
+          other.playlistId == this.playlistId &&
+          other.trackId == this.trackId &&
+          other.position == this.position);
+}
+
+class PlaylistTrackOrderCompanion
+    extends UpdateCompanion<PlaylistTrackOrderData> {
+  final Value<int> playlistId;
+  final Value<int> trackId;
+  final Value<int> position;
+  final Value<int> rowid;
+  const PlaylistTrackOrderCompanion({
+    this.playlistId = const Value.absent(),
+    this.trackId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PlaylistTrackOrderCompanion.insert({
+    required int playlistId,
+    required int trackId,
+    required int position,
+    this.rowid = const Value.absent(),
+  }) : playlistId = Value(playlistId),
+       trackId = Value(trackId),
+       position = Value(position);
+  static Insertable<PlaylistTrackOrderData> custom({
+    Expression<int>? playlistId,
+    Expression<int>? trackId,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (playlistId != null) 'playlist_id': playlistId,
+      if (trackId != null) 'track_id': trackId,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PlaylistTrackOrderCompanion copyWith({
+    Value<int>? playlistId,
+    Value<int>? trackId,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return PlaylistTrackOrderCompanion(
+      playlistId: playlistId ?? this.playlistId,
+      trackId: trackId ?? this.trackId,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (playlistId.present) {
+      map['playlist_id'] = Variable<int>(playlistId.value);
+    }
+    if (trackId.present) {
+      map['track_id'] = Variable<int>(trackId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlaylistTrackOrderCompanion(')
+          ..write('playlistId: $playlistId, ')
+          ..write('trackId: $trackId, ')
+          ..write('position: $position, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -18629,6 +19083,8 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
   late final $ArtistTagsTable artistTags = $ArtistTagsTable(this);
   late final $PlaylistsTable playlists = $PlaylistsTable(this);
   late final $PlaylistTagsTable playlistTags = $PlaylistTagsTable(this);
+  late final $PlaylistTrackOrderTable playlistTrackOrder =
+      $PlaylistTrackOrderTable(this);
   late final $PlaylistItemsTable playlistItems = $PlaylistItemsTable(this);
   late final $QueueItemsTable queueItems = $QueueItemsTable(this);
   late final $PlayHistoryTable playHistory = $PlayHistoryTable(this);
@@ -18755,6 +19211,10 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     'idx_artist_tags_tag',
     'CREATE INDEX idx_artist_tags_tag ON artist_tags (tag_id)',
   );
+  late final Index idxPlaylistOrder = Index(
+    'idx_playlist_order',
+    'CREATE INDEX idx_playlist_order ON playlist_track_order (playlist_id, position)',
+  );
   late final Index idxPlaylistsParent = Index(
     'idx_playlists_parent',
     'CREATE INDEX idx_playlists_parent ON playlists (parent_id)',
@@ -18829,6 +19289,7 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     artistTags,
     playlists,
     playlistTags,
+    playlistTrackOrder,
     playlistItems,
     queueItems,
     playHistory,
@@ -18867,6 +19328,7 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     idxTrackTagsTag,
     idxAlbumTagsTag,
     idxArtistTagsTag,
+    idxPlaylistOrder,
     idxPlaylistsParent,
     idxPlaylistItemsPlaylist,
     idxPlaylistItemsTrack,
@@ -19112,6 +19574,20 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('playlist_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'playlists',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('playlist_track_order', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'tracks',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('playlist_track_order', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -23144,6 +23620,28 @@ final class $$TracksTableReferences
     );
   }
 
+  static MultiTypedResultKey<
+    $PlaylistTrackOrderTable,
+    List<PlaylistTrackOrderData>
+  >
+  _orderedInPlaylistsTable(_$MarmeladeDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.playlistTrackOrder,
+        aliasName: 'tracks__id__playlist_track_order__track_id',
+      );
+
+  $$PlaylistTrackOrderTableProcessedTableManager get orderedInPlaylists {
+    final manager = $$PlaylistTrackOrderTableTableManager(
+      $_db,
+      $_db.playlistTrackOrder,
+    ).filter((f) => f.trackId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_orderedInPlaylistsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$PlaylistItemsTable, List<PlaylistItem>>
   _playlistItemsRefsTable(_$MarmeladeDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -23508,6 +24006,31 @@ class $$TracksTableFilterComposer
           }) => $$TrackTagsTableFilterComposer(
             $db: $db,
             $table: $db.trackTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> orderedInPlaylists(
+    Expression<bool> Function($$PlaylistTrackOrderTableFilterComposer f) f,
+  ) {
+    final $$PlaylistTrackOrderTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTrackOrder,
+      getReferencedColumn: (t) => t.trackId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTrackOrderTableFilterComposer(
+            $db: $db,
+            $table: $db.playlistTrackOrder,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -24072,6 +24595,32 @@ class $$TracksTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> orderedInPlaylists<T extends Object>(
+    Expression<T> Function($$PlaylistTrackOrderTableAnnotationComposer a) f,
+  ) {
+    final $$PlaylistTrackOrderTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.playlistTrackOrder,
+          getReferencedColumn: (t) => t.trackId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PlaylistTrackOrderTableAnnotationComposer(
+                $db: $db,
+                $table: $db.playlistTrackOrder,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> playlistItemsRefs<T extends Object>(
     Expression<T> Function($$PlaylistItemsTableAnnotationComposer a) f,
   ) {
@@ -24219,6 +24768,7 @@ class $$TracksTableTableManager
             bool trackAliasesRefs,
             bool trackCreditsRefs,
             bool trackTagsRefs,
+            bool orderedInPlaylists,
             bool playlistItemsRefs,
             bool queueItemsRefs,
             bool playHistoryRefs,
@@ -24352,6 +24902,7 @@ class $$TracksTableTableManager
                 trackAliasesRefs = false,
                 trackCreditsRefs = false,
                 trackTagsRefs = false,
+                orderedInPlaylists = false,
                 playlistItemsRefs = false,
                 queueItemsRefs = false,
                 playHistoryRefs = false,
@@ -24365,6 +24916,7 @@ class $$TracksTableTableManager
                     if (trackAliasesRefs) db.trackAliases,
                     if (trackCreditsRefs) db.trackCredits,
                     if (trackTagsRefs) db.trackTags,
+                    if (orderedInPlaylists) db.playlistTrackOrder,
                     if (playlistItemsRefs) db.playlistItems,
                     if (queueItemsRefs) db.queueItems,
                     if (playHistoryRefs) db.playHistory,
@@ -24509,6 +25061,27 @@ class $$TracksTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (orderedInPlaylists)
+                        await $_getPrefetchedData<
+                          Track,
+                          $TracksTable,
+                          PlaylistTrackOrderData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TracksTableReferences
+                              ._orderedInPlaylistsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TracksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).orderedInPlaylists,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (playlistItemsRefs)
                         await $_getPrefetchedData<
                           Track,
@@ -24634,6 +25207,7 @@ typedef $$TracksTableProcessedTableManager =
         bool trackAliasesRefs,
         bool trackCreditsRefs,
         bool trackTagsRefs,
+        bool orderedInPlaylists,
         bool playlistItemsRefs,
         bool queueItemsRefs,
         bool playHistoryRefs,
@@ -31337,6 +31911,9 @@ typedef $$PlaylistsTableCreateCompanionBuilder = PlaylistsCompanion Function({
   Value<int?> queryLimit,
   Value<String?> querySort,
   Value<bool> autoUpdate,
+  Value<PlaylistSort> displaySort,
+  Value<bool> sortDescending,
+  Value<PlaylistGrouping> groupBy,
   Value<bool> isPinned,
   Value<int> sortOrder,
   Value<DateTime> createdAt,
@@ -31354,6 +31931,9 @@ typedef $$PlaylistsTableUpdateCompanionBuilder = PlaylistsCompanion Function({
   Value<int?> queryLimit,
   Value<String?> querySort,
   Value<bool> autoUpdate,
+  Value<PlaylistSort> displaySort,
+  Value<bool> sortDescending,
+  Value<PlaylistGrouping> groupBy,
   Value<bool> isPinned,
   Value<int> sortOrder,
   Value<DateTime> createdAt,
@@ -31412,6 +31992,30 @@ final class $$PlaylistsTableReferences
     ).filter((f) => f.playlistId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_playlistTagsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $PlaylistTrackOrderTable,
+    List<PlaylistTrackOrderData>
+  >
+  _trackOrderOfThisPlaylistTable(_$MarmeladeDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.playlistTrackOrder,
+        aliasName: 'playlists__id__playlist_track_order__playlist_id',
+      );
+
+  $$PlaylistTrackOrderTableProcessedTableManager get trackOrderOfThisPlaylist {
+    final manager = $$PlaylistTrackOrderTableTableManager(
+      $_db,
+      $_db.playlistTrackOrder,
+    ).filter((f) => f.playlistId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _trackOrderOfThisPlaylistTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -31513,6 +32117,23 @@ class $$PlaylistsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<PlaylistSort, PlaylistSort, String>
+  get displaySort => $composableBuilder(
+    column: $table.displaySort,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<bool> get sortDescending => $composableBuilder(
+    column: $table.sortDescending,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PlaylistGrouping, PlaylistGrouping, String>
+  get groupBy => $composableBuilder(
+    column: $table.groupBy,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
   ColumnFilters<bool> get isPinned => $composableBuilder(
     column: $table.isPinned,
     builder: (column) => ColumnFilters(column),
@@ -31595,6 +32216,31 @@ class $$PlaylistsTableFilterComposer
           }) => $$PlaylistTagsTableFilterComposer(
             $db: $db,
             $table: $db.playlistTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> trackOrderOfThisPlaylist(
+    Expression<bool> Function($$PlaylistTrackOrderTableFilterComposer f) f,
+  ) {
+    final $$PlaylistTrackOrderTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.playlistTrackOrder,
+      getReferencedColumn: (t) => t.playlistId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistTrackOrderTableFilterComposer(
+            $db: $db,
+            $table: $db.playlistTrackOrder,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -31709,6 +32355,21 @@ class $$PlaylistsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get displaySort => $composableBuilder(
+    column: $table.displaySort,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get sortDescending => $composableBuilder(
+    column: $table.sortDescending,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get groupBy => $composableBuilder(
+    column: $table.groupBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isPinned => $composableBuilder(
     column: $table.isPinned,
     builder: (column) => ColumnOrderings(column),
@@ -31818,6 +32479,20 @@ class $$PlaylistsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumnWithTypeConverter<PlaylistSort, String> get displaySort =>
+      $composableBuilder(
+        column: $table.displaySort,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<bool> get sortDescending => $composableBuilder(
+    column: $table.sortDescending,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<PlaylistGrouping, String> get groupBy =>
+      $composableBuilder(column: $table.groupBy, builder: (column) => column);
+
   GeneratedColumn<bool> get isPinned =>
       $composableBuilder(column: $table.isPinned, builder: (column) => column);
 
@@ -31901,6 +32576,32 @@ class $$PlaylistsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> trackOrderOfThisPlaylist<T extends Object>(
+    Expression<T> Function($$PlaylistTrackOrderTableAnnotationComposer a) f,
+  ) {
+    final $$PlaylistTrackOrderTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.playlistTrackOrder,
+          getReferencedColumn: (t) => t.playlistId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PlaylistTrackOrderTableAnnotationComposer(
+                $db: $db,
+                $table: $db.playlistTrackOrder,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> playlistEntries<T extends Object>(
     Expression<T> Function($$PlaylistItemsTableAnnotationComposer a) f,
   ) {
@@ -31969,6 +32670,7 @@ class $$PlaylistsTableTableManager
             bool imageId,
             bool parentId,
             bool playlistTagsRefs,
+            bool trackOrderOfThisPlaylist,
             bool playlistEntries,
             bool inclusionsOfThisPlaylist,
           })
@@ -31997,6 +32699,9 @@ class $$PlaylistsTableTableManager
                 Value<int?> queryLimit = const Value.absent(),
                 Value<String?> querySort = const Value.absent(),
                 Value<bool> autoUpdate = const Value.absent(),
+                Value<PlaylistSort> displaySort = const Value.absent(),
+                Value<bool> sortDescending = const Value.absent(),
+                Value<PlaylistGrouping> groupBy = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -32013,6 +32718,9 @@ class $$PlaylistsTableTableManager
                 queryLimit: queryLimit,
                 querySort: querySort,
                 autoUpdate: autoUpdate,
+                displaySort: displaySort,
+                sortDescending: sortDescending,
+                groupBy: groupBy,
                 isPinned: isPinned,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
@@ -32031,6 +32739,9 @@ class $$PlaylistsTableTableManager
                 Value<int?> queryLimit = const Value.absent(),
                 Value<String?> querySort = const Value.absent(),
                 Value<bool> autoUpdate = const Value.absent(),
+                Value<PlaylistSort> displaySort = const Value.absent(),
+                Value<bool> sortDescending = const Value.absent(),
+                Value<PlaylistGrouping> groupBy = const Value.absent(),
                 Value<bool> isPinned = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -32047,6 +32758,9 @@ class $$PlaylistsTableTableManager
                 queryLimit: queryLimit,
                 querySort: querySort,
                 autoUpdate: autoUpdate,
+                displaySort: displaySort,
+                sortDescending: sortDescending,
+                groupBy: groupBy,
                 isPinned: isPinned,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
@@ -32065,6 +32779,7 @@ class $$PlaylistsTableTableManager
                 imageId = false,
                 parentId = false,
                 playlistTagsRefs = false,
+                trackOrderOfThisPlaylist = false,
                 playlistEntries = false,
                 inclusionsOfThisPlaylist = false,
               }) {
@@ -32072,6 +32787,7 @@ class $$PlaylistsTableTableManager
                   db: db,
                   explicitlyWatchedTables: [
                     if (playlistTagsRefs) db.playlistTags,
+                    if (trackOrderOfThisPlaylist) db.playlistTrackOrder,
                     if (playlistEntries) db.playlistItems,
                     if (inclusionsOfThisPlaylist) db.playlistItems,
                   ],
@@ -32133,6 +32849,27 @@ class $$PlaylistsTableTableManager
                                 table,
                                 p0,
                               ).playlistTagsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.playlistId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (trackOrderOfThisPlaylist)
+                        await $_getPrefetchedData<
+                          Playlist,
+                          $PlaylistsTable,
+                          PlaylistTrackOrderData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PlaylistsTableReferences
+                              ._trackOrderOfThisPlaylistTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PlaylistsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).trackOrderOfThisPlaylist,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.playlistId == item.id,
@@ -32205,6 +32942,7 @@ typedef $$PlaylistsTableProcessedTableManager =
         bool imageId,
         bool parentId,
         bool playlistTagsRefs,
+        bool trackOrderOfThisPlaylist,
         bool playlistEntries,
         bool inclusionsOfThisPlaylist,
       })
@@ -32592,6 +33330,382 @@ typedef $$PlaylistTagsTableProcessedTableManager =
       (PlaylistTag, $$PlaylistTagsTableReferences),
       PlaylistTag,
       PrefetchHooks Function({bool playlistId, bool tagId})
+    >;
+typedef $$PlaylistTrackOrderTableCreateCompanionBuilder =
+    PlaylistTrackOrderCompanion Function({
+      required int playlistId,
+      required int trackId,
+      required int position,
+      Value<int> rowid,
+    });
+typedef $$PlaylistTrackOrderTableUpdateCompanionBuilder =
+    PlaylistTrackOrderCompanion Function({
+      Value<int> playlistId,
+      Value<int> trackId,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+final class $$PlaylistTrackOrderTableReferences
+    extends
+        BaseReferences<
+          _$MarmeladeDatabase,
+          $PlaylistTrackOrderTable,
+          PlaylistTrackOrderData
+        > {
+  $$PlaylistTrackOrderTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PlaylistsTable _playlistIdTable(_$MarmeladeDatabase db) => db
+      .playlists
+      .createAlias('playlist_track_order__playlist_id__playlists__id');
+
+  $$PlaylistsTableProcessedTableManager get playlistId {
+    final $_column = $_itemColumn<int>('playlist_id')!;
+
+    final manager = $$PlaylistsTableTableManager(
+      $_db,
+      $_db.playlists,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_playlistIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $TracksTable _trackIdTable(_$MarmeladeDatabase db) =>
+      db.tracks.createAlias('playlist_track_order__track_id__tracks__id');
+
+  $$TracksTableProcessedTableManager get trackId {
+    final $_column = $_itemColumn<int>('track_id')!;
+
+    final manager = $$TracksTableTableManager(
+      $_db,
+      $_db.tracks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PlaylistTrackOrderTableFilterComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTrackOrderTable> {
+  $$PlaylistTrackOrderTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PlaylistsTableFilterComposer get playlistId {
+    final $$PlaylistsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableFilterComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TracksTableFilterComposer get trackId {
+    final $$TracksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackId,
+      referencedTable: $db.tracks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TracksTableFilterComposer(
+            $db: $db,
+            $table: $db.tracks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTrackOrderTableOrderingComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTrackOrderTable> {
+  $$PlaylistTrackOrderTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PlaylistsTableOrderingComposer get playlistId {
+    final $$PlaylistsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableOrderingComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TracksTableOrderingComposer get trackId {
+    final $$TracksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackId,
+      referencedTable: $db.tracks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TracksTableOrderingComposer(
+            $db: $db,
+            $table: $db.tracks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTrackOrderTableAnnotationComposer
+    extends Composer<_$MarmeladeDatabase, $PlaylistTrackOrderTable> {
+  $$PlaylistTrackOrderTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  $$PlaylistsTableAnnotationComposer get playlistId {
+    final $$PlaylistsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.playlistId,
+      referencedTable: $db.playlists,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PlaylistsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TracksTableAnnotationComposer get trackId {
+    final $$TracksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackId,
+      referencedTable: $db.tracks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TracksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tracks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PlaylistTrackOrderTableTableManager
+    extends
+        RootTableManager<
+          _$MarmeladeDatabase,
+          $PlaylistTrackOrderTable,
+          PlaylistTrackOrderData,
+          $$PlaylistTrackOrderTableFilterComposer,
+          $$PlaylistTrackOrderTableOrderingComposer,
+          $$PlaylistTrackOrderTableAnnotationComposer,
+          $$PlaylistTrackOrderTableCreateCompanionBuilder,
+          $$PlaylistTrackOrderTableUpdateCompanionBuilder,
+          (PlaylistTrackOrderData, $$PlaylistTrackOrderTableReferences),
+          PlaylistTrackOrderData,
+          PrefetchHooks Function({bool playlistId, bool trackId})
+        > {
+  $$PlaylistTrackOrderTableTableManager(
+    _$MarmeladeDatabase db,
+    $PlaylistTrackOrderTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlaylistTrackOrderTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlaylistTrackOrderTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlaylistTrackOrderTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> playlistId = const Value.absent(),
+                Value<int> trackId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PlaylistTrackOrderCompanion(
+                playlistId: playlistId,
+                trackId: trackId,
+                position: position,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int playlistId,
+                required int trackId,
+                required int position,
+                Value<int> rowid = const Value.absent(),
+              }) => PlaylistTrackOrderCompanion.insert(
+                playlistId: playlistId,
+                trackId: trackId,
+                position: position,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PlaylistTrackOrderTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({playlistId = false, trackId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (playlistId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.playlistId,
+                        referencedTable: $$PlaylistTrackOrderTableReferences
+                            ._playlistIdTable(db),
+                        referencedColumn: $$PlaylistTrackOrderTableReferences
+                            ._playlistIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+                    if (trackId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.trackId,
+                        referencedTable: $$PlaylistTrackOrderTableReferences
+                            ._trackIdTable(db),
+                        referencedColumn: $$PlaylistTrackOrderTableReferences
+                            ._trackIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PlaylistTrackOrderTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarmeladeDatabase,
+      $PlaylistTrackOrderTable,
+      PlaylistTrackOrderData,
+      $$PlaylistTrackOrderTableFilterComposer,
+      $$PlaylistTrackOrderTableOrderingComposer,
+      $$PlaylistTrackOrderTableAnnotationComposer,
+      $$PlaylistTrackOrderTableCreateCompanionBuilder,
+      $$PlaylistTrackOrderTableUpdateCompanionBuilder,
+      (PlaylistTrackOrderData, $$PlaylistTrackOrderTableReferences),
+      PlaylistTrackOrderData,
+      PrefetchHooks Function({bool playlistId, bool trackId})
     >;
 typedef $$PlaylistItemsTableCreateCompanionBuilder =
     PlaylistItemsCompanion Function({
@@ -36302,6 +37416,8 @@ class $MarmeladeDatabaseManager {
       $$PlaylistsTableTableManager(_db, _db.playlists);
   $$PlaylistTagsTableTableManager get playlistTags =>
       $$PlaylistTagsTableTableManager(_db, _db.playlistTags);
+  $$PlaylistTrackOrderTableTableManager get playlistTrackOrder =>
+      $$PlaylistTrackOrderTableTableManager(_db, _db.playlistTrackOrder);
   $$PlaylistItemsTableTableManager get playlistItems =>
       $$PlaylistItemsTableTableManager(_db, _db.playlistItems);
   $$QueueItemsTableTableManager get queueItems =>
