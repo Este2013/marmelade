@@ -73,11 +73,21 @@ class TagCategoryRow {
     required this.isSystem,
     required this.tagCount,
     this.color,
+    this.icon,
   });
 
   final int id;
   final String name;
   final String slug;
+
+  /// Code point of the icon chosen for this category.
+  ///
+  /// Stored as a number and looked up in a fixed list of icons rather than fed
+  /// to `IconData` directly: Flutter's release build strips unused glyphs, and
+  /// an IconData built from a runtime value defeats that -- the tool cannot see
+  /// which glyphs are reachable, so it either keeps the whole font or refuses
+  /// to build.
+  final int? icon;
 
   /// System categories -- Genre and Language -- are written by the indexer and
   /// cannot be deleted, only renamed and recoloured.
@@ -164,7 +174,7 @@ class TagRepository {
         .customSelect(
           '''
       SELECT c.id AS id, c.name AS name, c.slug AS slug, c.color AS color,
-             c.is_system AS is_system,
+             c.icon AS icon, c.is_system AS is_system,
              (SELECT COUNT(*) FROM tags t WHERE t.category_id = c.id) AS n
       FROM tag_categories c
       ORDER BY c.sort_order, c.name
@@ -182,6 +192,7 @@ class TagRepository {
                 isSystem: row.read<int>('is_system') == 1,
                 tagCount: row.read<int>('n'),
                 color: row.read<int?>('color'),
+                icon: row.read<int?>('icon'),
               ),
           ],
         );
@@ -448,6 +459,50 @@ class TagRepository {
             color: Value(color),
           ),
         );
+  }
+
+  /// Changes a category's name, icon and colour together.
+  ///
+  /// One call rather than three, because the dialog that edits them commits
+  /// once: three writes would mean three rebuilds and three chances for a
+  /// half-applied change to be what someone sees.
+  ///
+  /// A null [icon] or [color] clears it; leave the flag false to keep what is
+  /// stored. The flags exist because "no icon" and "do not touch the icon" are
+  /// different intentions and null cannot say which.
+  Future<void> updateCategory(
+    int categoryId, {
+    String? name,
+    int? icon,
+    bool setIcon = false,
+    int? color,
+    bool setColor = false,
+  }) async {
+    final assignments = <String>[];
+    final variables = <Variable<Object>>[];
+
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      assignments.add('name = ?${variables.length + 1}');
+      variables.add(Variable(trimmed));
+    }
+    if (setIcon) {
+      assignments.add('icon = ?${variables.length + 1}');
+      variables.add(Variable(icon));
+    }
+    if (setColor) {
+      assignments.add('color = ?${variables.length + 1}');
+      variables.add(Variable(color));
+    }
+    if (assignments.isEmpty) return;
+
+    variables.add(Variable(categoryId));
+    await db.customUpdate(
+      'UPDATE tag_categories SET ${assignments.join(', ')} '
+      'WHERE id = ?${variables.length}',
+      variables: variables,
+      updates: {db.tagCategories},
+    );
   }
 
   Future<void> renameCategory(int categoryId, String name) async {
