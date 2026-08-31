@@ -358,6 +358,111 @@ class EditRepository {
         orElse: () => ArtistKind.unknown,
       );
 
+  /// Creates an artist and returns its id.
+  ///
+  /// For the pickers: needing an artist that does not exist yet is the normal
+  /// case when correcting a credit, and leaving the editor to go and make one
+  /// first loses whatever else was being typed.
+  ///
+  /// Verified from the start, because a name someone typed by hand is not a
+  /// guess a rescan should overwrite.
+  Future<int> createArtist(String name, {ArtistKind? kind}) async {
+    final trimmed = name.trim();
+    final id = await db.into(db.artists).insert(
+          ArtistsCompanion.insert(
+            name: trimmed,
+            nameKey: normalizeKey(trimmed),
+            kind: kind == null ? const Value.absent() : Value(kind),
+            isVerified: const Value(true),
+          ),
+        );
+    await searchIndexer.reindexEntity(SearchEntity.artist, id);
+    return id;
+  }
+
+  /// Creates an album and returns its id.
+  Future<int> createAlbum(String title, {int? albumArtistId}) async {
+    final trimmed = title.trim();
+    final id = await db.into(db.albums).insert(
+          AlbumsCompanion.insert(
+            title: trimmed,
+            nameKey: normalizeKey(trimmed),
+            albumArtistId: Value(albumArtistId),
+            isVerified: const Value(true),
+          ),
+        );
+    await searchIndexer.reindexEntity(SearchEntity.album, id);
+    return id;
+  }
+
+  /// Albums whose title or alias matches [query], for pickers.
+  Future<List<({int id, String title, String? artistName, int trackCount})>>
+      findAlbums(String query, {Set<int> exclude = const {}}) async {
+    final key = normalizeKey(query);
+    if (key.isEmpty) return const [];
+
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT DISTINCT al.id AS id, al.title AS title,
+        ar.name AS artist_name,
+        (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id) AS track_count
+      FROM albums al
+      LEFT JOIN artists ar ON ar.id = al.album_artist_id
+      LEFT JOIN album_aliases aa ON aa.album_id = al.id
+      WHERE al.name_key LIKE ?1 OR aa.alias_key LIKE ?1
+      ORDER BY (al.name_key = ?2) DESC, track_count DESC, al.title
+      LIMIT 30
+      ''',
+          variables: [Variable('%$key%'), Variable(key)],
+          readsFrom: {db.albums, db.artists, db.albumAliases, db.tracks},
+        )
+        .get();
+
+    return [
+      for (final row in rows)
+        if (!exclude.contains(row.read<int>('id')))
+          (
+            id: row.read<int>('id'),
+            title: row.read<String>('title'),
+            artistName: row.read<String?>('artist_name'),
+            trackCount: row.read<int>('track_count'),
+          ),
+    ];
+  }
+
+  /// Moves a track onto an album, or off every album when [albumId] is null.
+  ///
+  /// Both albums are reindexed as well as the track: an album's searchable text
+  /// includes its tracks, so leaving the old one alone would keep finding the
+  /// track under an album it is no longer on.
+  Future<void> setTrackAlbum(int trackId, int? albumId) async {
+    final before = await db
+        .customSelect(
+          'SELECT album_id FROM tracks WHERE id = ?1',
+          variables: [Variable(trackId)],
+          readsFrom: {db.tracks},
+        )
+        .getSingleOrNull();
+
+    await (db.update(db.tracks)..where((t) => t.id.equals(trackId))).write(
+      TracksCompanion(
+        albumId: Value(albumId),
+        isVerified: const Value(true),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+
+    await searchIndexer.reindexEntity(SearchEntity.track, trackId);
+    final previous = before?.read<int?>('album_id');
+    if (previous != null) {
+      await searchIndexer.reindexEntity(SearchEntity.album, previous);
+    }
+    if (albumId != null) {
+      await searchIndexer.reindexEntity(SearchEntity.album, albumId);
+    }
+  }
+
   /// Artists whose name or alias matches [query], for pickers.
   ///
   /// Excludes [exclude] so a group cannot be offered as its own member.

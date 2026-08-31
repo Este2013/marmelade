@@ -68,6 +68,11 @@ class _EditorState extends ConsumerState<_Editor> {
   /// until Save. Held as a list because the order is part of the meaning.
   late List<CreditEdit> _credits;
 
+  /// The album the editor has. Held separately from [TrackEdit] because it can
+  /// be changed here, including to an album that did not exist a moment ago.
+  late int? _albumId;
+  late String? _albumTitle;
+
   var _saving = false;
 
   @override
@@ -80,6 +85,8 @@ class _EditorState extends ConsumerState<_Editor> {
     _discNo = TextEditingController(text: edit.discNo?.toString() ?? '');
     _year = TextEditingController(text: edit.releaseYear?.toString() ?? '');
     _credits = [...edit.credits];
+    _albumId = edit.albumId;
+    _albumTitle = edit.albumTitle;
     for (final controller in [
       _title,
       _sortTitle,
@@ -128,6 +135,7 @@ class _EditorState extends ConsumerState<_Editor> {
         _trackNo.text.trim() != (edit.trackNo?.toString() ?? '') ||
         _discNo.text.trim() != (edit.discNo?.toString() ?? '') ||
         _year.text.trim() != (edit.releaseYear?.toString() ?? '') ||
+        _albumId != edit.albumId ||
         _creditsChanged;
   }
 
@@ -144,6 +152,9 @@ class _EditorState extends ConsumerState<_Editor> {
         discNo: int.tryParse(_discNo.text.trim()),
         releaseYear: int.tryParse(_year.text.trim()),
       );
+      if (_albumId != widget.edit.albumId) {
+        await repository.setTrackAlbum(widget.edit.id, _albumId);
+      }
       if (_creditsChanged) {
         await repository.setTrackCredits(widget.edit.id, [
           for (final credit in _credits)
@@ -195,10 +206,7 @@ class _EditorState extends ConsumerState<_Editor> {
                   children: [
                     Text(edit.title, style: theme.textTheme.titleLarge),
                     Text(
-                      [
-                        if (edit.albumTitle != null) edit.albumTitle!,
-                        if (edit.isVerified) 'reviewed',
-                      ].join(' · '),
+                      edit.isVerified ? 'reviewed' : 'not reviewed yet',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -260,6 +268,7 @@ class _EditorState extends ConsumerState<_Editor> {
                       ],
                     ),
                   ),
+                  _albumSection(),
                   PictureSection(
                     imagePath: edit.imagePath,
                     fallbackSeed: edit.albumTitle ?? edit.title,
@@ -376,6 +385,64 @@ class _EditorState extends ConsumerState<_Editor> {
               ],
             ),
     );
+  }
+
+  Widget _albumSection() {
+    final theme = Theme.of(context);
+
+    return EditSection(
+      title: 'Album',
+      subtitle: 'Which release this track belongs to. Moving it here changes '
+          'where it is listed and whose sleeve it borrows.',
+      child: Row(
+        children: [
+          Icon(
+            _albumId == null ? Icons.music_note_outlined : Icons.album_outlined,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _albumTitle ?? 'No album — a loose single',
+              style: _albumId == null
+                  ? theme.textTheme.bodyMedium
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)
+                  : theme.textTheme.bodyMedium,
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (_albumId != null)
+            TextButton(
+              onPressed: _saving
+                  ? null
+                  : () => setState(() {
+                        _albumId = null;
+                        _albumTitle = null;
+                      }),
+              child: const Text('Remove from album'),
+            ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _pickAlbum,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: Text(_albumId == null ? 'Choose an album' : 'Change'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAlbum() async {
+    final picked = await pickAlbum(
+      context,
+      ref,
+      title: 'Album for ${widget.edit.title}',
+    );
+    if (picked == null) return;
+    setState(() {
+      _albumId = picked.id;
+      _albumTitle = picked.title;
+    });
   }
 
   Future<void> _addCredit() async {

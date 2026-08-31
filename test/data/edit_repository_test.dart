@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/data/db/database.dart';
+import 'package:marmelade/domain/text/normalize.dart';
 import 'package:marmelade/data/indexer/search_indexer.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart';
 import 'package:marmelade/services/art/art_store.dart';
@@ -36,7 +37,7 @@ void main() {
       .into(db.artists)
       .insert(ArtistsCompanion.insert(
         name: name,
-        nameKey: name.toLowerCase(),
+        nameKey: normalizeKey(name),
         kind: kind == null ? const Value.absent() : Value(kind),
       ));
 
@@ -44,7 +45,7 @@ void main() {
       .into(db.albums)
       .insert(AlbumsCompanion.insert(
         title: title,
-        nameKey: title.toLowerCase(),
+        nameKey: normalizeKey(title),
         albumArtistId: Value(albumArtistId),
       ));
 
@@ -56,7 +57,7 @@ void main() {
   }) async {
     final id = await db.into(db.tracks).insert(TracksCompanion.insert(
           title: title,
-          nameKey: title.toLowerCase(),
+          nameKey: normalizeKey(title),
           albumId: Value(albumId),
         ));
     await db.into(db.trackCredits).insert(TrackCreditsCompanion.insert(
@@ -562,6 +563,107 @@ void main() {
     test('an empty query returns nothing rather than everything', () async {
       await artist('Someone');
       expect(await repository.findArtists('  '), isEmpty);
+    });
+  });
+
+  group('creating from a picker', () {
+    test('a new artist is findable and verified straight away', () async {
+      // Verified because a name typed by hand is not a guess a rescan should
+      // overwrite, and findable because the picker that made it will be reused
+      // a moment later.
+      final id = await repository.createArtist('Brand New Artist');
+
+      final row = await db
+          .customSelect(
+            'SELECT name, name_key, is_verified FROM artists WHERE id = ?1',
+            variables: [Variable(id)],
+          )
+          .getSingle();
+      expect(row.read<String>('name'), 'Brand New Artist');
+      expect(row.read<String>('name_key'), 'brand new artist');
+      expect(row.read<int>('is_verified'), 1);
+
+      expect(
+        (await repository.findArtists('brand new')).map((a) => a.id),
+        contains(id),
+      );
+    });
+
+    test('a new album is findable straight away', () async {
+      final id = await repository.createAlbum('Brand New Album');
+      expect(
+        (await repository.findAlbums('brand new')).map((a) => a.id),
+        contains(id),
+      );
+    });
+
+    test('albums are found by title and by alias', () async {
+      final id = await album('AD:HOUSE Winter 4');
+      await repository.addAlbumAlias(id, 'アドハウス');
+
+      expect((await repository.findAlbums('ad:house')).single.id, id);
+      expect((await repository.findAlbums('アドハウス')).single.id, id);
+    });
+
+    test('the album search reports who made it and how big it is', () async {
+      final artistId = await artist('Diverse System');
+      final albumId = await album('AD:HOUSE', albumArtistId: artistId);
+      await track('One', artistId: artistId, albumId: albumId);
+      await track('Two', artistId: artistId, albumId: albumId);
+
+      final found = (await repository.findAlbums('ad:house')).single;
+      expect(found.artistName, 'Diverse System');
+      expect(found.trackCount, 2);
+    });
+  });
+
+  group('moving a track between albums', () {
+    test('both albums are reindexed, not just the track', () async {
+      // An album's searchable text includes its tracks, so leaving the old one
+      // alone would keep finding the track under an album it has left.
+      final from = await album('Old Home');
+      final to = await album('New Home');
+      final trackId = await track(
+        'Wanderer',
+        artistId: await artist('Someone'),
+        albumId: from,
+      );
+      await SearchIndexer(db).rebuildAll();
+
+      await repository.setTrackAlbum(trackId, to);
+
+      Future<String> indexedFor(int id) async {
+        final row = await db.customSelect(
+          'SELECT secondary FROM $ftsTokenTable '
+          "WHERE entity_type = 'trk' AND entity_id = ?",
+          variables: [Variable('$id')],
+        ).getSingle();
+        return row.read<String>('secondary');
+      }
+
+      expect(await indexedFor(trackId), contains('New Home'));
+      expect(await indexedFor(trackId), isNot(contains('Old Home')));
+    });
+
+    test('a track can be taken off every album', () async {
+      final albumId = await album('Somewhere');
+      final trackId = await track(
+        'Loose',
+        artistId: await artist('Someone'),
+        albumId: albumId,
+      );
+
+      await repository.setTrackAlbum(trackId, null);
+
+      final row = await db
+          .customSelect(
+            'SELECT album_id, is_verified FROM tracks WHERE id = ?1',
+            variables: [Variable(trackId)],
+          )
+          .getSingle();
+      expect(row.read<int?>('album_id'), isNull);
+      // Verified, so a rescan does not put it back where it was.
+      expect(row.read<int>('is_verified'), 1);
     });
   });
 
