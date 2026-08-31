@@ -27,8 +27,7 @@ enum ChangeKind {
 
   final String label;
 
-  static ChangeKind? of(String name) =>
-      ChangeKind.values.where((k) => k.name == name).firstOrNull;
+  static ChangeKind? of(String name) => ChangeKind.values.where((k) => k.name == name).firstOrNull;
 }
 
 /// One line of a changelog.
@@ -55,12 +54,7 @@ class Change {
 
 /// Everything one version brought.
 class ReleaseNotes {
-  const ReleaseNotes({
-    required this.version,
-    required this.changes,
-    this.date,
-    this.headline,
-  });
+  const ReleaseNotes({required this.version, required this.changes, this.date, this.headline});
 
   /// The version, without a leading `v`. Matches the tag and pubspec.
   final String version;
@@ -75,15 +69,14 @@ class ReleaseNotes {
 
   bool get isReleased => date != null;
 
-  Iterable<Change> ofKind(ChangeKind kind) =>
-      changes.where((c) => c.kind == kind);
+  Iterable<Change> ofKind(ChangeKind kind) => changes.where((c) => c.kind == kind);
 
   Map<String, Object?> toJson() => {
-        'version': version,
-        if (date != null) 'date': date,
-        if (headline != null) 'headline': headline,
-        'changes': [for (final change in changes) change.toJson()],
-      };
+    'version': version,
+    if (date != null) 'date': date,
+    if (headline != null) 'headline': headline,
+    'changes': [for (final change in changes) change.toJson()],
+  };
 
   static ReleaseNotes? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -104,6 +97,7 @@ class ReleaseNotes {
 
 /// Newest first.
 const changelog = <ReleaseNotes>[
+  ReleaseNotes(version: '0.2.0-beta.1', headline: 'Testing our updates', changes: [Change.added('Changelogs')]),
   ReleaseNotes(
     version: '0.1.0',
     headline: 'The first build worth handing to someone else.',
