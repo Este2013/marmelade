@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm;
@@ -24,6 +25,8 @@ import '../domain/models/library_views.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
+import '../core/changelog/changelog.dart';
+import '../services/updates/changelog_service.dart';
 import '../services/updates/update_service.dart';
 import '../services/audio/playback_engine.dart';
 import '../services/audio/player_controller.dart';
@@ -466,6 +469,80 @@ final updateServiceProvider = FutureProvider<UpdateService>((ref) async {
   );
   ref.onDispose(service.dispose);
   return service;
+});
+
+/// Where the published changelog lives.
+const changelogUrl = 'https://este2013.github.io/marmelade/changelog.json';
+
+final changelogServiceProvider = Provider<ChangelogService>((ref) {
+  final service = ChangelogService(url: changelogUrl);
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// The published changelog, fetched once per launch.
+///
+/// The result is cached in the settings table, so a launch with no network
+/// still knows about versions the last successful fetch saw. A failed fetch
+/// leaves the cache alone rather than emptying it.
+final publishedChangelogProvider =
+    FutureProvider<List<ReleaseNotes>>((ref) async {
+  final settings = ref.watch(settingsRepositoryProvider);
+  final fetched = await ref.watch(changelogServiceProvider).fetch();
+
+  if (fetched != null) {
+    await settings.set(
+      SettingKeys.changelogCache,
+      jsonEncode({'schema': 1, 'versions': [for (final r in fetched) r.toJson()]}),
+    );
+    return fetched;
+  }
+
+  final cached = await settings.get(SettingKeys.changelogCache, '');
+  if (cached.isEmpty) return const [];
+  return ChangelogService.parse(cached) ?? const [];
+});
+
+/// Every version's notes: the built-in changelog, with the published one
+/// layered over it.
+final changelogProvider = FutureProvider<List<ReleaseNotes>>((ref) async {
+  final published = await ref.watch(publishedChangelogProvider.future);
+  return ChangelogService.merge(published);
+});
+
+/// The versions newer than the one running, which is what an update brings.
+final upcomingChangesProvider =
+    FutureProvider<List<ReleaseNotes>>((ref) async {
+  final all = await ref.watch(changelogProvider.future);
+  final current = await ref.watch(appVersionProvider.future);
+  return ChangelogService.newerThan(current, all);
+});
+
+/// The notes for the version that is running, if there are any.
+final currentChangesProvider = FutureProvider<ReleaseNotes?>((ref) async {
+  final all = await ref.watch(changelogProvider.future);
+  final current = await ref.watch(appVersionProvider.future);
+  return all.where((r) => r.version == current).firstOrNull;
+});
+
+/// Whether this launch is the first on a newly installed version.
+///
+/// Answered from the built-in changelog and a stored marker, so it needs no
+/// network: the build knows its own version and what it changed.
+final justUpdatedProvider = FutureProvider<ReleaseNotes?>((ref) async {
+  final settings = ref.watch(settingsRepositoryProvider);
+  final current = await ref.watch(appVersionProvider.future);
+  final seen = await settings.get(SettingKeys.lastSeenVersion, '');
+  if (seen == current) return null;
+
+  // Mark it seen straight away. A dialog that reappears because something
+  // failed downstream is worse than one that is missed once.
+  await settings.set(SettingKeys.lastSeenVersion, current);
+
+  // Nothing to show on a first install: there is no previous version whose
+  // changes would be news.
+  if (seen.isEmpty) return null;
+  return changelog.where((r) => r.version == current).firstOrNull;
 });
 
 /// Whether the update check should include pre-releases.

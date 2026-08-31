@@ -51,6 +51,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Check the changelog
+        # A tag with no dated changelog entry means someone tagged before
+        # writing down what the version does. The app and the website both read
+        # that entry, so a release without one ships silently.
+        run: dart run tool/changelog_json.dart --check ${{ steps.version.outputs.version }}
+
       - name: Generate drift code
         run: dart run build_runner build --delete-conflicting-outputs
 
@@ -70,6 +76,13 @@ jobs:
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "$name.zip"
           "archive=$name.zip" >> $env:GITHUB_OUTPUT
 
+      - name: Write the release notes from the changelog
+        id: notes
+        shell: pwsh
+        run: |
+          dart run tool/changelog_notes.dart ${{ steps.version.outputs.version }} > RELEASE_NOTES.md
+          "path=RELEASE_NOTES.md" >> $env:GITHUB_OUTPUT
+
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
@@ -78,5 +91,9 @@ jobs:
           # A pre-release tag (v1.2.0-beta.1) publishes to the beta channel,
           # which is the same distinction the in-app check makes.
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          body_path: ${{ steps.notes.outputs.path }}
+          # Commit subjects underneath the hand-written notes, for anyone who
+          # wants the detail.
+          append_body: true
           generate_release_notes: true
           files: ${{ steps.package.outputs.archive }}

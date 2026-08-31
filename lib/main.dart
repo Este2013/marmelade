@@ -136,13 +136,18 @@ class MarmeladeApp extends ConsumerWidget {
           themeMode: preference.mode,
           theme: buildTheme(seed: seed, brightness: Brightness.light),
           darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
+          // The screenshot boundary goes here rather than around `home`, so it
+          // sits *above* the navigator: dialogs, menus and snackbars live in
+          // the root overlay, and a boundary inside `home` cannot see them.
+          // Screenshots are the only way to look at this app, so a dialog that
+          // cannot be captured is a dialog nobody can check.
+          builder: (context, child) =>
+              Screenshotter.boundary(child: child ?? const SizedBox.shrink()),
           // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
           // tree, to test whether a fault is the accessibility bridge's.
-          home: Screenshotter.boundary(
-            child: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1'
-                ? const ExcludeSemantics(child: AppShell())
-                : const AppShell(),
-          ),
+          home: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1'
+              ? const ExcludeSemantics(child: AppShell())
+              : const AppShell(),
         );
       },
     );

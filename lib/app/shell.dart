@@ -20,6 +20,7 @@ import '../features/tags/tag_detail_view.dart';
 import '../features/tags/tags_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/search/search_view.dart';
+import '../features/settings/changelog_dialog.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
@@ -186,6 +187,10 @@ class _AppShellState extends ConsumerState<AppShell>
       if (player.hasTrack || player.hasQueue) _bar.value = 1;
     });
 
+    // First launch after an update: say what changed, once. Answered from the
+    // built-in changelog, so it needs no network and cannot be late.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showWhatIsNew());
+
     if (Platform.environment['MARMELADE_NOW_PLAYING'] == '1') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _toggleShade(open: true);
@@ -349,6 +354,26 @@ class _AppShellState extends ConsumerState<AppShell>
 
   void _editTrack(int trackId) =>
       _push(TrackEditorView(trackId: trackId, onBack: _pop));
+
+  /// Shows the release notes once, after the version has changed.
+  Future<void> _showWhatIsNew() async {
+    // Debug affordance: show it regardless of whether the version changed,
+    // which is the only way to look at it without bumping the version.
+    final forced = Platform.environment['MARMELADE_CHANGELOG'] == '1';
+    // Screenshots would otherwise all be taken through this dialog.
+    if (!forced && Platform.environment['MARMELADE_SHOT'] != null) return;
+
+    final notes = forced
+        ? await ref.read(currentChangesProvider.future)
+        : await ref.read(justUpdatedProvider.future);
+    if (notes == null || !mounted) return;
+    await showChangelog(
+      context,
+      versions: [notes],
+      title: 'What is new in ${notes.version}',
+      subtitle: 'You have just updated.',
+    );
+  }
 
   /// Goes to search and puts the caret in the field.
   ///

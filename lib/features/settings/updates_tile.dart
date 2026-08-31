@@ -4,7 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/providers.dart';
 import '../../data/repositories/settings_repository.dart' show SettingKeys;
+import '../../core/changelog/changelog.dart';
 import '../../services/updates/update_service.dart';
+import 'changelog_dialog.dart';
 
 /// The version, and whether there is a newer one.
 ///
@@ -45,6 +47,7 @@ class _UpdatesTileState extends ConsumerState<UpdatesTile> {
   Widget build(BuildContext context) {
     final version = ref.watch(appVersionProvider).value;
     final beta = ref.watch(updateChannelProvider);
+    final upcoming = ref.watch(upcomingChangesProvider).value ?? const [];
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -98,8 +101,14 @@ class _UpdatesTileState extends ConsumerState<UpdatesTile> {
                       ),
                     ],
                   ),
-                  if (available.notes != null) ...[
-                    const SizedBox(height: 10),
+                  const SizedBox(height: 10),
+                  // The published changelog when there is one, and GitHub's
+                  // generated notes otherwise: a hand-written line about what
+                  // changed beats a list of commit subjects, but a list of
+                  // commit subjects beats nothing.
+                  if (upcoming.isNotEmpty)
+                    _UpcomingSummary(versions: upcoming)
+                  else if (available.notes != null)
                     Text(
                       available.notes!,
                       maxLines: 8,
@@ -107,11 +116,33 @@ class _UpdatesTileState extends ConsumerState<UpdatesTile> {
                       style: theme.textTheme.bodySmall
                           ?.copyWith(color: scheme.onPrimaryContainer),
                     ),
-                  ],
                 ],
               ),
             ),
           ),
+        ListTile(
+          leading: const Icon(Icons.history),
+          title: const Text('Release notes'),
+          subtitle: Text(
+            version == null
+                ? 'What each version changed.'
+                : 'What changed in $version, and in every version before it.',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            final current = ref.read(currentChangesProvider).value;
+            showChangelog(
+              context,
+              versions: current == null ? null : [current],
+              title: current == null
+                  ? 'Release history'
+                  : 'What is new in ${current.version}',
+              subtitle: current == null
+                  ? null
+                  : 'The version you are running.',
+            );
+          },
+        ),
         SwitchListTile(
           secondary: const Icon(Icons.science_outlined),
           title: const Text('Include pre-releases'),
@@ -136,4 +167,52 @@ class _UpdatesTileState extends ConsumerState<UpdatesTile> {
         // different answers and only one of them is known.
         UpdateCheckFailed(:final reason) => reason,
       };
+}
+
+/// What the versions ahead of this one bring, in the update banner.
+class _UpcomingSummary extends StatelessWidget {
+  const _UpcomingSummary({required this.versions});
+
+  final List<ReleaseNotes> versions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    // Flattened across versions: someone three releases behind wants to know
+    // what they are getting, not which release each line came from.
+    final changes = [for (final version in versions) ...version.changes];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final change in changes.take(4))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '• ${change.text}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: scheme.onPrimaryContainer),
+            ),
+          ),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: () => showChangelog(
+            context,
+            versions: versions,
+            title: 'What an update brings',
+            subtitle: changes.length > 4
+                ? '${changes.length} changes across '
+                    '${versions.length} version${versions.length == 1 ? '' : 's'}'
+                : null,
+          ),
+          child: Text(
+            changes.length > 4 ? 'All ${changes.length} changes' : 'Details',
+          ),
+        ),
+      ],
+    );
+  }
 }

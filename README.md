@@ -47,20 +47,20 @@ name you can't type.
 
 ## Releases
 
-Tag a commit and push the tag; CI builds Windows and publishes the release:
+Write the changes in `lib/core/changelog/changelog.dart`, match the version in
+`pubspec.yaml`, then tag:
 
 ```bash
-git tag v1.1.0 && git push origin v1.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The tag and `pubspec.yaml` must agree on the version -- the workflow fails if
-they do not, because a build that reports the wrong version can never see itself
-as out of date. A tag with a pre-release suffix (`v1.1.0-beta.1`) publishes to
-the beta channel, which is the same distinction Settings offers.
+CI builds Windows, publishes the release with the changelog as its notes, and
+republishes [the changelog site](https://este2013.github.io/marmelade/). That
+one Dart file is the only place a change is written down: the website, the
+release notes and the app's own "what's new" dialog are all generated from it.
 
-The app checks for updates when asked and opens the release page. It never
-downloads or installs anything: that needs signature verification to be safe,
-and until there is some, handing you the page is the honest version.
+The full process, including betas and what the app does with all of it, is in
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Status
 

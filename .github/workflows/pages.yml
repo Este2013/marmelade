@@ -1,0 +1,70 @@
+name: Changelog site
+
+# Publishes the changelog to GitHub Pages, where the app reads it from:
+#
+#   https://este2013.github.io/marmelade/changelog.json
+#
+# Generated from lib/core/changelog/changelog.dart by a Dart script that imports
+# it, so the file in the repository is the only place a change is written down.
+#
+# One-time setup, which cannot be done from a workflow: repository Settings ->
+# Pages -> Build and deployment -> Source: "GitHub Actions".
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/core/changelog/changelog.dart'
+      - 'tool/changelog_json.dart'
+      - '.github/workflows/pages.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a newer one win: publishing an older
+# changelog over a newer one would be worse than skipping a run.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.45.0-0.1.pre
+          channel: beta
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate the changelog
+        run: |
+          mkdir -p site
+          dart run tool/changelog_json.dart site/changelog.json
+
+      - name: Render a page to go with it
+        # So the URL is worth opening in a browser as well as by the app.
+        run: dart run tool/changelog_html.dart site/changelog.json site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

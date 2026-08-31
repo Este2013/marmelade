@@ -114,4 +114,6 @@ abstract final class SettingKeys {
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';
   static const skippedVersion = 'updates.skippedVersion';
+  static const changelogCache = 'changelog.cache';
+  static const lastSeenVersion = 'changelog.lastSeenVersion';
 }
