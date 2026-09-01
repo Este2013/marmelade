@@ -505,6 +505,36 @@ void main() {
       expect((await repository.watchAlbum(albumId).first)!.imagePath, isNotNull);
       expect((await repository.watchTrack(trackId).first)!.imagePath, isNotNull);
     });
+
+    test('a playlist works the same way, despite having no is_verified',
+        () async {
+      // Regression guard: playlists have no `is_verified` column (there is no
+      // file to rescan, so nothing was ever there to guard), but _setPicture
+      // and _clearPicture used to write to it unconditionally for every
+      // owner -- a real UPDATE ... is_verified against a table without that
+      // column, throwing at the SQL layer with "no such column".
+      final playlistId = await db.into(db.playlists).insert(
+            PlaylistsCompanion.insert(
+              name: 'Late Night Coding',
+              nameKey: normalizeKey('Late Night Coding'),
+            ),
+          );
+
+      expect(
+        await repository.setPlaylistPicture(playlistId, writePng('e.png')),
+        isTrue,
+      );
+      final row = await (db.select(db.playlists)
+            ..where((t) => t.id.equals(playlistId)))
+          .getSingle();
+      expect(row.imageId, isNotNull);
+
+      await repository.clearPlaylistPicture(playlistId);
+      final cleared = await (db.select(db.playlists)
+            ..where((t) => t.id.equals(playlistId)))
+          .getSingle();
+      expect(cleared.imageId, isNull);
+    });
   });
 
   group('album and track aliases', () {

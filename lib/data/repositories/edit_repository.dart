@@ -1052,8 +1052,15 @@ class EditRepository {
 
     // Written as a statement because the column differs per table and drift's
     // typed update API cannot be parameterised over that.
+    //
+    // Playlists have no `is_verified`: the column exists so the file-system
+    // rescanner knows not to overwrite a hand-picked picture with whatever a
+    // file's embedded art says next time -- and a playlist has no file to
+    // rescan in the first place, so nothing was ever there to guard.
     await db.customUpdate(
-      'UPDATE $table SET image_id = ?1, is_verified = 1 WHERE id = ?2',
+      table == 'playlists'
+          ? 'UPDATE $table SET image_id = ?1 WHERE id = ?2'
+          : 'UPDATE $table SET image_id = ?1, is_verified = 1 WHERE id = ?2',
       variables: [Variable(imageId), Variable(id)],
       updates: {db.artists, db.albums, db.tracks, db.playlists},
     );
@@ -1071,7 +1078,9 @@ class EditRepository {
   ) async {
     final (table, _, entity) = target;
     await db.customUpdate(
-      'UPDATE $table SET image_id = NULL, is_verified = 1 WHERE id = ?1',
+      table == 'playlists'
+          ? 'UPDATE $table SET image_id = NULL WHERE id = ?1'
+          : 'UPDATE $table SET image_id = NULL, is_verified = 1 WHERE id = ?1',
       variables: [Variable(id)],
       updates: {db.artists, db.albums, db.tracks, db.playlists},
     );
