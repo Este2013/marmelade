@@ -55,6 +55,7 @@ enum LinkKind {
   bluesky,
   mastodon,
   bandcamp,
+  booth,
   soundcloud,
   spotify,
   appleMusic,

@@ -154,6 +154,20 @@ void main() {
     expect(repository.links.single.kind, LinkKind.bandcamp);
   });
 
+  testWidgets('Booth.pm follows the same subdomain shape as Bandcamp',
+      (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byTooltip('Booth.pm'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(TextField, 'https://lukhash.booth.pm'),
+      findsOneWidget,
+    );
+    expect(repository.links.single.kind, LinkKind.booth);
+  });
+
   testWidgets('a preset with no guessable pattern still adds an editable row',
       (tester) async {
     await pump(tester);

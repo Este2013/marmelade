@@ -10,6 +10,7 @@ String linkKindLabel(LinkKind kind) => switch (kind) {
       LinkKind.bluesky => 'Bluesky',
       LinkKind.mastodon => 'Mastodon',
       LinkKind.bandcamp => 'Bandcamp',
+      LinkKind.booth => 'Booth.pm',
       LinkKind.soundcloud => 'SoundCloud',
       LinkKind.spotify => 'Spotify',
       LinkKind.appleMusic => 'Apple Music',
@@ -91,6 +92,7 @@ LinkKind inferLinkKind(String url) {
         has('mastodon.world') =>
       LinkKind.mastodon,
     _ when has('bandcamp.com') => LinkKind.bandcamp,
+    _ when host.endsWith('.booth.pm') => LinkKind.booth,
     _ when has('soundcloud.com') => LinkKind.soundcloud,
     _ when has('spotify.com') => LinkKind.spotify,
     _ when has('music.apple.com') => LinkKind.appleMusic,
@@ -111,6 +113,7 @@ String? linkKindHint(LinkKind kind) => switch (kind) {
       LinkKind.bluesky => 'https://bsky.app/profile/artistname.bsky.social',
       LinkKind.mastodon => 'https://mastodon.social/@artistname',
       LinkKind.bandcamp => 'https://artistname.bandcamp.com',
+      LinkKind.booth => 'https://artistname.booth.pm',
       LinkKind.soundcloud => 'https://soundcloud.com/artistname',
       LinkKind.wikipedia => 'https://en.wikipedia.org/wiki/Artist_Name',
       _ => null,
@@ -136,6 +139,7 @@ String? linkKindSuggestion(LinkKind kind, String artistName) {
     LinkKind.bluesky => 'https://bsky.app/profile/$slug.bsky.social',
     LinkKind.mastodon => 'https://mastodon.social/@$slug',
     LinkKind.bandcamp => 'https://$slug.bandcamp.com',
+    LinkKind.booth => 'https://$slug.booth.pm',
     LinkKind.soundcloud => 'https://soundcloud.com/$slug',
     LinkKind.wikipedia =>
       'https://en.wikipedia.org/wiki/'

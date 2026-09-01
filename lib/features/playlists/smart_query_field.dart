@@ -39,6 +39,16 @@ class SmartQueryField extends ConsumerStatefulWidget {
 /// this drifted the first time.
 const _fieldContentPadding = EdgeInsets.fromLTRB(12, 20, 12, 12);
 
+/// The ghost's own padding, not a copy of the field's.
+///
+/// A bare [Text] and the [EditableText] a [TextField] paints internally do
+/// not settle on the same baseline for an identical style and padding --
+/// measured empirically at about 8 logical pixels, the real text sitting
+/// higher. This corrects for that specific difference, which is why it does
+/// not simply reuse [_fieldContentPadding]: it would stay roughly this same
+/// few pixels regardless of what the field's own padding becomes.
+const _ghostPadding = EdgeInsets.fromLTRB(12, 12, 12, 12);
+
 class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   final _focus = FocusNode();
 
@@ -250,10 +260,30 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     final text = widget.controller.text;
     final query = SmartQuery.parse(text);
     final suggestions = _suggestions;
+    // A bare Text defaults to the ambient DefaultTextStyle (bodyMedium), but a
+    // TextField's own input text defaults to the theme's titleMedium -- two
+    // different sizes for "no size specified". The ghost is a Text, so left
+    // to its own default it rendered visibly smaller than the real field, and
+    // every metric downstream of that (baseline included) came out wrong.
+    // Resolving one style and giving it to both is what actually fixes that,
+    // not any amount of padding or strut tuning.
+    final fieldStyle =
+        (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
+      fontFamily: 'Consolas',
+      color: scheme.onSurface,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 12, bottom: 4),
+          child: Text(
+            'Query',
+            style: theme.textTheme.labelSmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ),
         CallbackShortcuts(
           bindings: {
             // Tab takes the first suggestion, which is how every completion
@@ -266,20 +296,19 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
             children: [
               // The rest of the first suggestion, greyed, behind the field --
               // so what Tab would do is visible where it would happen rather
-              // than only as a chip below.
-              //
-              // Its padding has to match the field's own content padding
-              // exactly, which is why both use [_fieldContentPadding] rather
-              // than two numbers tuned by eye against different screenshots.
-              // The label is pinned with [FloatingLabelBehavior.always] for
-              // the same reason: a label that floats only sometimes puts the
-              // real text at two different heights depending on focus, and
-              // the ghost can only ever match one of them.
+              // than only as a chip below. Lining this up with the real caret
+              // took three things, verified against an actual screenshot
+              // rather than assumed: the same resolved [fieldStyle] as the
+              // real field (a bare Text and a TextField default to two
+              // different sizes), no `labelText` (a floating label reserves
+              // space Flutter does not expose a number for -- the caption
+              // above this field stands in for it instead), and
+              // [_ghostPadding]'s own small vertical correction.
               if (_ghost(suggestions) case final ghost?)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Padding(
-                      padding: _fieldContentPadding,
+                      padding: _ghostPadding,
                       child: Text.rich(
                         TextSpan(
                           children: [
@@ -300,7 +329,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                             ),
                           ],
                         ),
-                        style: const TextStyle(fontFamily: 'Consolas'),
+                        style: fieldStyle,
                         maxLines: 1,
                         overflow: TextOverflow.clip,
                       ),
@@ -312,10 +341,9 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                 focusNode: _focus,
                 autofocus: widget.autofocus,
                 autocorrect: false,
-                style: const TextStyle(fontFamily: 'Consolas'),
+                style: fieldStyle,
                 decoration: InputDecoration(
-                  labelText: 'Query',
-                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  isDense: true,
                   contentPadding: _fieldContentPadding,
                   hintText:
                       'artist:Nanahira tag:hardcore -tag:remix added:<30d',
