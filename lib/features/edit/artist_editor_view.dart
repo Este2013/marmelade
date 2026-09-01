@@ -9,8 +9,9 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
-import 'tag_section.dart';
+import 'link_visuals.dart';
 import 'picture_section.dart';
+import 'tag_section.dart';
 
 /// Everything about one artist that a person can change.
 ///
@@ -536,7 +537,7 @@ class _EditorState extends ConsumerState<_Editor> {
                   ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.link),
+                    leading: LinkKindIcon(kind: link.kind),
                     title: Text(link.label ?? link.url),
                     subtitle: link.label == null ? null : Text(link.url),
                     trailing: IconButton(
@@ -558,13 +559,15 @@ class _EditorState extends ConsumerState<_Editor> {
                 child: EditField(
                   controller: _newLink,
                   label: 'Add a link',
-                  hint: 'https://...',
+                  // The kind's own example, so what is wanted is visible
+                  // before anything is typed.
+                  hint: linkKindHint(_linkKind) ?? 'https://...',
                   onSubmitted: (_) => _addLink(),
                 ),
               ),
               const SizedBox(width: 12),
               SizedBox(
-                width: 200,
+                width: 210,
                 child: DropdownButtonFormField<LinkKind>(
                   isExpanded: true,
                   initialValue: _linkKind,
@@ -575,7 +578,22 @@ class _EditorState extends ConsumerState<_Editor> {
                   ),
                   items: [
                     for (final kind in LinkKind.values)
-                      DropdownMenuItem(value: kind, child: Text(kind.name)),
+                      DropdownMenuItem(
+                        value: kind,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            LinkKindIcon(kind: kind, size: 16),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                linkKindLabel(kind),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                   onChanged: (value) =>
                       setState(() => _linkKind = value ?? _linkKind),
@@ -595,8 +613,15 @@ class _EditorState extends ConsumerState<_Editor> {
   }
 
   Future<void> _addLink() async {
-    final url = _newLink.text.trim();
-    if (url.isEmpty) return;
+    var url = _newLink.text.trim();
+    if (url.isEmpty) {
+      // Nothing typed: offer a real guess instead of doing nothing, for the
+      // kinds where the site's own pattern makes one guessable at all.
+      final suggestion = linkKindSuggestion(_linkKind, widget.edit.name);
+      if (suggestion == null) return;
+      setState(() => _newLink.text = suggestion);
+      return;
+    }
     await _run(() async {
       await _repository.addArtistLink(
         widget.edit.id,

@@ -3,18 +3,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm;
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Color, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../core/logging/app_log.dart';
 import '../data/db/database.dart';
 import '../data/indexer/library_indexer.dart';
 import '../data/indexer/search_indexer.dart';
+import '../data/repositories/edit_repository.dart';
 import '../data/repositories/library_repository.dart';
 import '../data/repositories/lyrics_repository.dart';
 import '../data/repositories/queue_repository.dart';
-import '../data/repositories/edit_repository.dart';
 import '../data/repositories/playlist_repository.dart';
 import '../data/repositories/review_repository.dart';
 import '../data/repositories/search_repository.dart';
@@ -715,6 +716,12 @@ final artistAlbumsProvider =
   return ref.watch(libraryRepositoryProvider).watchArtistAlbums(artistId);
 });
 
+/// An artist's external links, for the page itself rather than the editor.
+final artistLinksProvider =
+    StreamProvider.family<List<LinkRow>, int>((ref, artistId) {
+  return ref.watch(editRepositoryProvider).watchArtistLinks(artistId);
+});
+
 final tagRepositoryProvider = Provider<TagRepository>(
   (ref) => TagRepository(
     db: ref.watch(databaseProvider),
@@ -858,6 +865,23 @@ class AppServices {
     required String databasePath,
     required Directory artworkDirectory,
   }) async {
+    // Debug-only, and a guess rather than a verified fix: opening the database
+    // spawns a second isolate (drift's background worker) around 600ms after
+    // main() starts. On this beta-channel SDK, VS Code has been seen to pause
+    // *both* isolates on entry and never auto-resume either -- not just the
+    // usual momentary pause every debug launch has, but one that sits there
+    // until a person clicks Resume on each. That shape (the debugger's own
+    // auto-resume failing, not merely being slow) matches a known class of
+    // Dart-Code/DAP bug where a second isolate starting while the adapter is
+    // still attaching to the first confuses its isolate bookkeeping for both.
+    // Giving the debugger more working room before the second isolate exists
+    // is the only lever app code has on that timing. If this still happens
+    // after this change, the theory is wrong and the cause is upstream --
+    // see docs/ARCHITECTURE.md.
+    if (kDebugMode) {
+      AppLog.instance.info('debug isolate-spawn delay');
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+    }
     final db = await MarmeladeDatabase.open(databasePath);
     debugPrint('marmelade: database open');
     final artStore = await ArtStore.open(artworkDirectory);

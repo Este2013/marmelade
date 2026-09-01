@@ -667,6 +667,74 @@ void main() {
     });
   });
 
+  group('artist links', () {
+    test('added, listed in order, and watched live', () async {
+      final id = await artist('LukHash');
+      final events = <List<LinkRow>>[];
+      final sub = repository.watchArtistLinks(id).listen(events.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repository.addArtistLink(
+        id,
+        ' https://lukhash.bandcamp.com ',
+        kind: LinkKind.bandcamp,
+      );
+      await repository.addArtistLink(
+        id,
+        'https://x.com/LukHash',
+        kind: LinkKind.twitter,
+        label: 'Twitter/X',
+      );
+      await pumpEventQueue();
+
+      // Trimmed on the way in, so a pasted trailing space does not become
+      // part of the URL.
+      final latest = events.last;
+      expect(latest.map((l) => l.url), [
+        'https://lukhash.bandcamp.com',
+        'https://x.com/LukHash',
+      ]);
+      expect(latest[1].label, 'Twitter/X');
+      expect(latest[0].label, isNull);
+    });
+
+    test('a blank URL is not added', () async {
+      final id = await artist('LukHash');
+      await repository.addArtistLink(id, '   ');
+
+      expect(await repository.watchArtistLinks(id).first, isEmpty);
+    });
+
+    test('removed by id, and the stream notices', () async {
+      final id = await artist('LukHash');
+      await repository.addArtistLink(id, 'https://lukhash.bandcamp.com');
+      final link = (await repository.watchArtistLinks(id).first).single;
+
+      final events = <List<LinkRow>>[];
+      final sub = repository.watchArtistLinks(id).listen(events.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repository.removeArtistLink(link.id);
+      await pumpEventQueue();
+
+      expect(events.last, isEmpty);
+    });
+
+    test('an unrecognised stored kind falls back to other', () async {
+      final id = await artist('LukHash');
+      await db.customStatement(
+        'INSERT INTO artist_links (artist_id, url, kind) '
+        "VALUES (?1, 'https://example.com', 'not_a_real_kind')",
+        [id],
+      );
+
+      final link = (await repository.watchArtistLinks(id).first).single;
+      expect(link.kind, LinkKind.other);
+    });
+  });
+
   group('the search index follows an edit', () {
     // A regression guard. The indexer keys rows by a short string ('art'),
     // and every caller used to pass the long word ('artist'): the delete

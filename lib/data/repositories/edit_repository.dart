@@ -285,28 +285,7 @@ class EditRepository {
     ];
   }
 
-  Future<List<LinkRow>> _linksOf(int artistId) async {
-    final rows = await db
-        .customSelect(
-          'SELECT id, url, kind, label FROM artist_links '
-          'WHERE artist_id = ?1 ORDER BY sort_order, id',
-          variables: [Variable(artistId)],
-          readsFrom: {db.artistLinks},
-        )
-        .get();
-    return [
-      for (final row in rows)
-        LinkRow(
-          id: row.read<int>('id'),
-          url: row.read<String>('url'),
-          kind: LinkKind.values.firstWhere(
-            (k) => k.name == row.read<String>('kind'),
-            orElse: () => LinkKind.other,
-          ),
-          label: row.read<String?>('label'),
-        ),
-    ];
-  }
+  Future<List<LinkRow>> _linksOf(int artistId) => watchArtistLinks(artistId).first;
 
   Future<List<MembershipRow>> _membersOf(int groupId) =>
       _memberships(groupId, ofGroup: true);
@@ -717,6 +696,33 @@ class EditRepository {
 
   Future<void> removeArtistLink(int linkId) =>
       (db.delete(db.artistLinks)..where((t) => t.id.equals(linkId))).go();
+
+  /// The links for an artist's own page -- outside the editor, so opening
+  /// them does not require opening it.
+  Stream<List<LinkRow>> watchArtistLinks(int artistId) {
+    return db
+        .customSelect(
+          'SELECT id, url, kind, label FROM artist_links '
+          'WHERE artist_id = ?1 ORDER BY sort_order, id',
+          variables: [Variable(artistId)],
+          readsFrom: {db.artistLinks},
+        )
+        .watch()
+        .map(
+          (rows) => [
+            for (final row in rows)
+              LinkRow(
+                id: row.read<int>('id'),
+                url: row.read<String>('url'),
+                kind: LinkKind.values.firstWhere(
+                  (k) => k.name == row.read<String>('kind'),
+                  orElse: () => LinkKind.other,
+                ),
+                label: row.read<String?>('label'),
+              ),
+          ],
+        );
+  }
 
   // --------------------------------------------------------------- membership
 

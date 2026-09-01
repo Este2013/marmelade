@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
+import '../../data/repositories/edit_repository.dart' show LinkRow;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
-import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/expandable_artwork.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../edit/link_menu_button.dart';
 
 /// One artist: their portrait, their releases, and everything they appear on.
 ///
@@ -110,6 +112,9 @@ class _ArtistHeader extends ConsumerWidget {
     final theme = Theme.of(context);
     final player = ref.read(playerProvider.notifier);
     final trackIds = tracks.map((t) => t.id).toList();
+    final links = artist == null
+        ? const <LinkRow>[]
+        : ref.watch(artistLinksProvider(artist!.id)).value ?? const [];
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 20),
@@ -215,6 +220,7 @@ class _ArtistHeader extends ConsumerWidget {
                           icon: const Icon(Icons.shuffle),
                           label: const Text('Shuffle'),
                         ),
+                        LinkMenuButton(links: links),
                       ],
                     ),
                   ],

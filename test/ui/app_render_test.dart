@@ -13,6 +13,7 @@ import 'package:marmelade/app/shell.dart';
 import 'package:marmelade/app/window_chrome.dart';
 import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/data/db/database.dart';
+import 'package:marmelade/data/repositories/edit_repository.dart' show LinkRow;
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/data/repositories/review_repository.dart';
@@ -456,6 +457,7 @@ void main() {
     ({int index, int length})? longQueue,
     Stream<Duration>? positions,
     SearchResults? searchResults,
+    List<LinkRow> artistLinks = const [],
   }) {
     return ProviderScope(
       overrides: [
@@ -496,6 +498,9 @@ void main() {
         // stream in this scope.
         attachedTagsProvider.overrideWith(
           (ref, key) => Stream.value(const <AttachedTag>[]),
+        ),
+        artistLinksProvider.overrideWith(
+          (ref, artistId) => Stream.value(artistLinks),
         ),
         albumTracksProvider.overrideWith(
           (ref, albumId) =>
@@ -1134,6 +1139,40 @@ void main() {
     expect(list.groupByAlbum, isTrue);
     expect(tester.takeException(), isNull);
     await capture(tester, 'artist');
+  });
+
+  testWidgets('an artist with links offers them from an icon',
+      (tester) async {
+    await open(
+      tester,
+      app: buildApp(
+        artistLinks: const [
+          LinkRow(id: 1, url: 'https://pinocchiop.bandcamp.com', kind: LinkKind.bandcamp),
+        ],
+      ),
+    );
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+    await tester.tap(find.text('PinocchioP').first);
+    await settle(tester);
+
+    expect(find.byIcon(Icons.link), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.link));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bandcamp'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an artist with no links offers no link icon at all',
+      (tester) async {
+    await open(tester);
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+    await tester.tap(find.text('PinocchioP').first);
+    await settle(tester);
+
+    expect(find.byIcon(Icons.link), findsNothing);
   });
 
   testWidgets('search groups what it found and leads with the best',

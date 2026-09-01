@@ -228,6 +228,94 @@ void main() {
       expect(find.text('That artist is gone'), findsOne);
     });
 
+    group('links', () {
+      Future<void> openLinks(WidgetTester tester) => open(
+            tester,
+            wrap(
+              const ArtistEditorView(artistId: 1, onBack: _noop),
+              artist: artistEdit(name: 'LukHash'),
+            ),
+            size: const Size(1200, 1800),
+          );
+
+      // Three sections on this page offer an "Add" tooltip -- aliases, tags
+      // and links -- so a bare byTooltip finder is ambiguous. Scoped to the
+      // row the URL field itself is in.
+      Finder addLinkButton() => find.descendant(
+            of: find.ancestor(
+              of: find.widgetWithText(TextField, 'Add a link'),
+              matching: find.byType(Row),
+            ),
+            matching: find.byTooltip('Add'),
+          );
+
+      testWidgets('the kind dropdown names each kind, not its raw enum value',
+          (tester) async {
+        await openLinks(tester);
+
+        await tester.tap(find.text('Website'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Apple Music'), findsOne);
+        expect(find.text('VGMdb'), findsOne);
+        // What every earlier version of this dropdown showed instead.
+        expect(find.text('appleMusic'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets("picking a kind changes the URL field's hint",
+          (tester) async {
+        await openLinks(tester);
+
+        await tester.tap(find.text('Website'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bandcamp').last);
+        await tester.pumpAndSettle();
+
+        final field = tester.widget<TextField>(
+          find.widgetWithText(TextField, 'Add a link'),
+        );
+        expect(field.decoration?.hintText, 'https://artistname.bandcamp.com');
+      });
+
+      testWidgets(
+          'pressing + on an empty field offers a real guess for a guessable kind',
+          (tester) async {
+        await openLinks(tester);
+        await tester.tap(find.text('Website'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bandcamp').last);
+        await tester.pumpAndSettle();
+
+        await tester.tap(addLinkButton());
+        await tester.pump();
+
+        expect(
+          find.widgetWithText(TextField, 'https://lukhash.bandcamp.com'),
+          findsOne,
+        );
+        // A local fill, not a save -- nothing was added yet, so the database
+        // this test never provided was never asked for.
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets(
+          'pressing + does nothing for a kind with no guessable pattern',
+          (tester) async {
+        await openLinks(tester);
+        await tester.tap(find.text('Website'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Spotify').last);
+        await tester.pumpAndSettle();
+
+        await tester.tap(addLinkButton());
+        await tester.pump();
+
+        expect(find.widgetWithText(TextField, ''), findsWidgets);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
     testWidgets('lays out at the narrowest window the app allows',
         (tester) async {
       // Where the overflowing dropdowns showed up.
