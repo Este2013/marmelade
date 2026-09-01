@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/services/art/art_store.dart';
+import 'package:marmelade/widgets/artwork.dart';
 import 'package:marmelade/widgets/expandable_artwork.dart';
 
 /// The artwork on a detail page: click to see it big, hover to change it.
@@ -82,6 +83,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Close'), findsNothing);
+  });
+
+  testWidgets('clicking the empty space around the picture closes it',
+      (tester) async {
+    // The overlay is mostly empty space around a square picture, and clicking
+    // that space is indistinguishable from clicking the barrier.
+    await pump(tester);
+    await tester.tap(find.byType(ExpandableArtwork));
+    await tester.pumpAndSettle();
+    expect(find.text('Close'), findsOneWidget);
+
+    // Well outside the picture, but inside the dialog.
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Close'), findsNothing);
+  });
+
+  testWidgets('clicking the picture itself does not close it', (tester) async {
+    await pump(tester);
+    await tester.tap(find.byType(ExpandableArtwork));
+    await tester.pumpAndSettle();
+
+    // The preview's own artwork, which is the second one in the tree.
+    await tester.tap(find.byType(Artwork).last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Close'), findsOneWidget);
   });
 
   testWidgets('the hover button is in the tree even before hovering',

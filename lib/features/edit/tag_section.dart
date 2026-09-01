@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/repositories/tag_repository.dart';
+import '../tags/tag_visuals.dart';
 import 'edit_widgets.dart';
 
 /// The tags on one thing, with a field to add another.
@@ -185,7 +186,11 @@ class _TagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final colour = tag.color == null ? null : Color(tag.color!);
+    final visuals = tagVisuals(
+      context,
+      categoryIcon: tag.categoryIcon,
+      color: tag.color,
+    );
 
     // Inherited chips are dimmed, not just differently iconed: the section
     // says they are greyed out, and at a glance the icon alone does not read
@@ -194,6 +199,8 @@ class _TagChip extends StatelessWidget {
     final chip = tag.isInherited
         ? Chip(
             label: Text(tag.name, style: TextStyle(color: muted)),
+            // Where it came from, not what it is: an inherited chip's job is to
+            // say "this belongs to the album", and the album is the answer.
             avatar: Icon(
               tag.origin == TagOrigin.album
                   ? Icons.album_outlined
@@ -209,7 +216,9 @@ class _TagChip extends StatelessWidget {
           )
         : Chip(
             label: Text(tag.name),
-            avatar: Icon(Icons.label_outline, size: 16, color: colour),
+            avatar: Icon(visuals.icon, size: 16, color: visuals.color),
+            backgroundColor: visuals.color.withValues(alpha: 0.14),
+            side: BorderSide(color: visuals.color.withValues(alpha: 0.45)),
             onDeleted: onRemove,
           );
 

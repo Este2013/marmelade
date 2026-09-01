@@ -198,6 +198,32 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     ];
   }
 
+  /// What Tab would add, for the hint drawn behind the field.
+  ///
+  /// Only when the first suggestion actually continues what is typed, and only
+  /// with the caret at the end. A hint offering to complete a word the caret
+  /// has left, or one that would replace rather than extend what is there,
+  /// would be lying about what Tab does.
+  String? _ghost(List<Suggestion> suggestions) {
+    if (suggestions.isEmpty) return null;
+    final text = widget.controller.text;
+    final selection = widget.controller.selection;
+    if (!selection.isValid ||
+        !selection.isCollapsed ||
+        selection.baseOffset != text.length) {
+      return null;
+    }
+
+    final request = _request;
+    final typed = request.token.text;
+    final whole = '${request.token.isNegated ? '-' : ''}'
+        '${suggestions.first.insert}';
+    if (typed.isEmpty) return whole;
+    if (!whole.toLowerCase().startsWith(typed.toLowerCase())) return null;
+    if (whole.length == typed.length) return null;
+    return whole.substring(typed.length);
+  }
+
   void _accept(Suggestion suggestion) {
     final applied =
         applySuggestion(widget.controller.text, _request.token, suggestion);
@@ -229,18 +255,61 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
               if (suggestions.isNotEmpty) _accept(suggestions.first);
             },
           },
-          child: TextField(
-            controller: widget.controller,
-            focusNode: _focus,
-            autofocus: widget.autofocus,
-            autocorrect: false,
-            style: const TextStyle(fontFamily: 'Consolas'),
-            decoration: const InputDecoration(
-              labelText: 'Query',
-              hintText: 'artist:Nanahira tag:hardcore -tag:remix added:<30d',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: widget.onSubmitted,
+          child: Stack(
+            children: [
+              // The rest of the first suggestion, greyed, behind the field --
+              // so what Tab would do is visible where it would happen rather
+              // than only as a chip below.
+              if (_ghost(suggestions) case final ghost?)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Padding(
+                      // Matches the field's own content padding, or the hint
+                      // would sit a few pixels off the real text and read as a
+                      // rendering fault.
+                      padding: const EdgeInsets.fromLTRB(12, 18, 12, 0),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            // Transparent, to push the visible part along to
+                            // exactly where the caret is.
+                            TextSpan(
+                              text: text,
+                              style: const TextStyle(
+                                color: Colors.transparent,
+                              ),
+                            ),
+                            TextSpan(
+                              text: ghost,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                        style: const TextStyle(fontFamily: 'Consolas'),
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                      ),
+                    ),
+                  ),
+                ),
+              TextField(
+                controller: widget.controller,
+                focusNode: _focus,
+                autofocus: widget.autofocus,
+                autocorrect: false,
+                style: const TextStyle(fontFamily: 'Consolas'),
+                decoration: const InputDecoration(
+                  labelText: 'Query',
+                  hintText:
+                      'artist:Nanahira tag:hardcore -tag:remix added:<30d',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: widget.onSubmitted,
+              ),
+            ],
           ),
         ),
         if (suggestions.isNotEmpty) ...[

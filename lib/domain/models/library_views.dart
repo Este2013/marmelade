@@ -170,6 +170,7 @@ class TagCard {
     this.categoryId,
     this.categoryName,
     this.color,
+    this.categoryIcon,
     this.imagePath,
     this.childCount = 0,
   });
@@ -182,6 +183,10 @@ class TagCard {
 
   /// ARGB colour, from the tag or its category.
   final int? color;
+
+  /// The icon of the category this tag belongs to, so a chip wears its
+  /// category's mark wherever it appears.
+  final int? categoryIcon;
 
   final String? imagePath;
 

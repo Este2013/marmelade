@@ -18,7 +18,7 @@ import '../../widgets/track_list.dart';
 /// group and whole groups move as blocks. Dropping a track into another album's
 /// section cannot mean anything -- the group *is* its album -- so it lands back
 /// among its own, at the point it was dropped.
-class PlaylistTracks extends ConsumerWidget {
+class PlaylistTracks extends ConsumerStatefulWidget {
   const PlaylistTracks({
     super.key,
     required this.playlist,
@@ -44,57 +44,7 @@ class PlaylistTracks extends ConsumerWidget {
   final String removeTooltip;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rows = buildRows(tracks, playlist.grouping);
-
-    return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-      header: header,
-      buildDefaultDragHandles: false,
-      itemCount: rows.length,
-      onReorderItem: (oldIndex, newIndex) =>
-          _reorder(ref, rows, oldIndex, newIndex),
-      itemBuilder: (context, index) {
-        final row = rows[index];
-        return switch (row) {
-          PlaylistGroupRow(:final label, :final count, :final imagePath) => _GroupHeader(
-              key: ValueKey('group-$label'),
-              index: index,
-              label: label,
-              count: count,
-              imagePath: imagePath,
-            ),
-          PlaylistTrackSlot(:final track, :final position) => _Row(
-              key: ValueKey('track-${track.id}-$position'),
-              index: index,
-              track: track,
-              tracks: tracks,
-              position: position,
-              playlistId: playlist.id,
-              onOpenArtist: onOpenArtist,
-              onOpenAlbum: onOpenAlbum,
-              onEditTrack: onEditTrack,
-              onRemoveTrack: onRemoveTrack,
-              removeTooltip: removeTooltip,
-            ),
-        };
-      },
-    );
-  }
-
-  /// Applies a drag and stores the result.
-  Future<void> _reorder(
-    WidgetRef ref,
-    List<PlaylistRow> rows,
-    int oldIndex,
-    int newIndex,
-  ) async {
-    final moved = move(rows, oldIndex, newIndex);
-    final ordered = trackOrder(moved, playlist.grouping);
-    await ref
-        .read(playlistRepositoryProvider)
-        .saveCustomOrder(playlist.id, ordered);
-  }
+  ConsumerState<PlaylistTracks> createState() => PlaylistTracksState();
 
   /// Moves one row, taking a group's tracks with its header.
   static List<PlaylistRow> move(List<PlaylistRow> rows, int from, int to) {
@@ -120,7 +70,15 @@ class PlaylistTracks extends ConsumerWidget {
   /// where it landed: a track dropped under another album's heading is still
   /// that album's track, so it rejoins its own group at the point it was
   /// dropped.
-  static List<int> trackOrder(List<PlaylistRow> rows, PlaylistGrouping grouping) {
+  /// [hidden] is every track the playlist holds, including the ones a
+  /// collapsed group is not showing. Without it, folding a group away and then
+  /// dragging anything would save an order with that group's tracks missing --
+  /// which is to say, would delete them from the arrangement.
+  static List<int> trackOrder(
+    List<PlaylistRow> rows,
+    PlaylistGrouping grouping, {
+    List<TrackRow> hidden = const [],
+  }) {
     if (grouping == PlaylistGrouping.none) {
       return [
         for (final row in rows)
@@ -140,6 +98,20 @@ class PlaylistTracks extends ConsumerWidget {
         byGroup[label] = [];
       }
       if (row is PlaylistTrackSlot) byGroup[label]!.add(row.track.id);
+    }
+
+    // Fill each group back up from the full list, keeping the relative order it
+    // already had. A group whose tracks are all hidden still has its heading in
+    // [rows], so it keeps its place.
+    for (final track in hidden) {
+      final label = groupLabel(track, grouping);
+      final group = byGroup[label];
+      if (group == null) {
+        order.add(label);
+        byGroup[label] = [track.id];
+        continue;
+      }
+      if (!group.contains(track.id)) group.add(track.id);
     }
 
     return [
@@ -192,6 +164,136 @@ class PlaylistTracks extends ConsumerWidget {
       };
 }
 
+class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
+  /// Groups folded away, by label.
+  ///
+  /// In memory rather than stored: collapsing is how you get through a long
+  /// list right now, not a property of the playlist, and finding a playlist
+  /// still folded up a week later would be a puzzle rather than a convenience.
+  final _collapsed = <String>{};
+
+  List<String> get _labels {
+    final seen = <String>[];
+    for (final track in widget.tracks) {
+      final label = PlaylistTracks.groupLabel(track, widget.playlist.grouping);
+      if (!seen.contains(label)) seen.add(label);
+    }
+    return seen;
+  }
+
+  void _toggle(String label) => setState(() {
+        if (!_collapsed.remove(label)) _collapsed.add(label);
+      });
+
+  void _setAll({required bool collapsed}) => setState(() {
+        _collapsed.clear();
+        if (collapsed) _collapsed.addAll(_labels);
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final grouping = widget.playlist.grouping;
+    final all = PlaylistTracks.buildRows(widget.tracks, grouping);
+    // What is on screen. A collapsed group keeps its heading and loses its
+    // tracks, and the list is indexed by what is shown -- so the order a drag
+    // produces has to be rebuilt against the full list, not this one.
+    final rows = [
+      for (final row in all)
+        if (row is! PlaylistTrackSlot ||
+            !_collapsed.contains(PlaylistTracks.groupLabel(row.track, grouping)))
+          row,
+    ];
+
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          widget.header,
+          if (grouping != PlaylistGrouping.none) _collapseControls(),
+        ],
+      ),
+      buildDefaultDragHandles: false,
+      itemCount: rows.length,
+      onReorderItem: (oldIndex, newIndex) => _reorder(rows, oldIndex, newIndex),
+      itemBuilder: (context, index) {
+        final row = rows[index];
+        return switch (row) {
+          PlaylistGroupRow(:final label, :final count, :final imagePath) =>
+            _GroupHeader(
+              key: ValueKey('group-$label'),
+              index: index,
+              label: label,
+              count: count,
+              imagePath: imagePath,
+              collapsed: _collapsed.contains(label),
+              onToggle: () => _toggle(label),
+            ),
+          PlaylistTrackSlot(:final track, :final position) => _Row(
+              key: ValueKey('track-${track.id}-$position'),
+              index: index,
+              track: track,
+              tracks: widget.tracks,
+              position: position,
+              playlistId: widget.playlist.id,
+              onOpenArtist: widget.onOpenArtist,
+              onOpenAlbum: widget.onOpenAlbum,
+              onEditTrack: widget.onEditTrack,
+              onRemoveTrack: widget.onRemoveTrack,
+              removeTooltip: widget.removeTooltip,
+            ),
+        };
+      },
+    );
+  }
+
+  Widget _collapseControls() {
+    final everything = _labels;
+    final allCollapsed =
+        everything.isNotEmpty && _collapsed.length >= everything.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          TextButton.icon(
+            onPressed: () => _setAll(collapsed: !allCollapsed),
+            icon: Icon(
+              allCollapsed ? Icons.unfold_more : Icons.unfold_less,
+              size: 18,
+            ),
+            label: Text(allCollapsed ? 'Expand all' : 'Collapse all'),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${everything.length} groups',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Applies a drag and stores the result.
+  Future<void> _reorder(
+    List<PlaylistRow> rows,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    final moved = PlaylistTracks.move(rows, oldIndex, newIndex);
+    final ordered = PlaylistTracks.trackOrder(
+      moved,
+      widget.playlist.grouping,
+      hidden: widget.tracks,
+    );
+    await ref
+        .read(playlistRepositoryProvider)
+        .saveCustomOrder(widget.playlist.id, ordered);
+  }
+}
+
 /// A row in a playlist's list: a group heading, or a track.
 sealed class PlaylistRow {
   const PlaylistRow();
@@ -227,12 +329,16 @@ class _GroupHeader extends StatelessWidget {
     required this.index,
     required this.label,
     required this.count,
+    required this.collapsed,
+    required this.onToggle,
     this.imagePath,
   });
 
   final int index;
   final String label;
   final int count;
+  final bool collapsed;
+  final VoidCallback onToggle;
   final String? imagePath;
 
   @override
@@ -240,10 +346,21 @@ class _GroupHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 18, bottom: 6),
-      child: Row(
+    return InkWell(
+      // The whole heading folds the group: it is the biggest target on the row
+      // and there is nothing else clicking a heading could mean.
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
+        child: Row(
         children: [
+          Icon(
+            collapsed ? Icons.chevron_right : Icons.expand_more,
+            size: 18,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
           if (imagePath != null) ...[
             Artwork(storedPath: imagePath, size: 34, borderRadius: 6),
             const SizedBox(width: 12),
@@ -270,6 +387,7 @@ class _GroupHeader extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

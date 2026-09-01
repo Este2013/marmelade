@@ -46,6 +46,7 @@ class AttachedTag {
     this.categoryId,
     this.categoryName,
     this.color,
+    this.categoryIcon,
   });
 
   final int id;
@@ -59,7 +60,14 @@ class AttachedTag {
 
   final int? categoryId;
   final String? categoryName;
+
+  /// The tag's own colour when it has one, else its category's, so a chip is
+  /// coloured by the category it belongs to without every tag storing a copy.
   final int? color;
+
+  /// The category's icon, so a chip wears its category's mark rather than the
+  /// same generic label everywhere.
+  final int? categoryIcon;
 
   bool get isInherited => origin != TagOrigin.own;
 }
@@ -126,7 +134,8 @@ class TagRepository {
         .customSelect(
           '''
       SELECT
-        t.id AS id, t.name AS name, t.color AS color,
+        t.id AS id, t.name AS name,
+        COALESCE(t.color, c.color) AS color, c.icon AS category_icon,
         t.category_id AS category_id, c.name AS category_name,
         im.stored_path AS image_path,
         (SELECT COUNT(DISTINCT e.track_id) FROM v_track_effective_tags e
@@ -162,6 +171,7 @@ class TagRepository {
                 categoryId: row.read<int?>('category_id'),
                 categoryName: row.read<String?>('category_name'),
                 color: row.read<int?>('color'),
+                categoryIcon: row.read<int?>('category_icon'),
                 imagePath: row.read<String?>('image_path'),
                 childCount: row.read<int>('child_count'),
               ),
@@ -206,7 +216,8 @@ class TagRepository {
   Stream<List<AttachedTag>> watchTagsOf(TagTarget target, int id) {
     final sql = target == TagTarget.track
         ? '''
-      SELECT DISTINCT t.id AS id, t.name AS name, t.color AS color,
+      SELECT DISTINCT t.id AS id, t.name AS name,
+             COALESCE(t.color, c.color) AS color, c.icon AS category_icon,
              t.category_id AS category_id, c.name AS category_name,
              e.source AS source
         FROM v_track_effective_tags e
@@ -216,7 +227,8 @@ class TagRepository {
        ORDER BY (e.source <> 'track'), c.sort_order, c.name, t.name
       '''
         : '''
-      SELECT t.id AS id, t.name AS name, t.color AS color,
+      SELECT t.id AS id, t.name AS name,
+             COALESCE(t.color, c.color) AS color, c.icon AS category_icon,
              t.category_id AS category_id, c.name AS category_name,
              'own' AS source
         FROM ${target.table} j
@@ -256,6 +268,7 @@ class TagRepository {
                 categoryId: row.read<int?>('category_id'),
                 categoryName: row.read<String?>('category_name'),
                 color: row.read<int?>('color'),
+                categoryIcon: row.read<int?>('category_icon'),
               ),
           ],
         );

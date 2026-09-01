@@ -7,6 +7,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import 'tag_visuals.dart';
 
 /// Everything carrying one tag.
 ///
@@ -86,7 +87,11 @@ class _Header extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final player = ref.read(playerProvider.notifier);
     final trackIds = tracks.map((t) => t.id).toList();
-    final colour = tag.color == null ? scheme.primary : Color(tag.color!);
+    final visuals = tagVisuals(
+      context,
+      categoryIcon: tag.categoryIcon,
+      color: tag.color,
+    );
 
     final total = tracks.fold(
       Duration.zero,
@@ -106,7 +111,7 @@ class _Header extends ConsumerWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.label, size: 34, color: colour),
+              Icon(visuals.icon, size: 34, color: visuals.color),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

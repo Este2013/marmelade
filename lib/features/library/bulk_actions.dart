@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../domain/models/library_views.dart' show LibrarySort;
 import '../../widgets/time_text.dart';
+import '../tags/category_icons.dart';
 import '../../widgets/track_list.dart' show showAddToPlaylist;
 
 /// Things done to several albums, songs or artists at once.
@@ -173,7 +174,11 @@ class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
                 children: [
                   for (final tag in matches)
                     ActionChip(
-                      avatar: const Icon(Icons.label_outline, size: 16),
+                      avatar: Icon(
+                        tagCategoryIcon(tag.categoryIcon),
+                        size: 16,
+                        color: tag.color == null ? null : Color(tag.color!),
+                      ),
                       label: Text('${tag.name}  ${tag.trackCount}'),
                       onPressed: () => _submit(tag.name),
                     ),

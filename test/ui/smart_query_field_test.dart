@@ -226,6 +226,61 @@ void main() {
     });
   });
 
+  group('the inline hint', () {
+    /// The greyed completion drawn behind the field, if any.
+    String? ghostOf(WidgetTester tester) {
+      final spans = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) => t.textSpan)
+          .whereType<TextSpan>()
+          .where((span) => span.children?.length == 2);
+      if (spans.isEmpty) return null;
+      return (spans.first.children!.last as TextSpan).text;
+    }
+
+    testWidgets('shows the rest of what Tab would add', (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      await tester.enterText(find.byType(TextField), 'art');
+      await tester.pump();
+
+      // "artist:" minus the "art" already typed.
+      expect(ghostOf(tester), 'ist:');
+    });
+
+    testWidgets('it agrees with what Tab actually does', (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      await tester.enterText(find.byType(TextField), 'ta');
+      await tester.pump();
+      final ghost = ghostOf(tester);
+
+      await tester.tap(find.widgetWithText(ActionChip, 'tag:'));
+      await tester.pump();
+
+      expect(controller.text, 'ta$ghost');
+    });
+
+    testWidgets('nothing is offered when the caret is not at the end',
+        (tester) async {
+      // A hint next to a caret in the middle of the text would be pointing at
+      // the wrong place and describing something Tab would not do.
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      await tester.enterText(find.byType(TextField), 'artist:x tag');
+      controller.selection = const TextSelection.collapsed(offset: 3);
+      await tester.pump();
+
+      expect(ghostOf(tester), isNull);
+    });
+  });
+
   testWidgets('a half-typed query still describes itself', (tester) async {
     // Every character is a state the field is in. "year:>" parses to nothing
     // and must not throw on the way there.

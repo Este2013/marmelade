@@ -11,6 +11,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../tags/category_icons.dart';
 
 /// One field, and everything in the library it could mean.
 ///
@@ -267,7 +268,7 @@ class _Results extends ConsumerWidget {
               _ResultRow(
                 imagePath: null,
                 fallbackSeed: tag.name,
-                fallbackIcon: Icons.label_outline,
+                fallbackIcon: tagCategoryIcon(tag.categoryIcon),
                 colour: tag.color == null ? null : Color(tag.color!),
                 title: tag.name,
                 subtitle: [

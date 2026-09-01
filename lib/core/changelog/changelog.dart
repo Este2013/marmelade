@@ -126,7 +126,17 @@ const changelog = <ReleaseNotes>[
       ),
       Change.added(
         'Tags can be dragged between categories, and a category can be given '
-        'an icon and a colour.',
+        'an icon and a colour, which every one of its tags then wears '
+        'wherever it appears.',
+      ),
+      Change.added(
+        'Playlist groups fold away by clicking their heading, with a collapse '
+        'all button above the list.',
+      ),
+      Change.changed(
+        'A playlist page no longer lists its tracks twice. The contents '
+        'section shows only the playlists included in it, which is the one '
+        'thing the track list cannot express.',
       ),
       Change.added(
         'Clicking the artwork on an album, artist, playlist or now-playing '

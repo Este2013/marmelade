@@ -276,6 +276,55 @@ void main() {
     });
   });
 
+  group('collapsing', () {
+    test('a hidden group keeps its tracks in a saved arrangement', () {
+      // The dangerous case: fold a group away, drag something else, and the
+      // order that gets saved must still contain the tracks nobody can see --
+      // otherwise collapsing a group deletes it from the arrangement.
+      final rows = PlaylistTracks.buildRows(tracks, PlaylistGrouping.album);
+      // What the list shows with Beta collapsed: both headings, Alpha's two.
+      final visible = [
+        for (final row in rows)
+          if (row is! PlaylistTrackSlot ||
+              PlaylistTracks.groupLabel(row.track, PlaylistGrouping.album) !=
+                  'Beta')
+            row,
+      ];
+      expect(visible, hasLength(4));
+
+      final moved = PlaylistTracks.move(visible, 2, 1);
+      final order = PlaylistTracks.trackOrder(
+        moved,
+        PlaylistGrouping.album,
+        hidden: tracks,
+      );
+
+      expect(order.toSet(), {1, 2, 3, 4});
+      expect((order.indexOf(3) - order.indexOf(4)).abs(), 1);
+    });
+
+    test('a collapsed group can still be moved as a block', () {
+      final rows = PlaylistTracks.buildRows(tracks, PlaylistGrouping.album);
+      final visible = [
+        for (final row in rows)
+          if (row is! PlaylistTrackSlot ||
+              PlaylistTracks.groupLabel(row.track, PlaylistGrouping.album) !=
+                  'Beta')
+            row,
+      ];
+
+      // Beta's heading is last in the visible list; move it to the top.
+      final moved = PlaylistTracks.move(visible, 3, 0);
+      final order = PlaylistTracks.trackOrder(
+        moved,
+        PlaylistGrouping.album,
+        hidden: tracks,
+      );
+
+      expect(order, [3, 4, 1, 2]);
+    });
+  });
+
   group('the list itself', () {
     testWidgets('ungrouped, every track has a handle and no headings',
         (tester) async {
@@ -308,6 +357,41 @@ void main() {
       expect(playlists.saved, isNotEmpty);
       expect(playlists.saved.last.toSet(), {1, 2, 3, 4});
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('clicking a heading folds its group away', (tester) async {
+      await pump(tester, grouping: PlaylistGrouping.album);
+      expect(find.text('Alpha one'), findsOneWidget);
+
+      await tester.tap(find.text('2 tracks').first);
+      await tester.pumpAndSettle();
+
+      // The heading stays; its tracks go.
+      expect(find.text('2 tracks'), findsNWidgets(2));
+      expect(find.text('Alpha one'), findsNothing);
+      expect(find.text('Beta one'), findsOneWidget);
+    });
+
+    testWidgets('collapse all folds every group, and offers to undo it',
+        (tester) async {
+      await pump(tester, grouping: PlaylistGrouping.album);
+
+      await tester.tap(find.text('Collapse all'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alpha one'), findsNothing);
+      expect(find.text('Beta one'), findsNothing);
+      expect(find.text('Expand all'), findsOneWidget);
+
+      await tester.tap(find.text('Expand all'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alpha one'), findsOneWidget);
+    });
+
+    testWidgets('there is nothing to collapse when there are no groups',
+        (tester) async {
+      await pump(tester);
+      expect(find.text('Collapse all'), findsNothing);
     });
 
     testWidgets('a group heading can be dragged too', (tester) async {

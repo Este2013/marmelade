@@ -122,6 +122,11 @@ class _Header extends ConsumerWidget {
     final player = ref.read(playerProvider.notifier);
     final repository = ref.read(playlistRepositoryProvider);
     final trackIds = tracks.map((t) => t.id).toList();
+    // Only the playlists included in this one: the tracks are the list below.
+    final included = [
+      for (final entry in entries)
+        if (entry.isChildPlaylist) entry,
+    ];
 
     final total = tracks.fold(
       Duration.zero,
@@ -264,16 +269,24 @@ class _Header extends ConsumerWidget {
               onOpenTag: onOpenTag,
             ),
           ),
-          if (entries.isNotEmpty) ...[
+          // Only the playlists included in this one. The tracks used to be
+          // listed here too, which meant every track appeared twice on the
+          // page -- once here and once in the list below. The list below can
+          // order and group them; what it cannot show is that this playlist
+          // contains another one, so that is all this section is for now.
+          if (included.isNotEmpty) ...[
             const SizedBox(height: 28),
             Row(
               children: [
-                Text('Contents', style: theme.textTheme.titleMedium),
+                Text(
+                  'Included playlists',
+                  style: theme.textTheme.titleMedium,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Drag to reorder. An included playlist contributes its own '
-                    'tracks, and follows any change to it.',
+                    'Each contributes its own tracks, and follows any change '
+                    'to it. Drag to reorder.',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: scheme.onSurfaceVariant),
                   ),
@@ -285,23 +298,23 @@ class _Header extends ConsumerWidget {
             // unbounded reorderable list inside a scroll view has no height to
             // lay out against.
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
+              constraints: const BoxConstraints(maxHeight: 260),
               child: ReorderableListView.builder(
                 shrinkWrap: true,
                 buildDefaultDragHandles: false,
-                itemCount: entries.length,
+                itemCount: included.length,
                 onReorderItem: (oldIndex, newIndex) => repository.moveEntry(
                   playlist.id,
-                  entries[oldIndex].itemId,
+                  included[oldIndex].itemId,
                   newIndex,
                 ),
                 itemBuilder: (context, index) => _EntryRow(
-                  key: ValueKey(entries[index].itemId),
-                  entry: entries[index],
+                  key: ValueKey(included[index].itemId),
+                  entry: included[index],
                   index: index,
                   onOpenPlaylist: onOpenPlaylist,
                   onRemove: () => repository.removeEntry(
-                    entries[index].itemId,
+                    included[index].itemId,
                   ),
                 ),
               ),
@@ -313,7 +326,8 @@ class _Header extends ConsumerWidget {
           Text(
             switch (playlist) {
               final p when p.isSmart => 'Tracks matching this query, now',
-              final p when p.childCount > 0 => 'All tracks, in order',
+              final p when p.childCount > 0 =>
+                'Every track, including the included playlists',
               _ => 'Tracks',
             },
             style: theme.textTheme.titleMedium,

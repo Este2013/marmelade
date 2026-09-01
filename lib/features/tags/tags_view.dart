@@ -7,6 +7,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/empty_state.dart';
 import 'category_dialog.dart';
 import 'category_icons.dart';
+import 'tag_visuals.dart';
 import '../../widgets/time_text.dart';
 
 /// Every tag in the library, grouped by category.
@@ -312,10 +313,19 @@ class _TagTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final colour = tag.color == null ? scheme.primary : Color(tag.color!);
+    final visuals = tagVisuals(
+      context,
+      categoryIcon: tag.categoryIcon,
+      color: tag.color,
+    );
 
     return Material(
-      color: scheme.surfaceContainerLow,
+      // Tinted with the category's colour, so a glance at the list groups the
+      // tags by category even before reading the headings.
+      color: Color.alphaBlend(
+        visuals.color.withValues(alpha: 0.12),
+        scheme.surfaceContainerLow,
+      ),
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onOpen,
@@ -325,7 +335,7 @@ class _TagTile extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.label, size: 16, color: colour),
+              Icon(visuals.icon, size: 16, color: visuals.color),
               const SizedBox(width: 8),
               Text(tag.name, style: theme.textTheme.bodyMedium),
               const SizedBox(width: 8),
@@ -415,7 +425,11 @@ class _DragFeedback extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.label, size: 16, color: scheme.onPrimaryContainer),
+              Icon(
+                tagCategoryIcon(tag.categoryIcon),
+                size: 16,
+                color: scheme.onPrimaryContainer,
+              ),
               const SizedBox(width: 8),
               Text(
                 tag.name,

@@ -216,7 +216,14 @@ class _PreviewOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Dialog(
+    // The whole surface dismisses, not just the barrier outside the dialog.
+    // The dialog is mostly empty space around a square picture, and clicking
+    // that space is indistinguishable from clicking the barrier -- so it has to
+    // do the same thing.
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      behavior: HitTestBehavior.opaque,
+      child: Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(32),
       child: LayoutBuilder(
@@ -232,12 +239,17 @@ class _PreviewOverlay extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  Artwork(
-                    storedPath: storedPath,
-                    size: side,
-                    borderRadius: 18,
-                    fallbackSeed: title,
-                    fallbackIcon: fallbackIcon,
+                  // Absorbs the tap: clicking the picture is looking at it, not
+                  // dismissing it.
+                  GestureDetector(
+                    onTap: () {},
+                    child: Artwork(
+                      storedPath: storedPath,
+                      size: side,
+                      borderRadius: 18,
+                      fallbackSeed: title,
+                      fallbackIcon: fallbackIcon,
+                    ),
                   ),
                   if (onChange != null)
                     Positioned(
@@ -293,6 +305,7 @@ class _PreviewOverlay extends StatelessWidget {
             ],
           );
         },
+        ),
       ),
     );
   }
