@@ -243,3 +243,50 @@ own version, and offers the download.
 
 Release binaries do not live on `gh-pages` itself: every build committed to a
 branch stays in git history forever and would bloat the clone without limit.
+
+## Debugging on Windows
+
+### Isolates stuck "paused on entry"
+
+A debug session that opens with both `main` and `Drift isolate worker for
+…marmelade.db` showing *paused on entry*, needing a manual resume each, is not
+the app. Flutter starts the main isolate paused so the debugger can install
+breakpoints, and the extension resumes it; the drift worker
+(`NativeDatabase.createInBackground`, [`lib/data/db/database.dart`]) is a second
+isolate that gets the same treatment.
+
+The resume does not arrive when **more than one VM service client is attached**.
+The VM will not resume an isolate until every client that asked for permission
+has agreed, so a leftover debug session, a still-open DevTools window, or a
+`flutter run` from a terminal is enough to hold both isolates at the gate
+indefinitely. Check for, in order:
+
+- a second entry in the VS Code Call Stack panel — stop it,
+- an open DevTools tab still pointing at a dead session — close it,
+- stray processes: `Get-Process dart, flutter, marmelade`.
+
+There is nothing to fix in the app for this; it is a debugger-side condition.
+`.vscode/launch.json` holds an explicit configuration so F5 is not guessing one.
+
+### Accessibility bridge errors
+
+`accessibility_bridge.cc … Failed to update ui::AXTree` on stderr means the
+Windows bridge rejected a semantics update. It is noisy rather than fatal on its
+own, but a sustained flood eventually corrupts the bridge's copy of the tree and
+kills the process on the next full rebuild. Three causes have been found and
+fixed here, all the same shape — something that **adds, removes or re-creates a
+semantics node every frame**:
+
+- an interactive widget parked at zero size (`SizedBox(width: 0)`),
+- a `Transform` (e.g. `AnimatedScale`) wrapped around a subtree that contains an
+  interactive node, which moves that node's geometry every frame,
+- a button flipped between `onPressed: null` and a callback on hover, which
+  rewrites the node rather than updating it.
+
+A residue of roughly **one error per scroll tick** remains and is not ours: it
+appears with hover handling removed entirely, and only when a list actually
+scrolls, so it is the `Scrollable`'s own semantics update being rejected.
+
+To measure, run the built exe with stderr redirected, drive a real pointer over
+the window from PowerShell, and `grep -ci axtree`. A hover cannot be produced by
+the screenshot hook, and none of this reproduces in a widget test.

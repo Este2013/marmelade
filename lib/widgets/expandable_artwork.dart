@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
+import '../core/logging/app_log.dart';
 import 'artwork.dart';
 
 /// What a picture belongs to.
@@ -55,20 +56,37 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
   var _busy = false;
 
   Future<void> _change() async {
-    // The filter is a convenience, not a guarantee: the store rejects whatever
-    // it cannot decode, and that is what actually protects the library.
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Images',
-          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
-        ),
-      ],
-    );
-    if (file == null) return;
-
+    // Held across the picker too, not just the write that follows it.
+    //
+    // The Windows file dialog is modal to the whole app, and asking for a
+    // second one while the first is open wedges it: no error, no log, nothing
+    // on screen -- the app simply stops. A double-click on a small button is
+    // enough to do it.
+    if (_busy) {
+      AppLog.instance.warn('picture picker already open', fields: _where);
+      return;
+    }
     setState(() => _busy = true);
+
     try {
+      AppLog.instance.info('picture picker opening', fields: _where);
+      // The filter is a convenience, not a guarantee: the store rejects
+      // whatever it cannot decode, and that is what actually protects the
+      // library.
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'Images',
+            extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+          ),
+        ],
+      );
+      AppLog.instance.info('picture picker closed', fields: {
+        ..._where,
+        'picked': file?.path,
+      });
+      if (file == null) return;
+
       final repository = ref.read(editRepositoryProvider);
       final path = File(file.path);
       final ok = switch (widget.owner) {
@@ -83,6 +101,7 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
             path,
           ),
       };
+      AppLog.instance.info('picture set', fields: {..._where, 'accepted': ok});
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -91,10 +110,32 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
           ),
         );
       }
+    } catch (error, stack) {
+      // Logged rather than swallowed: this runs from a button that otherwise
+      // just stops working, and a failure with no trace of it is the hardest
+      // kind to chase.
+      AppLog.instance.error(
+        'picture change failed',
+        error: error,
+        stack: stack,
+        fields: _where,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That picture could not be set.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// What the log lines are about, so a freeze names its own button.
+  Map<String, Object?> get _where => {
+        'owner': widget.owner.name,
+        'id': widget.id,
+        'title': widget.title,
+      };
 
   Future<void> _clear() async {
     final repository = ref.read(editRepositoryProvider);

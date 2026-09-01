@@ -320,6 +320,7 @@ class _AppShellState extends ConsumerState<AppShell>
     AlbumDetailView(
       albumId: albumId,
       onOpenArtist: _openArtist,
+      onOpenTag: _openTag,
       onBack: _pop,
       onEditAlbum: _editAlbum,
       onEditTrack: _editTrack,

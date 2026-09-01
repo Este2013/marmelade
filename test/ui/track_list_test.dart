@@ -78,6 +78,24 @@ void main() {
     expect(find.text('2 tracks'), findsOneWidget);
   });
 
+  testWidgets('the row actions are live without hovering first',
+      (tester) async {
+    // Turning a button from disabled to enabled rewrites its semantics node,
+    // and the Windows accessibility bridge treats that as the node leaving and
+    // a new one arriving: hovering twenty rows threw 85 AXTree errors. Keeping
+    // them enabled throws one. Pinned here because the disabled-until-hovered
+    // version looks perfectly reasonable in the source.
+    await pump(tester, [track(1, 'Alpha one', 'Alpha')]);
+
+    final button = tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byIcon(Icons.playlist_add),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(button.onPressed, isNotNull);
+  });
+
   testWidgets('every track is still listed, headed or not', (tester) async {
     await pump(tester, [
       track(1, 'Alpha one', 'Alpha'),

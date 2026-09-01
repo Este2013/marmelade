@@ -20,6 +20,7 @@ import 'package:marmelade/data/repositories/search_repository.dart';
 import 'package:marmelade/features/library/album_detail_view.dart';
 import 'package:marmelade/features/player/player_bar.dart';
 import 'package:marmelade/features/search/search_view.dart';
+import 'package:marmelade/data/repositories/tag_repository.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
@@ -488,6 +489,14 @@ void main() {
         allTracksProvider.overrideWith((ref) => Stream.value(tracks)),
         artistsProvider.overrideWith((ref) => Stream.value(_artists)),
         taggedProvider.overrideWith((ref) => Stream.value(const <TagCard>[])),
+        // A real drift stream here would work, but cancelling one schedules a
+        // cleanup timer the test binding's fake clock never drains -- see the
+        // note in smart_query_field_test.dart. TagLine on the album header
+        // watches this now, so it needs the same fake treatment as every other
+        // stream in this scope.
+        attachedTagsProvider.overrideWith(
+          (ref, key) => Stream.value(const <AttachedTag>[]),
+        ),
         albumTracksProvider.overrideWith(
           (ref, albumId) =>
               Stream.value(tracks.where((t) => t.albumId == albumId).toList()),

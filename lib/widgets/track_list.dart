@@ -473,7 +473,6 @@ class _TrackTileState extends ConsumerState<TrackTile> {
                   alwaysIncludeSemantics: true,
                   child: _RowActions(
                     track: track,
-                    enabled: _hovering,
                     onEdit: widget.onEditTrack,
                     onRemove: widget.onRemove,
                     removeTooltip: widget.removeTooltip,
@@ -626,17 +625,24 @@ class _LinkTextState extends State<_LinkText> {
 }
 
 /// Per-row actions: favourite, queue, more.
+/// The buttons at the end of a row.
+///
+/// Always live, never disabled between hovers. Turning a button from disabled
+/// to enabled rewrites its semantics node, and the Windows accessibility
+/// bridge treats that as the node leaving and a new one arriving: hovering
+/// twenty rows threw 85 "Failed to update ui::AXTree" errors, and not doing it
+/// throws one. Nothing is lost -- reaching these with a mouse means hovering
+/// the row, which is what makes them visible in the first place, and a screen
+/// reader should be able to use them without hovering anything.
 class _RowActions extends ConsumerWidget {
   const _RowActions({
     required this.track,
-    required this.enabled,
     this.onEdit,
     this.onRemove,
     this.removeTooltip = 'Remove',
   });
 
   final TrackRow track;
-  final bool enabled;
   final void Function(int trackId)? onEdit;
   final void Function(int trackId)? onRemove;
   final String removeTooltip;
@@ -653,19 +659,16 @@ class _RowActions extends ConsumerWidget {
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: 'Edit this track',
-            onPressed: enabled ? () => onEdit!(track.id) : null,
+            onPressed: () => onEdit!(track.id),
             icon: const Icon(Icons.edit_outlined, size: 18),
           ),
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: track.isFavorite ? 'Remove from favourites' : 'Favourite',
-          onPressed: enabled
-              ? () => db.customStatement(
-                    'UPDATE tracks SET is_favorite = NOT is_favorite '
-                    'WHERE id = ?',
-                    [track.id],
-                  )
-              : null,
+          onPressed: () => db.customStatement(
+            'UPDATE tracks SET is_favorite = NOT is_favorite WHERE id = ?',
+            [track.id],
+          ),
           icon: Icon(
             track.isFavorite ? Icons.favorite : Icons.favorite_border,
             size: 18,
@@ -677,21 +680,19 @@ class _RowActions extends ConsumerWidget {
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: 'Play next',
-          onPressed: enabled ? () => player.playNext([track.id]) : null,
+          onPressed: () => player.playNext([track.id]),
           icon: const Icon(Icons.playlist_play, size: 19),
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: 'Add to queue',
-          onPressed: enabled ? () => player.addToQueue([track.id]) : null,
+          onPressed: () => player.addToQueue([track.id]),
           icon: const Icon(Icons.playlist_add, size: 19),
         ),
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: 'Add to a playlist',
-          onPressed: enabled
-              ? () => showAddToPlaylist(context, ref, [track.id])
-              : null,
+          onPressed: () => showAddToPlaylist(context, ref, [track.id]),
           icon: const Icon(Icons.library_add_outlined, size: 18),
         ),
         if (onRemove != null)

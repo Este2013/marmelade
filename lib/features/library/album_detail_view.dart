@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
+import '../../data/repositories/tag_repository.dart';
 import '../../domain/models/library_views.dart';
+import '../tags/tag_line.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
@@ -17,6 +19,7 @@ class AlbumDetailView extends ConsumerWidget {
     super.key,
     required this.albumId,
     required this.onOpenArtist,
+    this.onOpenTag,
     required this.onBack,
     this.onEditAlbum,
     this.onEditTrack,
@@ -24,6 +27,9 @@ class AlbumDetailView extends ConsumerWidget {
 
   final int albumId;
   final void Function(int artistId) onOpenArtist;
+
+  /// Opens a tag's page, when there is somewhere to open it.
+  final void Function(int tagId)? onOpenTag;
   final VoidCallback onBack;
   final void Function(int albumId)? onEditAlbum;
   final void Function(int trackId)? onEditTrack;
@@ -79,6 +85,7 @@ class AlbumDetailView extends ConsumerWidget {
                   album: card,
                   tracks: items,
                   onOpenArtist: onOpenArtist,
+                  onOpenTag: onOpenTag,
                   onBack: onBack,
                   onEdit: onEditAlbum == null
                       ? null
@@ -100,12 +107,14 @@ class _AlbumHeader extends ConsumerWidget {
     required this.tracks,
     required this.onOpenArtist,
     required this.onBack,
+    this.onOpenTag,
     this.onEdit,
   });
 
   final AlbumCard album;
   final List<TrackRow> tracks;
   final void Function(int artistId) onOpenArtist;
+  final void Function(int tagId)? onOpenTag;
   final VoidCallback onBack;
 
   /// Opens the album editor.
@@ -224,7 +233,14 @@ class _AlbumHeader extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 14),
+                    // What this album is, before what you can do with it.
+                    TagLine(
+                      target: TagTarget.album,
+                      id: album.id,
+                      onOpenTag: onOpenTag,
+                    ),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         FilledButton.icon(
