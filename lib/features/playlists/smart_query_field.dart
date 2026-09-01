@@ -44,10 +44,11 @@ const _fieldContentPadding = EdgeInsets.fromLTRB(12, 20, 12, 12);
 /// A bare [Text] and the [EditableText] a [TextField] paints internally do
 /// not settle on the same baseline for an identical style and padding --
 /// measured empirically at about 8 logical pixels, the real text sitting
-/// higher. This corrects for that specific difference, which is why it does
-/// not simply reuse [_fieldContentPadding]: it would stay roughly this same
-/// few pixels regardless of what the field's own padding becomes.
-const _ghostPadding = EdgeInsets.fromLTRB(12, 12, 12, 12);
+/// higher, and about 4 to the left. This corrects for that specific
+/// difference, which is why it does not simply reuse [_fieldContentPadding]:
+/// it would stay roughly this same few pixels regardless of what the
+/// field's own padding becomes.
+const _ghostPadding = EdgeInsets.fromLTRB(16, 12, 12, 12);
 
 class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   final _focus = FocusNode();
