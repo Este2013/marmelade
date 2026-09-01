@@ -24,6 +24,7 @@ class PlaylistTracks extends ConsumerStatefulWidget {
     required this.playlist,
     required this.tracks,
     required this.header,
+    required this.title,
     this.onOpenArtist,
     this.onOpenAlbum,
     this.onEditTrack,
@@ -37,6 +38,10 @@ class PlaylistTracks extends ConsumerStatefulWidget {
   final List<TrackRow> tracks;
 
   final Widget header;
+
+  /// What to call the list -- "Tracks", or what a query is matching.
+  final String title;
+
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
   final void Function(int trackId)? onEditTrack;
@@ -119,8 +124,16 @@ class PlaylistTracks extends ConsumerStatefulWidget {
     ];
   }
 
-  /// Flattens the tracks into rows, inserting a heading where a group turns
-  /// over.
+  /// Flattens the tracks into rows, one heading per group.
+  ///
+  /// Gathered by label rather than emitting a heading wherever the label
+  /// changes. A custom order puts tracks it has never seen at the end, so an
+  /// album can arrive both at its arranged place and again at the bottom --
+  /// and a heading per turnover then meant two headings with the same name,
+  /// two widgets with the same key, and a crash that wedged the whole list.
+  ///
+  /// Gathering is also what grouping means: an album grouped by album is one
+  /// section, not however many runs the order happens to break it into.
   static List<PlaylistRow> buildRows(
     List<TrackRow> tracks,
     PlaylistGrouping grouping,
@@ -132,26 +145,46 @@ class PlaylistTracks extends ConsumerStatefulWidget {
       ];
     }
 
-    final rows = <PlaylistRow>[];
-    String? current;
-    for (var i = 0; i < tracks.length; i++) {
-      final label = groupLabel(tracks[i], grouping);
-      if (label != current) {
-        current = label;
-        rows.add(
-          PlaylistGroupRow(
-            label: label,
-            count: tracks.where((t) => groupLabel(t, grouping) == label).length,
-            imagePath: grouping == PlaylistGrouping.album
-                ? tracks[i].imagePath
-                : null,
-          ),
-        );
+    final order = <String>[];
+    final byLabel = <String, List<TrackRow>>{};
+    for (final track in tracks) {
+      final label = groupLabel(track, grouping);
+      if (!byLabel.containsKey(label)) {
+        order.add(label);
+        byLabel[label] = [];
       }
-      rows.add(PlaylistTrackSlot(track: tracks[i], position: i));
+      byLabel[label]!.add(track);
+    }
+
+    final rows = <PlaylistRow>[];
+    // Counted over what is emitted, not over the list passed in: gathering can
+    // move a track, and playing from a row has to start on the row you
+    // clicked.
+    var position = 0;
+    for (final label in order) {
+      final group = byLabel[label]!;
+      rows.add(
+        PlaylistGroupRow(
+          label: label,
+          count: group.length,
+          imagePath: grouping == PlaylistGrouping.album
+              ? group.first.imagePath
+              : null,
+        ),
+      );
+      for (final track in group) {
+        rows.add(PlaylistTrackSlot(track: track, position: position));
+        position += 1;
+      }
     }
     return rows;
   }
+
+  /// The tracks in the order the rows show them.
+  static List<TrackRow> displayOrder(List<PlaylistRow> rows) => [
+        for (final row in rows)
+          if (row is PlaylistTrackSlot) row.track,
+      ];
 
   static String groupLabel(TrackRow track, PlaylistGrouping grouping) =>
       switch (grouping) {
@@ -190,10 +223,33 @@ class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
         if (collapsed) _collapsed.addAll(_labels);
       });
 
+  /// A key per row that is unique now and the same after a reorder.
+  ///
+  /// The index cannot be it -- reordering changes every index below the move,
+  /// so the list would rebuild every row instead of animating one. A track id
+  /// alone cannot be it either: a manual playlist may hold the same track
+  /// twice on purpose, and two rows cannot share a key.
+  static List<Key> _keysFor(List<PlaylistRow> rows) {
+    final seen = <int, int>{};
+    return [
+      for (final row in rows)
+        switch (row) {
+          PlaylistGroupRow(:final label) => ValueKey('group-$label'),
+          PlaylistTrackSlot(:final track) => ValueKey(
+              'track-${track.id}-${seen[track.id] = (seen[track.id] ?? -1) + 1}',
+            ),
+        },
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final grouping = widget.playlist.grouping;
     final all = PlaylistTracks.buildRows(widget.tracks, grouping);
+    // The order the rows show, which grouping may differ from the order handed
+    // in. Playing from a row queues this, so the song that starts is the one
+    // that was clicked.
+    final displayed = PlaylistTracks.displayOrder(all);
     // What is on screen. A collapsed group keeps its heading and loses its
     // tracks, and the list is indexed by what is shown -- so the order a drag
     // produces has to be rebuilt against the full list, not this one.
@@ -204,14 +260,13 @@ class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
           row,
     ];
 
+    final keys = _keysFor(rows);
+
     return ReorderableListView.builder(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
       header: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          widget.header,
-          if (grouping != PlaylistGrouping.none) _collapseControls(),
-        ],
+        children: [widget.header, _heading()],
       ),
       buildDefaultDragHandles: false,
       itemCount: rows.length,
@@ -221,7 +276,7 @@ class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
         return switch (row) {
           PlaylistGroupRow(:final label, :final count, :final imagePath) =>
             _GroupHeader(
-              key: ValueKey('group-$label'),
+              key: keys[index],
               index: index,
               label: label,
               count: count,
@@ -230,10 +285,10 @@ class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
               onToggle: () => _toggle(label),
             ),
           PlaylistTrackSlot(:final track, :final position) => _Row(
-              key: ValueKey('track-${track.id}-$position'),
+              key: keys[index],
               index: index,
               track: track,
-              tracks: widget.tracks,
+              tracks: displayed,
               position: position,
               playlistId: widget.playlist.id,
               onOpenArtist: widget.onOpenArtist,
@@ -247,30 +302,106 @@ class PlaylistTracksState extends ConsumerState<PlaylistTracks> {
     );
   }
 
-  Widget _collapseControls() {
+  /// The one line above the list: what it is, and how it is arranged.
+  ///
+  /// All of it on the title's line rather than stacked above it. These are
+  /// small controls for a list that is the point of the page, and three rows of
+  /// chrome before the first track pushed the music off the screen.
+  Widget _heading() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final playlist = widget.playlist;
+    final repository = ref.read(playlistRepositoryProvider);
     final everything = _labels;
     final allCollapsed =
         everything.isNotEmpty && _collapsed.length >= everything.length;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Row(
         children: [
-          TextButton.icon(
-            onPressed: () => _setAll(collapsed: !allCollapsed),
+          Expanded(
+            child: Text(
+              widget.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (playlist.grouping != PlaylistGrouping.none)
+            TextButton.icon(
+              onPressed: () => _setAll(collapsed: !allCollapsed),
+              icon: Icon(
+                allCollapsed ? Icons.unfold_more : Icons.unfold_less,
+                size: 18,
+              ),
+              label: Text(allCollapsed ? 'Expand all' : 'Collapse all'),
+            ),
+          const SizedBox(width: 8),
+          _Compact(
+            width: 168,
+            child: DropdownButtonFormField<PlaylistSort>(
+              isExpanded: true,
+              initialValue: playlist.displaySort,
+              decoration: const InputDecoration(
+                labelText: 'Order',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                for (final sort in PlaylistSort.values)
+                  DropdownMenuItem(value: sort, child: Text(sort.label)),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                repository.setDisplayRules(playlist.id, sort: value);
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: playlist.sortDescending ? 'Ascending' : 'Descending',
+            isSelected: playlist.sortDescending,
+            onPressed: () => repository.setDisplayRules(
+              playlist.id,
+              descending: !playlist.sortDescending,
+            ),
             icon: Icon(
-              allCollapsed ? Icons.unfold_more : Icons.unfold_less,
+              playlist.sortDescending
+                  ? Icons.arrow_upward
+                  : Icons.arrow_downward,
               size: 18,
             ),
-            label: Text(allCollapsed ? 'Expand all' : 'Collapse all'),
+            visualDensity: VisualDensity.compact,
           ),
-          const SizedBox(width: 8),
-          Text(
-            '${everything.length} groups',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+          const SizedBox(width: 4),
+          _Compact(
+            width: 150,
+            child: DropdownButtonFormField<PlaylistGrouping>(
+              isExpanded: true,
+              initialValue: playlist.grouping,
+              decoration: const InputDecoration(
+                labelText: 'Groups',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                for (final group in PlaylistGrouping.values)
+                  DropdownMenuItem(value: group, child: Text(group.label)),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                repository.setDisplayRules(playlist.id, group: value);
+              },
+            ),
           ),
+          if (playlist.displaySort == PlaylistSort.custom) ...[
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Arranged by hand',
+              child: Icon(Icons.drag_indicator, size: 18, color: scheme.primary),
+            ),
+          ],
         ],
       ),
     );
@@ -464,4 +595,28 @@ class _Row extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// A form field squeezed into a toolbar.
+class _Compact extends StatelessWidget {
+  const _Compact({required this.width, required this.child});
+
+  final double width;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: width,
+        // Dense visual density everywhere in this app already; this trims the
+        // vertical padding a form field would otherwise claim in a row of
+        // buttons.
+        child: Theme(
+          data: Theme.of(context).copyWith(
+            inputDecorationTheme: Theme.of(context)
+                .inputDecorationTheme
+                .copyWith(isDense: true),
+          ),
+          child: child,
+        ),
+      );
 }

@@ -160,6 +160,7 @@ void main() {
                 grouping: grouping,
               ),
               tracks: tracks,
+              title: 'Tracks',
               header: const SizedBox(height: 8),
             ),
           ),
@@ -273,6 +274,122 @@ void main() {
           expect(order, hasLength(4), reason: '$from -> $to');
         }
       }
+    });
+  });
+
+  group('a group is one section', () {
+    // The bug this pins: a custom order puts tracks it has never seen at the
+    // end, so an album could arrive both at its arranged place and again at
+    // the bottom. A heading per turnover then meant two headings with the same
+    // name, two widgets with the same key, and a crash that wedged the list --
+    // after which no further reorder registered at all.
+    final scattered = [
+      track(1, 'Alpha one', 'Alpha'),
+      track(3, 'Beta one', 'Beta'),
+      track(2, 'Alpha two', 'Alpha'),
+      track(4, 'Beta two', 'Beta'),
+    ];
+
+    test('a label appears once however scattered the order', () {
+      final rows = PlaylistTracks.buildRows(scattered, PlaylistGrouping.album);
+      final labels =
+          rows.whereType<PlaylistGroupRow>().map((r) => r.label).toList();
+
+      expect(labels, ['Alpha', 'Beta']);
+      expect(labels.toSet().length, labels.length);
+    });
+
+    test('gathering keeps every track, in the order each group had', () {
+      final rows = PlaylistTracks.buildRows(scattered, PlaylistGrouping.album);
+      expect(
+        PlaylistTracks.displayOrder(rows).map((t) => t.id),
+        [1, 2, 3, 4],
+      );
+    });
+
+    test('positions follow the rows, not the list handed in', () {
+      // Playing from a row queues the displayed order, so a position that
+      // referred to the original list would start the wrong song.
+      final rows = PlaylistTracks.buildRows(scattered, PlaylistGrouping.album);
+      final slots = rows.whereType<PlaylistTrackSlot>().toList();
+      expect(slots.map((s) => s.position), [0, 1, 2, 3]);
+      expect(slots[1].track.id, 2);
+    });
+
+    testWidgets('a scattered order renders without a key collision',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            playlistRepositoryProvider.overrideWithValue(playlists),
+            playbackEngineProvider.overrideWithValue(_SilentEngine()),
+            playerProvider.overrideWith(() => _IdlePlayer(db)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: PlaylistTracks(
+                playlist: const PlaylistCard(
+                  id: 5,
+                  name: 'Mine',
+                  kind: 'manual',
+                  trackCount: 4,
+                  grouping: PlaylistGrouping.album,
+                ),
+                tracks: scattered,
+                title: 'Tracks',
+                header: const SizedBox(height: 8),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('2 tracks'), findsNWidgets(2));
+    });
+
+    testWidgets('the heading fits the narrowest window', (tester) async {
+      // 860 is the minimum the window can be dragged to, and the heading now
+      // carries the title, the collapse button and two dropdowns on one line.
+      await tester.binding.setSurfaceSize(const Size(860, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            playlistRepositoryProvider.overrideWithValue(playlists),
+            playbackEngineProvider.overrideWithValue(_SilentEngine()),
+            playerProvider.overrideWith(() => _IdlePlayer(db)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: PlaylistTracks(
+                playlist: const PlaylistCard(
+                  id: 5,
+                  name: 'Mine',
+                  kind: 'smart',
+                  trackCount: 4,
+                  grouping: PlaylistGrouping.album,
+                  displaySort: PlaylistSort.custom,
+                ),
+                tracks: scattered,
+                title: 'Every track, including the included playlists',
+                header: const SizedBox(height: 8),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Collapse all'), findsOneWidget);
     });
   });
 

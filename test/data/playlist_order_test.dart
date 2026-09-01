@@ -235,6 +235,24 @@ void main() {
       expect(await shown(id), [y, x, fresh]);
     });
 
+    test('arranging back to where it started sticks', () async {
+      // Reported: change the order, change it back, and the second change did
+      // not register. It was not the saving that failed -- the list had thrown
+      // on a duplicate key and stopped rebuilding -- but the round trip is
+      // worth holding to, since it is how anyone undoes a drag.
+      final id = (await playlists.create('Mine'))!;
+      final a = await track('A');
+      final b = await track('B');
+      final c = await track('C');
+      await playlists.addTracks(id, [a, b, c]);
+
+      await playlists.saveCustomOrder(id, [a, c, b]);
+      expect(await shown(id), [a, c, b]);
+
+      await playlists.saveCustomOrder(id, [a, b, c]);
+      expect(await shown(id), [a, b, c]);
+    });
+
     test('the arrangement survives a change to the query', () async {
       // The hard requirement: narrow the query, widen it again, and what was
       // arranged is still arranged.

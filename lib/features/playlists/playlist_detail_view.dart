@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../data/db/enums.dart'
-    show PlaylistGrouping, PlaylistSort, QueueSource;
+import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/playlist_repository.dart';
 import '../../data/repositories/smart_playlist_resolver.dart' show smartPlaylistSorts;
 import '../../data/repositories/tag_repository.dart';
@@ -72,6 +71,12 @@ class PlaylistDetailView extends ConsumerWidget {
         return PlaylistTracks(
           playlist: card,
           tracks: items,
+          title: switch (card) {
+            final p when p.isSmart => 'Tracks matching this query',
+            final p when p.childCount > 0 =>
+              'Every track, including the included playlists',
+            _ => 'Tracks',
+          },
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
           onEditTrack: onEditTrack,
@@ -320,19 +325,7 @@ class _Header extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: 24),
-          _OrderControls(playlist: playlist),
-          const SizedBox(height: 12),
-          Text(
-            switch (playlist) {
-              final p when p.isSmart => 'Tracks matching this query, now',
-              final p when p.childCount > 0 =>
-                'Every track, including the included playlists',
-              _ => 'Tracks',
-            },
-            style: theme.textTheme.titleMedium,
-          ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -621,90 +614,6 @@ class _Exclusions extends ConsumerWidget {
                 deleteButtonTooltipMessage: 'Let it back in',
               ),
           ],
-        ),
-      ],
-    );
-  }
-}
-
-/// How the tracks are ordered and grouped.
-///
-/// Both are stored on the playlist, so they apply to whatever it holds later as
-/// well: add a track to an album-grouped playlist and it appears under its
-/// album without anyone rearranging anything.
-class _OrderControls extends ConsumerWidget {
-  const _OrderControls({required this.playlist});
-
-  final PlaylistCard playlist;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final repository = ref.read(playlistRepositoryProvider);
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        SizedBox(
-          width: 210,
-          child: DropdownButtonFormField<PlaylistSort>(
-            isExpanded: true,
-            initialValue: playlist.displaySort,
-            decoration: const InputDecoration(
-              labelText: 'Order',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final sort in PlaylistSort.values)
-                DropdownMenuItem(value: sort, child: Text(sort.label)),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              repository.setDisplayRules(playlist.id, sort: value);
-            },
-          ),
-        ),
-        IconButton(
-          tooltip: playlist.sortDescending ? 'Ascending' : 'Descending',
-          isSelected: playlist.sortDescending,
-          onPressed: () => repository.setDisplayRules(
-            playlist.id,
-            descending: !playlist.sortDescending,
-          ),
-          icon: Icon(
-            playlist.sortDescending ? Icons.arrow_upward : Icons.arrow_downward,
-          ),
-        ),
-        SizedBox(
-          width: 190,
-          child: DropdownButtonFormField<PlaylistGrouping>(
-            isExpanded: true,
-            initialValue: playlist.grouping,
-            decoration: const InputDecoration(
-              labelText: 'Groups',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final group in PlaylistGrouping.values)
-                DropdownMenuItem(value: group, child: Text(group.label)),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              repository.setDisplayRules(playlist.id, group: value);
-            },
-          ),
-        ),
-        Text(
-          playlist.displaySort == PlaylistSort.custom
-              ? 'Arranged by hand. Dragging keeps it that way.'
-              : 'Drag a track to arrange it by hand.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
         ),
       ],
     );
