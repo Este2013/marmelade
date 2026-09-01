@@ -7,6 +7,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import 'category_dialog.dart';
 import 'tag_visuals.dart';
 
 /// Everything carrying one tag.
@@ -103,10 +104,63 @@ class _Header extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            tooltip: 'Back',
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back),
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Back',
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Edit this tag',
+                onPressed: () => editTag(
+                  context,
+                  ref,
+                  tagId: tag.id,
+                  name: tag.name,
+                  categoryId: tag.categoryId,
+                ),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_vert),
+                onSelected: (action) async {
+                  if (action != 'delete') return;
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text('Delete ${tag.name}?'),
+                      content: Text(
+                        'It comes off everything carrying it -- '
+                        '${pluralize(tag.trackCount, 'track')}. The music '
+                        'itself is untouched.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed != true) return;
+                  await ref.read(tagRepositoryProvider).deleteTag(tag.id);
+                  // Back, because this page is about a tag that no longer
+                  // exists -- staying would show the "that tag is gone" card
+                  // where a page used to be.
+                  onBack();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(

@@ -346,16 +346,24 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: AnimatedScale(
-                // A restrained lift on hover: enough to feel alive, not enough
-                // to make a scrolling grid feel unstable.
-                scale: _hovering ? 1.03 : 1,
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutCubic,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    AnimatedContainer(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AnimatedScale(
+                    // A restrained lift on hover: enough to feel alive, not
+                    // enough to make a scrolling grid feel unstable.
+                    //
+                    // Around the cover alone, not the whole tile. A transform
+                    // moves the semantics of everything inside it, and moving
+                    // an interactive node every frame of an animation is what
+                    // floods the Windows accessibility bridge -- the play
+                    // button was inside this, and hovering the grid threw
+                    // hundreds of AXTree errors. The cover has no semantics of
+                    // its own, so scaling it costs nothing.
+                    scale: _hovering ? 1.03 : 1,
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedContainer(
                       duration: const Duration(milliseconds: 160),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
@@ -385,28 +393,29 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
                         heroTag: isSingle ? null : 'album-art-${album.id}',
                       ),
                     ),
-                    // Play affordance, revealed on hover so the grid stays
-                    // about the artwork until the user reaches for it.
-                    Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: AnimatedOpacity(
-                        opacity: _hovering ? 1 : 0,
-                        duration: const Duration(milliseconds: 140),
-                        // Kept in the semantics tree at every opacity. By
-                        // default AnimatedOpacity drops its child's semantics
-                        // at zero, so hovering added and removed a node per
-                        // tile per frame - which floods the Windows
-                        // accessibility bridge with tree updates it cannot
-                        // apply, and eventually crashes it. Always including
-                        // it is also plainly better: a screen reader can reach
-                        // the play button without having to hover.
-                        alwaysIncludeSemantics: true,
-                        child: _PlayOverlayButton(album: album),
-                      ),
+                  ),
+                  // Play affordance, revealed on hover so the grid stays
+                  // about the artwork until the user reaches for it. Outside
+                  // the scale, so it holds still while the cover lifts.
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: AnimatedOpacity(
+                      opacity: _hovering ? 1 : 0,
+                      duration: const Duration(milliseconds: 140),
+                      // Kept in the semantics tree at every opacity. By
+                      // default AnimatedOpacity drops its child's semantics
+                      // at zero, so hovering added and removed a node per
+                      // tile per frame - which floods the Windows
+                      // accessibility bridge with tree updates it cannot
+                      // apply, and eventually crashes it. Always including
+                      // it is also plainly better: a screen reader can reach
+                      // the play button without having to hover.
+                      alwaysIncludeSemantics: true,
+                      child: _PlayOverlayButton(album: album),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 10),

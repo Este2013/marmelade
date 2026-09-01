@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/repositories/tag_repository.dart';
 import '../../domain/models/library_views.dart';
+import '../../widgets/drag_scroll_edges.dart';
 import '../../widgets/empty_state.dart';
 import 'category_dialog.dart';
 import 'category_icons.dart';
@@ -94,7 +95,7 @@ class TagsView extends ConsumerWidget {
 }
 
 /// The tags, under a heading per category.
-class _Grouped extends ConsumerWidget {
+class _Grouped extends ConsumerStatefulWidget {
   const _Grouped({
     required this.tags,
     required this.categories,
@@ -106,7 +107,25 @@ class _Grouped extends ConsumerWidget {
   final void Function(int tagId) onOpenTag;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Grouped> createState() => _GroupedState();
+}
+
+class _GroupedState extends ConsumerState<_Grouped> {
+  // Held here rather than left to the list, because the edges need something
+  // to scroll while a tag is being dragged over them.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tags = widget.tags;
+    final categories = widget.categories;
+    final onOpenTag = widget.onOpenTag;
     final theme = Theme.of(context);
     final byCategory = <int?, List<TagCard>>{};
     for (final tag in tags) {
@@ -136,7 +155,8 @@ class _Grouped extends ConsumerWidget {
       ),
     ];
 
-    return ListView.builder(
+    final list = ListView.builder(
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
       itemCount: sections.length,
       itemBuilder: (context, index) {
@@ -300,6 +320,8 @@ class _Grouped extends ConsumerWidget {
         );
       },
     );
+
+    return DragScrollEdges(controller: _scroll, child: list);
   }
 }
 

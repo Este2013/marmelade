@@ -126,9 +126,10 @@ class TrackList extends ConsumerWidget {
           // identical thumbnails says nothing. The heading holds the artwork
           // and the rows get their track numbers, which is the information
           // actually missing from a grouped list.
-          showArtwork: showArtwork && !groupByAlbum,
-          showAlbum: showAlbum && !groupByAlbum,
-          showTrackNumber: showTrackNumbers || groupByAlbum,
+          showArtwork: showArtwork && (!groupByAlbum || trackRow.alone),
+          showAlbum: showAlbum && (!groupByAlbum || trackRow.alone),
+          showTrackNumber:
+              showTrackNumbers || (groupByAlbum && !trackRow.alone),
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
           onEditTrack: onEditTrack,
@@ -166,14 +167,20 @@ class TrackList extends ConsumerWidget {
       while (end < tracks.length && tracks[end].albumId == albumId) {
         end += 1;
       }
-      rows.add(_HeadingRow(
-        title: tracks[start].albumTitle ?? 'Not part of an album',
-        albumId: albumId,
-        trackCount: end - start,
-        imagePath: tracks[start].imagePath,
-      ));
+      // A release with one track on it is a single, and a heading above a
+      // single row says the same thing twice at four times the height. An
+      // artist with a page full of singles was mostly headings.
+      final alone = end - start == 1;
+      if (!alone) {
+        rows.add(_HeadingRow(
+          title: tracks[start].albumTitle ?? 'Not part of an album',
+          albumId: albumId,
+          trackCount: end - start,
+          imagePath: tracks[start].imagePath,
+        ));
+      }
       for (var i = start; i < end; i++) {
-        rows.add(_TrackRowSlot(tracks[i], i));
+        rows.add(_TrackRowSlot(tracks[i], i, alone: alone));
       }
       start = end;
     }
@@ -214,12 +221,18 @@ class _HeadingRow extends _Row {
 }
 
 class _TrackRowSlot extends _Row {
-  const _TrackRowSlot(this.track, this.trackIndex);
+  const _TrackRowSlot(this.track, this.trackIndex, {this.alone = false});
 
   final TrackRow track;
 
   /// Index into the tracks list, which is what play uses.
   final int trackIndex;
+
+  /// The only track of its release, so it has no heading above it.
+  ///
+  /// It carries what the heading would have: its own cover and the album name,
+  /// rather than a track number that can only ever read "1".
+  final bool alone;
 }
 
 /// Names the release a run of tracks belongs to.

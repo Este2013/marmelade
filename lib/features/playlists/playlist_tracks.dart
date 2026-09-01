@@ -64,7 +64,13 @@ class PlaylistTracks extends ConsumerStatefulWidget {
       }
     }
 
-    final target = to > from ? to - block.length : to;
+    // [to] arrives already reduced by one, because the framework has accounted
+    // for the single widget being dragged away. This list takes a whole group
+    // away with it, so undo that one first and then subtract the block: taking
+    // block.length off a number that was short by one is how a downward drag
+    // used to land a slot early, and how a drag to the very end used to land
+    // nowhere at all.
+    final target = to > from ? to + 1 - block.length : to;
     working.insertAll(target.clamp(0, working.length), block);
     return working;
   }

@@ -137,6 +137,83 @@ void main() {
     expect(tags.moves, [(tagId: 10, categoryId: null)]);
   });
 
+  testWidgets('dragging to the bottom edge scrolls the list down',
+      (tester) async {
+    // A category further down cannot be dropped on if it is off the screen,
+    // and letting go to scroll means starting the drag over.
+    final many = [
+      ...categories,
+      for (var i = 0; i < 30; i++)
+        TagCategoryRow(
+          id: 100 + i,
+          name: 'Category $i',
+          slug: 'category-$i',
+          isSystem: false,
+          tagCount: 0,
+        ),
+    ];
+
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          tagRepositoryProvider.overrideWithValue(tags),
+          taggedProvider.overrideWith((ref) => Stream.value(tagCards)),
+          tagCategoriesProvider.overrideWith((ref) => Stream.value(many)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: TagsView(onOpenTag: (_) {})),
+        ),
+      ),
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+
+    final scrollable = find.byType(Scrollable).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Hardcore')),
+    );
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+    // Down into the sensitive band at the bottom of the list.
+    await gesture.moveTo(const Offset(600, 690));
+    // Pumped in slices rather than settled: the scroll runs on a repeating
+    // timer, so settling would wait for something that only stops when the
+    // drag does.
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 32));
+    }
+
+    expect(position.pixels, greaterThan(0));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the scrolling edge does not swallow the drop', (tester) async {
+    // The bands sit over the list, so a heading underneath one has to stay the
+    // thing that receives the tag.
+    await pump(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Hardcore')),
+    );
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.text('Mood')));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(tags.moves, [(tagId: 10, categoryId: 2)]);
+  });
+
   testWidgets('a tag cannot be dropped on the category it is already in',
       (tester) async {
     await pump(tester);

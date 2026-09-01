@@ -5,12 +5,10 @@ import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/indexer/search_indexer.dart';
 import 'package:marmelade/data/repositories/playlist_repository.dart';
-import 'package:marmelade/data/repositories/queue_repository.dart';
-import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/features/playlists/playlist_tracks.dart';
 import 'package:marmelade/domain/models/library_views.dart';
-import 'package:marmelade/services/audio/playback_engine.dart';
-import 'package:marmelade/services/audio/player_controller.dart';
+
+import '../support/silent_player.dart';
 
 /// A playlist repository that records the order it was told to save.
 class _RecordingPlaylists extends PlaylistRepository {
@@ -23,80 +21,6 @@ class _RecordingPlaylists extends PlaylistRepository {
   Future<void> saveCustomOrder(int playlistId, List<int> trackIds) async {
     saved.add(trackIds);
   }
-}
-
-/// A player that does nothing, so a row can be built without audio.
-class _SilentEngine implements PlaybackEngine {
-  @override
-  bool get isInitialized => true;
-  @override
-  Object? get lastError => null;
-  @override
-  PlaybackStatus get status => PlaybackStatus.idle;
-  @override
-  String? get loadedPath => null;
-  @override
-  Duration get position => Duration.zero;
-  @override
-  Duration get duration => Duration.zero;
-  @override
-  double get volume => 0.7;
-  @override
-  double get speed => 1;
-  @override
-  EqualizerSettings get equalizer => EqualizerSettings.flat;
-  @override
-  bool get spectrumEnabled => false;
-  @override
-  AudioOutputDevice? get currentOutputDevice => null;
-  @override
-  Stream<void> get onCompleted => const Stream.empty();
-  @override
-  Future<void> initialize() async {}
-  @override
-  Future<void> shutdown() async {}
-  @override
-  Future<Duration> load(String filePath, {AudioLoadMode? mode}) async =>
-      Duration.zero;
-  @override
-  Future<void> play() async {}
-  @override
-  void pause() {}
-  @override
-  Future<void> stop() async {}
-  @override
-  void seek(Duration position) {}
-  @override
-  void setVolume(double value) {}
-  @override
-  void fadeVolume(double value, Duration duration) {}
-  @override
-  void setSpeed(double value) {}
-  @override
-  void setGainOffset(double db) {}
-  @override
-  void setEqualizer(EqualizerSettings settings) {}
-  @override
-  void setSpectrumEnabled(bool enabled) {}
-  @override
-  SpectrumFrame? readSpectrum() => null;
-  @override
-  List<AudioOutputDevice> outputDevices() => const [];
-  @override
-  Future<void> setOutputDevice(AudioOutputDevice? device) async {}
-}
-
-class _IdlePlayer extends PlayerController {
-  _IdlePlayer(MarmeladeDatabase db)
-      : super(
-          engine: _SilentEngine(),
-          queueRepository: QueueRepository(db),
-          libraryRepository: LibraryRepository(db),
-          db: db,
-        );
-
-  @override
-  PlayerSnapshot build() => const PlayerSnapshot();
 }
 
 /// Arranging a playlist by hand.
@@ -146,8 +70,8 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           playlistRepositoryProvider.overrideWithValue(playlists),
-          playbackEngineProvider.overrideWithValue(_SilentEngine()),
-          playerProvider.overrideWith(() => _IdlePlayer(db)),
+          playbackEngineProvider.overrideWithValue(SilentEngine()),
+          playerProvider.overrideWith(() => IdlePlayer(db)),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -262,6 +186,48 @@ void main() {
       expect(order.indexOf(1), lessThan(order.indexOf(3)));
     });
 
+    test('a track can be dragged to the very last place', () {
+      // Reported: a middle item could not be moved to the end. Every move test
+      // here dragged upwards, where the index needs no adjusting at all, so
+      // nothing caught it.
+      final rows = rowsFor(PlaylistGrouping.none);
+      // The second of four, dropped past the last one.
+      final moved = PlaylistTracks.move(rows, 1, 3);
+      expect(
+        PlaylistTracks.trackOrder(moved, PlaylistGrouping.none),
+        [1, 3, 4, 2],
+      );
+    });
+
+    test('a track dragged one place down moves one place', () {
+      final rows = rowsFor(PlaylistGrouping.none);
+      final moved = PlaylistTracks.move(rows, 0, 1);
+      expect(
+        PlaylistTracks.trackOrder(moved, PlaylistGrouping.none),
+        [2, 1, 3, 4],
+      );
+    });
+
+    test('a heading dragged to the end takes its tracks past the others', () {
+      final rows = rowsFor(PlaylistGrouping.album);
+      // Alpha heads the list; drop it past the end.
+      final moved = PlaylistTracks.move(rows, 0, rows.length - 1);
+      expect(
+        PlaylistTracks.trackOrder(moved, PlaylistGrouping.album),
+        [3, 4, 1, 2],
+      );
+    });
+
+    test('dragging down and back again returns the order it started with', () {
+      final rows = rowsFor(PlaylistGrouping.none);
+      final there = PlaylistTracks.move(rows, 1, 3);
+      final back = PlaylistTracks.move(there, 3, 1);
+      expect(
+        PlaylistTracks.trackOrder(back, PlaylistGrouping.none),
+        [1, 2, 3, 4],
+      );
+    });
+
     test('nothing is ever lost by a move', () {
       final rows = rowsFor(PlaylistGrouping.album);
       for (var from = 0; from < rows.length; from++) {
@@ -326,8 +292,8 @@ void main() {
           overrides: [
             databaseProvider.overrideWithValue(db),
             playlistRepositoryProvider.overrideWithValue(playlists),
-            playbackEngineProvider.overrideWithValue(_SilentEngine()),
-            playerProvider.overrideWith(() => _IdlePlayer(db)),
+            playbackEngineProvider.overrideWithValue(SilentEngine()),
+            playerProvider.overrideWith(() => IdlePlayer(db)),
           ],
           child: MaterialApp(
             home: Scaffold(
@@ -364,8 +330,8 @@ void main() {
           overrides: [
             databaseProvider.overrideWithValue(db),
             playlistRepositoryProvider.overrideWithValue(playlists),
-            playbackEngineProvider.overrideWithValue(_SilentEngine()),
-            playerProvider.overrideWith(() => _IdlePlayer(db)),
+            playbackEngineProvider.overrideWithValue(SilentEngine()),
+            playerProvider.overrideWith(() => IdlePlayer(db)),
           ],
           child: MaterialApp(
             home: Scaffold(
