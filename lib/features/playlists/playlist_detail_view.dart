@@ -127,6 +127,12 @@ class _Header extends ConsumerWidget {
     final player = ref.read(playerProvider.notifier);
     final repository = ref.read(playlistRepositoryProvider);
     final trackIds = tracks.map((t) => t.id).toList();
+    // Distinct, and in the order the tracks carry them, so the picker offers
+    // each cover once rather than once per track.
+    final covers = {
+      for (final track in tracks)
+        if (track.imagePath != null) track.imagePath!,
+    }.toList();
     // Only the playlists included in this one: the tracks are the list below.
     final included = [
       for (final entry in entries)
@@ -190,6 +196,7 @@ class _Header extends ConsumerWidget {
                 id: playlist.id,
                 title: playlist.name,
                 fallbackIcon: Icons.playlist_play,
+                pickFromCovers: covers,
               ),
               const SizedBox(width: 24),
               Expanded(
