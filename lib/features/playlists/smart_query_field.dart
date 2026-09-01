@@ -32,6 +32,13 @@ class SmartQueryField extends ConsumerStatefulWidget {
   ConsumerState<SmartQueryField> createState() => _SmartQueryFieldState();
 }
 
+/// Where the field's own text sits, with the label pinned above it rather
+/// than floating in and out of that same space. Shared by the ghost overlay
+/// and the field's own decoration, which is what keeps them lined up: tuning
+/// one number by eye against whichever state happened to be on screen is how
+/// this drifted the first time.
+const _fieldContentPadding = EdgeInsets.fromLTRB(12, 20, 12, 12);
+
 class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   final _focus = FocusNode();
 
@@ -260,14 +267,19 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
               // The rest of the first suggestion, greyed, behind the field --
               // so what Tab would do is visible where it would happen rather
               // than only as a chip below.
+              //
+              // Its padding has to match the field's own content padding
+              // exactly, which is why both use [_fieldContentPadding] rather
+              // than two numbers tuned by eye against different screenshots.
+              // The label is pinned with [FloatingLabelBehavior.always] for
+              // the same reason: a label that floats only sometimes puts the
+              // real text at two different heights depending on focus, and
+              // the ghost can only ever match one of them.
               if (_ghost(suggestions) case final ghost?)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Padding(
-                      // Matches the field's own content padding, or the hint
-                      // would sit a few pixels off the real text and read as a
-                      // rendering fault.
-                      padding: const EdgeInsets.fromLTRB(12, 18, 12, 0),
+                      padding: _fieldContentPadding,
                       child: Text.rich(
                         TextSpan(
                           children: [
@@ -301,11 +313,13 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                 autofocus: widget.autofocus,
                 autocorrect: false,
                 style: const TextStyle(fontFamily: 'Consolas'),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Query',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  contentPadding: _fieldContentPadding,
                   hintText:
                       'artist:Nanahira tag:hardcore -tag:remix added:<30d',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                 ),
                 onSubmitted: widget.onSubmitted,
               ),

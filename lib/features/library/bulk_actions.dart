@@ -21,11 +21,16 @@ class BulkActions {
   final WidgetRef ref;
 
   /// Tags everything in [ids], creating the tag if it is new.
-  Future<int> tag(TagTarget target, Iterable<int> ids, String name) async {
+  Future<int> tag(
+    TagTarget target,
+    Iterable<int> ids,
+    String name, {
+    int? categoryId,
+  }) async {
     final repository = ref.read(tagRepositoryProvider);
     var done = 0;
     for (final id in ids) {
-      await repository.attachByName(target, id, name);
+      await repository.attachByName(target, id, name, categoryId: categoryId);
       done += 1;
     }
     return done;
@@ -74,16 +79,16 @@ class BulkActions {
   }
 }
 
-/// Asks for a tag name, offering the ones that already exist.
+/// Asks for a tag name and, optionally, its category.
 ///
 /// Returns null when dismissed. Typing a name that does not exist creates it,
 /// which is the same rule the editors follow.
-Future<String?> askForTag(
+Future<({String name, int? categoryId})?> askForTag(
   BuildContext context,
   WidgetRef ref, {
   required String title,
 }) {
-  return showDialog<String>(
+  return showDialog<({String name, int? categoryId})>(
     context: context,
     builder: (context) => _TagPromptDialog(title: title),
   );
@@ -100,6 +105,7 @@ class _TagPromptDialog extends ConsumerStatefulWidget {
 
 class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
   final _controller = TextEditingController();
+  int? _categoryId;
 
   @override
   void initState() {
@@ -116,7 +122,61 @@ class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
   void _submit(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
-    Navigator.of(context).pop(trimmed);
+    Navigator.of(context)
+        .pop((name: trimmed, categoryId: _categoryId));
+  }
+
+  /// Stands in for "no category" as a [PopupMenuButton] value.
+  ///
+  /// `null` cannot do that job: [PopupMenuButton] pops `null` both when an
+  /// item genuinely carries that value *and* when the menu is dismissed with
+  /// nothing chosen, and reads either as a cancel -- `onSelected` is simply
+  /// never called for a null result. Real category ids start at 1, so 0 can
+  /// never collide with one.
+  static const _noCategory = 0;
+
+  /// The current pick, shown as the text field's own leading icon rather than
+  /// a separate labelled dropdown -- there is only one thing to say here
+  /// ("which category"), and a whole extra field said it at more length than
+  /// it needed.
+  Widget _categoryPicker(List<TagCategoryRow> categories) {
+    final selected =
+        categories.where((c) => c.id == _categoryId).firstOrNull;
+    final color = selected?.color;
+
+    return PopupMenuButton<int>(
+      tooltip: 'Category',
+      onSelected: (value) => setState(
+        () => _categoryId = value == _noCategory ? null : value,
+      ),
+      itemBuilder: (context) => [
+        const PopupMenuItem(value: _noCategory, child: Text('None')),
+        for (final category in categories)
+          PopupMenuItem(
+            value: category.id,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  tagCategoryIcon(category.icon),
+                  size: 18,
+                  color: category.color == null ? null : Color(category.color!),
+                ),
+                const SizedBox(width: 10),
+                Text(category.name),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Icon(
+          selected == null ? Icons.label_outline : tagCategoryIcon(selected.icon),
+          size: 20,
+          color: color == null ? null : Color(color),
+        ),
+      ),
+    );
   }
 
   @override
@@ -124,6 +184,7 @@ class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
     final theme = Theme.of(context);
     final typed = _controller.text.trim().toLowerCase();
     final all = ref.watch(taggedProvider).value ?? const [];
+    final categories = ref.watch(tagCategoriesProvider).value ?? const [];
     final matches = typed.isEmpty
         ? all.take(12).toList()
         : all
@@ -143,10 +204,11 @@ class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
             TextField(
               controller: _controller,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Tag',
                 hintText: 'An existing name, or a new one',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                prefixIcon: _categoryPicker(categories),
               ),
               onSubmitted: _submit,
             ),
@@ -197,7 +259,7 @@ class _TagPromptDialogState extends ConsumerState<_TagPromptDialog> {
           onPressed: _controller.text.trim().isEmpty
               ? null
               : () => _submit(_controller.text),
-          child: const Text('Apply'),
+          child: const Text('Add'),
         ),
       ],
     );
@@ -216,18 +278,19 @@ Future<void> tagSelection(
   required String noun,
 }) async {
   if (ids.isEmpty) return;
-  final name = await askForTag(
+  final picked = await askForTag(
     context,
     ref,
     title: 'Tag ${pluralize(ids.length, noun)}',
   );
-  if (name == null) return;
+  if (picked == null) return;
 
-  final done = await BulkActions(ref).tag(target, ids, name);
+  final done = await BulkActions(ref)
+      .tag(target, ids, picked.name, categoryId: picked.categoryId);
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text('Tagged ${pluralize(done, noun)} with "$name".'),
+      content: Text('Tagged ${pluralize(done, noun)} with "${picked.name}".'),
     ),
   );
 }

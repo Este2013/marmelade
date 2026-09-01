@@ -6,7 +6,7 @@ import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/playlist_repository.dart';
 import '../../data/repositories/smart_playlist_resolver.dart' show smartPlaylistSorts;
 import '../../data/repositories/tag_repository.dart';
-import '../edit/tag_section.dart';
+import '../tags/tag_line.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
@@ -220,7 +220,13 @@ class _Header extends ConsumerWidget {
                         style: theme.textTheme.bodyMedium,
                       ),
                     ],
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+                    TagLine(
+                      target: TagTarget.playlist,
+                      id: playlist.id,
+                      onOpenTag: onOpenTag,
+                    ),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         FilledButton.icon(
@@ -263,17 +269,6 @@ class _Header extends ConsumerWidget {
               child: _QuerySection(playlist: playlist),
             ),
           ],
-          const SizedBox(height: 24),
-          // Constrained, because the section is designed for an editor page
-          // and this one is a header inside a scrolling list.
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: TagSection(
-              target: TagTarget.playlist,
-              id: playlist.id,
-              onOpenTag: onOpenTag,
-            ),
-          ),
           // Only the playlists included in this one. The tracks used to be
           // listed here too, which meant every track appeared twice on the
           // page -- once here and once in the list below. The list below can

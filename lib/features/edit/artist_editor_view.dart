@@ -9,7 +9,6 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
-import 'link_visuals.dart';
 import 'picture_section.dart';
 import 'tag_section.dart';
 
@@ -85,12 +84,10 @@ class _EditorState extends ConsumerState<_Editor> {
   late final TextEditingController _disambiguation;
   late final TextEditingController _description;
   final _newAlias = TextEditingController();
-  final _newLink = TextEditingController();
 
   late ArtistKind _kind;
   late bool _neverSplit;
   var _aliasKind = AliasKind.alias;
-  var _linkKind = LinkKind.website;
   var _saving = false;
 
   @override
@@ -128,7 +125,6 @@ class _EditorState extends ConsumerState<_Editor> {
     _disambiguation.dispose();
     _description.dispose();
     _newAlias.dispose();
-    _newLink.dispose();
     super.dispose();
   }
 
@@ -249,7 +245,6 @@ class _EditorState extends ConsumerState<_Editor> {
                   _aliases(edit),
                   if (edit.isGroup || edit.members.isNotEmpty) _members(edit),
                   _partOf(edit),
-                  _links(edit),
                   TagSection(target: TagTarget.artist, id: edit.id),
                   _structure(edit),
                 ],
@@ -517,119 +512,6 @@ class _EditorState extends ConsumerState<_Editor> {
       () => _repository.addMember(picked.id, edit.id),
       done: 'Added to ${picked.name}',
     );
-  }
-
-  // -------------------------------------------------------------------- links
-
-  Widget _links(ArtistEdit edit) {
-    return EditSection(
-      title: 'Links',
-      subtitle: 'Somewhere to go and hear more.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (edit.links.isEmpty)
-            _empty('No links yet.')
-          else
-            Column(
-              children: [
-                for (final link in edit.links)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: LinkKindIcon(kind: link.kind),
-                    title: Text(link.label ?? link.url),
-                    subtitle: link.label == null ? null : Text(link.url),
-                    trailing: IconButton(
-                      tooltip: 'Remove',
-                      onPressed: _saving
-                          ? null
-                          : () => _run(
-                                () => _repository.removeArtistLink(link.id),
-                              ),
-                      icon: const Icon(Icons.close, size: 18),
-                    ),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: EditField(
-                  controller: _newLink,
-                  label: 'Add a link',
-                  // The kind's own example, so what is wanted is visible
-                  // before anything is typed.
-                  hint: linkKindHint(_linkKind) ?? 'https://...',
-                  onSubmitted: (_) => _addLink(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 210,
-                child: DropdownButtonFormField<LinkKind>(
-                  isExpanded: true,
-                  initialValue: _linkKind,
-                  decoration: const InputDecoration(
-                    labelText: 'Kind',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final kind in LinkKind.values)
-                      DropdownMenuItem(
-                        value: kind,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            LinkKindIcon(kind: kind, size: 16),
-                            const SizedBox(width: 10),
-                            Flexible(
-                              child: Text(
-                                linkKindLabel(kind),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => _linkKind = value ?? _linkKind),
-                ),
-              ),
-              const SizedBox(width: 12),
-              IconButton.filledTonal(
-                tooltip: 'Add',
-                onPressed: _saving ? null : _addLink,
-                icon: const Icon(Icons.add),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _addLink() async {
-    var url = _newLink.text.trim();
-    if (url.isEmpty) {
-      // Nothing typed: offer a real guess instead of doing nothing, for the
-      // kinds where the site's own pattern makes one guessable at all.
-      final suggestion = linkKindSuggestion(_linkKind, widget.edit.name);
-      if (suggestion == null) return;
-      setState(() => _newLink.text = suggestion);
-      return;
-    }
-    await _run(() async {
-      await _repository.addArtistLink(
-        widget.edit.id,
-        url,
-        kind: _linkKind,
-      );
-      _newLink.clear();
-    });
   }
 
   // ---------------------------------------------------------------- structure

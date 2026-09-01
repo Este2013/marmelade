@@ -67,6 +67,42 @@ class LinkKindIcon extends StatelessWidget {
   }
 }
 
+/// Guesses a kind from a URL someone has actually pasted in.
+///
+/// A best-effort match against the domains each kind's site actually uses,
+/// not a promise: an unrecognised domain reads as a plain website rather than
+/// as an error, and either guess is one click away from being corrected by
+/// hand. No request is made -- this is a string match, nothing more.
+LinkKind inferLinkKind(String url) {
+  final uri = Uri.tryParse(url.trim());
+  final host = uri?.host.toLowerCase() ?? '';
+  if (host.isEmpty) return LinkKind.other;
+
+  bool has(String domain) => host == domain || host.endsWith('.$domain');
+
+  return switch (host) {
+    _ when has('youtube.com') || has('youtu.be') => LinkKind.youtube,
+    _ when has('twitter.com') || has('x.com') => LinkKind.twitter,
+    _ when has('bsky.app') => LinkKind.bluesky,
+    // Federated, so there is no single domain -- the well-known flagship
+    // instances are as far as a guess can reasonably reach.
+    _ when has('mastodon.social') ||
+        has('mastodon.online') ||
+        has('mastodon.world') =>
+      LinkKind.mastodon,
+    _ when has('bandcamp.com') => LinkKind.bandcamp,
+    _ when has('soundcloud.com') => LinkKind.soundcloud,
+    _ when has('spotify.com') => LinkKind.spotify,
+    _ when has('music.apple.com') => LinkKind.appleMusic,
+    _ when has('nicovideo.jp') => LinkKind.niconico,
+    _ when has('pixiv.net') => LinkKind.pixiv,
+    _ when has('musicbrainz.org') => LinkKind.musicbrainz,
+    _ when has('vgmdb.net') => LinkKind.vgmdb,
+    _ when has('wikipedia.org') => LinkKind.wikipedia,
+    _ => LinkKind.website,
+  };
+}
+
 /// The greyed example shown in the URL field for a kind, so the shape of what
 /// is wanted is visible before anything is typed.
 String? linkKindHint(LinkKind kind) => switch (kind) {

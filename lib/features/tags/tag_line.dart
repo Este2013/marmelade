@@ -36,14 +36,17 @@ class _TagLineState extends ConsumerState<TagLine> {
 
   Future<void> _add() async {
     if (_busy) return;
-    final name = await askForTag(context, ref, title: 'Add a tag');
-    if (name == null || !mounted) return;
+    final picked = await askForTag(context, ref, title: 'Add a tag');
+    if (picked == null || !mounted) return;
 
     setState(() => _busy = true);
     try {
-      await ref
-          .read(tagRepositoryProvider)
-          .attachByName(widget.target, widget.id, name);
+      await ref.read(tagRepositoryProvider).attachByName(
+            widget.target,
+            widget.id,
+            picked.name,
+            categoryId: picked.categoryId,
+          );
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -72,7 +72,6 @@ class ArtistEdit {
     required this.isVerified,
     required this.trackCount,
     required this.aliases,
-    required this.links,
     required this.members,
     required this.memberOf,
     this.sortName,
@@ -93,7 +92,6 @@ class ArtistEdit {
 
   final int trackCount;
   final List<AliasRow> aliases;
-  final List<LinkRow> links;
 
   /// Artists in this group.
   final List<MembershipRow> members;
@@ -255,7 +253,6 @@ class EditRepository {
         imagePath: row.read<String?>('image_path'),
         trackCount: row.read<int>('track_count'),
         aliases: await _aliasesOf(artistId),
-        links: await _linksOf(artistId),
         members: await _membersOf(artistId),
         memberOf: await _groupsOf(artistId),
       );
@@ -284,8 +281,6 @@ class EditRepository {
         ),
     ];
   }
-
-  Future<List<LinkRow>> _linksOf(int artistId) => watchArtistLinks(artistId).first;
 
   Future<List<MembershipRow>> _membersOf(int groupId) =>
       _memberships(groupId, ofGroup: true);
@@ -676,15 +671,17 @@ class EditRepository {
     }
   }
 
-  Future<void> addArtistLink(
+  /// Returns the new row's id, or null when there was nothing to add -- the
+  /// id is what lets the caller focus the row it just created.
+  Future<int?> addArtistLink(
     int artistId,
     String url, {
     LinkKind kind = LinkKind.other,
     String? label,
   }) async {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return;
-    await db.into(db.artistLinks).insert(
+    if (trimmed.isEmpty) return null;
+    return db.into(db.artistLinks).insert(
           ArtistLinksCompanion.insert(
             artistId: artistId,
             url: trimmed,
@@ -692,6 +689,26 @@ class EditRepository {
             label: Value(_orNull(label)),
           ),
         );
+  }
+
+  /// Rewrites a link in place, rather than remove-and-re-add -- editing a URL
+  /// is still the same bookmark, not a new one, and re-adding would lose its
+  /// position in the list.
+  Future<void> updateArtistLink(
+    int linkId, {
+    required String url,
+    required LinkKind kind,
+    String? label,
+  }) {
+    final trimmed = url.trim();
+    return (db.update(db.artistLinks)..where((t) => t.id.equals(linkId)))
+        .write(
+      ArtistLinksCompanion(
+        url: Value(trimmed),
+        kind: Value(kind),
+        label: Value(_orNull(label)),
+      ),
+    );
   }
 
   Future<void> removeArtistLink(int linkId) =>

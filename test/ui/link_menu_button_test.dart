@@ -42,20 +42,60 @@ void main() {
     ),
   ];
 
-  Future<void> pump(WidgetTester tester, List<LinkRow> links) async {
+  Future<void> pump(
+    WidgetTester tester,
+    List<LinkRow> links, {
+    VoidCallback? onEditLinks,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: LinkMenuButton(links: links)),
+        home: Scaffold(
+          body: LinkMenuButton(links: links, onEditLinks: onEditLinks),
+        ),
       ),
     );
   }
 
-  testWidgets('nothing is shown when there is nothing to link to',
+  testWidgets('nothing is shown when there is nothing to link to or add',
       (tester) async {
     await pump(tester, const []);
 
     expect(find.byIcon(Icons.link), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the icon survives having no links, so the first can be added',
+      (tester) async {
+    var edited = false;
+    await pump(tester, const [], onEditLinks: () => edited = true);
+
+    expect(find.byIcon(Icons.link), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.link));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit links'), findsOneWidget);
+    await tester.tap(find.text('Edit links'));
+    expect(edited, isTrue);
+  });
+
+  testWidgets('edit links sits after a divider, below any real links',
+      (tester) async {
+    await pump(tester, links, onEditLinks: () {});
+    await tester.tap(find.byIcon(Icons.link));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit links'), findsOneWidget);
+    expect(find.byType(PopupMenuDivider), findsOneWidget);
+  });
+
+  testWidgets('with no way to edit, only the links themselves are offered',
+      (tester) async {
+    await pump(tester, links);
+    await tester.tap(find.byIcon(Icons.link));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit links'), findsNothing);
+    expect(find.byType(PopupMenuDivider), findsNothing);
   });
 
   testWidgets('the icon opens a menu naming every link', (tester) async {

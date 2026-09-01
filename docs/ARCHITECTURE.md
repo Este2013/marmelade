@@ -297,29 +297,59 @@ something that **adds, removes or re-creates a semantics node every frame**:
 - (see below) not app-fixable, but confirmed to correlate with the same fault
   shape rather than something else.
 
-**Three more triggers were measured and are not fixable here**, because each
-reproduces on a completely vanilla, unmodified Material widget with no custom
-semantics handling:
+**A methodology correction, since it changes what the numbers below mean:**
+the first pass at measuring this drove input with `SendKeys(' ')` aimed at
+screen coordinates, with no real mouse click — which turned out to not
+reliably focus or open anything at all. A real click needs an actual
+`mouse_event` button-down/up, not just moving the cursor there. Redone with
+real clicks: typing 25 real keystrokes into a plain `TextField` now measures
+**~1 error total**, not "one per two keystrokes" as previously written here —
+that earlier number was very likely stray hover/startup noise picked up while
+the fake "click" did nothing. Typing itself looks clean. Take any AXTree
+number in this file from before this correction with that in mind.
+
+**Confirmed, with real clicks, and not fixable here:**
 
 - **scrolling** — roughly one error per scroll tick, present with all hover
   handling removed entirely, so it is the `Scrollable`'s own semantics update;
-- **opening a `DropdownButtonFormField` menu** — measured at ~1 error per open
-  on the pre-existing "Category" dropdown in the tag section (untouched this
-  session), same rate as the new "Link kind" dropdown right next to it;
-- **typing in a plain `TextField`** — measured at roughly 1 error per two
-  keystrokes on the pre-existing "Add a tag" field, same rate as a brand-new
-  field.
+- **app startup** — exactly **2** errors on a totally cold launch with zero
+  interaction, same two node ids every time (106, 97). `MARMELADE_NO_SEMANTICS`
+  removes one of the two, not both — the remaining one is likely above the
+  app's own widget tree (root/window-level semantics setup), out of reach from
+  application code. This is what "switching to any view, even empty search"
+  actually was: the view that happens to be on screen when this fires reads as
+  the cause, but a controlled test (open search once, switch to albums,
+  re-open search) shows the count fixed at startup and never climbing on any
+  later switch, including a second visit to the same section.
+- **opening any overlay menu** (a `PopupMenuButton`, the existing right-click
+  context menu) can produce a distinct, repeating shape: "Nodes left pending by
+  the update: 134 135 ... 142", the same nine ids, over and over for as long as
+  the menu stays open. Confirmed on the pre-existing track right-click menu,
+  untouched this session, at the same ids as a brand-new `PopupMenuButton` --
+  so this is the dropdown-open fault's cousin, not a new one.
+- **opening a `DropdownButtonFormField` menu** — real, but noisy and **does
+  not scale with the number of items**: a single open of a 4-item dropdown
+  (Groups) measured 3, 8 and 3 errors across separate runs; a single open of
+  the 15-item Link Kind dropdown measured 2 and 3. If anything the shorter
+  list was noisier. "One error per item in the list" was a reasonable guess
+  from watching it happen, but the measured counts don't support it — whatever
+  is happening looks like the same kind of noise as the scroll and startup
+  cases, not a per-item cost.
 
-Since both a scroll, a stock dropdown nobody wrote custom code for, and a stock
-text field all throw at a similar rate, this is very likely a fault in the
-engine's Windows accessibility bridge on this SDK build, not a pattern in this
-app's widgets — there is no known app-side fix. `MARMELADE_NO_SEMANTICS=1`
-strips semantics entirely (`lib/main.dart`) as a way to get a clean log while
-debugging something else; it is a diagnostic, not a fix. If this becomes worth
-chasing further, the next step is upstream: check the Flutter engine issue
-tracker for this SDK version, or try the same repro on the stable channel.
+Given a scroll tick, a stock dropdown nobody wrote custom code for, and app
+startup itself all throw at a broadly similar, noisy, non-scaling rate, this
+still reads as a fault in the engine's Windows accessibility bridge on this SDK
+build rather than a pattern in this app's widgets. There is no known app-side
+fix, and after two rounds of measurement this has reached diminishing returns
+for the time it costs to keep chasing — `MARMELADE_NO_SEMANTICS=1` strips
+semantics entirely (`lib/main.dart`) for a clean log while debugging something
+else, which is the practical answer for now. If it becomes worth another look,
+the next step is upstream: the Flutter engine issue tracker for this SDK
+version, or the same repro on the stable channel instead of beta.
 
-To measure, run the built exe with stderr redirected, drive a real pointer or
-keyboard input over the window from PowerShell, and `grep -ci axtree`. Neither
-hover nor real keystrokes can be produced by the screenshot hook, and none of
-this reproduces in a widget test.
+To measure, run the built exe with stderr redirected, drive **real** mouse
+input (`mouse_event` down *and* up, not just moving the cursor) or keyboard
+input over the window from PowerShell, and `grep -ci axtree`. Confirm the
+click actually landed (a focused field shows its focus outline in a
+screenshot) before trusting a count from it. Neither can be produced by the
+screenshot hook, and none of this reproduces in a widget test.

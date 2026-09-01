@@ -10,6 +10,7 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../edit/artist_links_dialog.dart';
 import '../edit/link_menu_button.dart';
 
 /// One artist: their portrait, their releases, and everything they appear on.
@@ -18,15 +19,7 @@ import '../edit/link_menu_button.dart';
 /// than a string on the track, a guest appearance shows up here without the UI
 /// doing anything special.
 class ArtistDetailView extends ConsumerWidget {
-  const ArtistDetailView({
-    super.key,
-    required this.artistId,
-    required this.onOpenAlbum,
-    required this.onOpenArtist,
-    required this.onBack,
-    this.onEditArtist,
-    this.onEditTrack,
-  });
+  const ArtistDetailView({super.key, required this.artistId, required this.onOpenAlbum, required this.onOpenArtist, required this.onBack, this.onEditArtist, this.onEditTrack});
 
   final int artistId;
   final void Function(int albumId) onOpenAlbum;
@@ -44,20 +37,10 @@ class ArtistDetailView extends ConsumerWidget {
 
     return tracks.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => EmptyState(
-        icon: Icons.error_outline,
-        title: 'Could not load that artist',
-        message: '$error',
-      ),
+      error: (error, _) => EmptyState(icon: Icons.error_outline, title: 'Could not load that artist', message: '$error'),
       data: (items) => Stack(
         children: [
-          Positioned.fill(
-            child: ArtworkBackdrop(
-              storedPath: artist?.imagePath,
-              blur: 90,
-              overlayOpacity: 0.88,
-            ),
-          ),
+          Positioned.fill(child: ArtworkBackdrop(storedPath: artist?.imagePath, blur: 90, overlayOpacity: 0.88)),
           TrackList(
             tracks: items,
             onOpenAlbum: onOpenAlbum,
@@ -66,9 +49,7 @@ class ArtistDetailView extends ConsumerWidget {
             // Headed sections per release, which is also the play order: the
             // list is what gets queued, so scattering an album's running order
             // scatters playback too.
-            groupByAlbum:
-                ref.watch(artistTrackSortProvider) ==
-                    LibrarySort.albumThenTrack,
+            groupByAlbum: ref.watch(artistTrackSortProvider) == LibrarySort.albumThenTrack,
             queueSource: QueueSource.artist,
             queueSourceId: artistId,
             header: _ArtistHeader(
@@ -77,9 +58,7 @@ class ArtistDetailView extends ConsumerWidget {
               tracks: items,
               onOpenAlbum: onOpenAlbum,
               onBack: onBack,
-              onEdit: onEditArtist == null
-                  ? null
-                  : () => onEditArtist!(artistId),
+              onEdit: onEditArtist == null ? null : () => onEditArtist!(artistId),
             ),
           ),
         ],
@@ -89,18 +68,12 @@ class ArtistDetailView extends ConsumerWidget {
 }
 
 class _ArtistHeader extends ConsumerWidget {
-  const _ArtistHeader({
-    this.onEdit,
-    required this.artist,
-    required this.albums,
-    required this.tracks,
-    required this.onOpenAlbum,
-    required this.onBack,
-  });
+  const _ArtistHeader({this.onEdit, required this.artist, required this.albums, required this.tracks, required this.onOpenAlbum, required this.onBack});
 
   final ArtistCard? artist;
   final List<AlbumCard> albums;
   final List<TrackRow> tracks;
+
   /// Opens the artist editor.
   final VoidCallback? onEdit;
 
@@ -112,9 +85,7 @@ class _ArtistHeader extends ConsumerWidget {
     final theme = Theme.of(context);
     final player = ref.read(playerProvider.notifier);
     final trackIds = tracks.map((t) => t.id).toList();
-    final links = artist == null
-        ? const <LinkRow>[]
-        : ref.watch(artistLinksProvider(artist!.id)).value ?? const [];
+    final links = artist == null ? const <LinkRow>[] : ref.watch(artistLinksProvider(artist!.id)).value ?? const [];
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 20),
@@ -125,18 +96,9 @@ class _ArtistHeader extends ConsumerWidget {
             alignment: Alignment.centerLeft,
             child: Row(
               children: [
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: onBack,
-                  icon: const Icon(Icons.arrow_back),
-                ),
+                IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back)),
                 const Spacer(),
-                if (onEdit != null)
-                  IconButton(
-                    tooltip: 'Edit this artist',
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
+                if (onEdit != null) IconButton(tooltip: 'Edit this artist', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
               ],
             ),
           ),
@@ -153,9 +115,7 @@ class _ArtistHeader extends ConsumerWidget {
                 owner: PictureOwner.artist,
                 id: artist?.id ?? 0,
                 title: artist?.name ?? 'Artist',
-                fallbackIcon: (artist?.isGroup ?? false)
-                    ? Icons.groups_outlined
-                    : Icons.person_outline,
+                fallbackIcon: (artist?.isGroup ?? false) ? Icons.groups_outlined : Icons.person_outline,
                 heroTag: artist == null ? null : 'artist-art-${artist!.id}',
                 editable: artist != null,
               ),
@@ -167,60 +127,46 @@ class _ArtistHeader extends ConsumerWidget {
                     if (artist?.isGroup ?? false)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          'GROUP',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            letterSpacing: 1.4,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
+                        child: Text('GROUP', style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.4, color: theme.colorScheme.primary)),
                       ),
-                    Text(
-                      artist?.name ?? 'Unknown artist',
-                      style: theme.textTheme.displaySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
+                    Text(artist?.name ?? 'Unknown artist', style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     Text(
-                      [
-                        pluralize(tracks.length, 'track'),
-                        pluralize(albums.length, 'release'),
-                        if ((artist?.aliasCount ?? 0) > 0)
-                          pluralize(artist!.aliasCount, 'alias', 'aliases'),
-                      ].join('  ·  '),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      [pluralize(tracks.length, 'track'), pluralize(albums.length, 'release'), if ((artist?.aliasCount ?? 0) > 0) pluralize(artist!.aliasCount, 'alias', 'aliases')].join('  ·  '),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 20),
                     Row(
+                      spacing: 8,
                       children: [
                         FilledButton.icon(
-                          onPressed: trackIds.isEmpty
-                              ? null
-                              : () => player.playAll(
-                                    trackIds,
-                                    source: QueueSource.artist,
-                                    sourceRefId: artist?.id,
-                                  ),
+                          onPressed: trackIds.isEmpty ? null : () => player.playAll(trackIds, source: QueueSource.artist, sourceRefId: artist?.id),
                           icon: const Icon(Icons.play_arrow),
                           label: const Text('Play'),
                         ),
-                        const SizedBox(width: 10),
                         OutlinedButton.icon(
                           onPressed: trackIds.isEmpty
                               ? null
                               : () async {
-                                  await player.playAll(trackIds,
-                                      source: QueueSource.artist,
-                                      sourceRefId: artist?.id);
+                                  await player.playAll(trackIds, source: QueueSource.artist, sourceRefId: artist?.id);
                                   await player.shuffleQueue();
                                   await player.playAt(0);
                                 },
                           icon: const Icon(Icons.shuffle),
                           label: const Text('Shuffle'),
                         ),
-                        LinkMenuButton(links: links),
+                        LinkMenuButton(
+                          links: links,
+                          onEditLinks: onEdit == null || artist == null
+                              ? null
+                              : () => showDialog<void>(
+                                    context: context,
+                                    builder: (context) => ArtistLinksDialog(
+                                      artistId: artist!.id,
+                                      artistName: artist!.name,
+                                    ),
+                                  ),
+                        ),
                       ],
                     ),
                   ],
@@ -249,26 +195,10 @@ class _ArtistHeader extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Artwork(
-                            storedPath: album.imagePath,
-                            size: 128,
-                            borderRadius: 8,
-                            fallbackSeed: album.title,
-                          ),
+                          Artwork(storedPath: album.imagePath, size: 128, borderRadius: 8, fallbackSeed: album.title),
                           const SizedBox(height: 8),
-                          Text(
-                            album.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                          if (album.releaseYear != null)
-                            Text(
-                              '${album.releaseYear}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
+                          Text(album.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
+                          if (album.releaseYear != null) Text('${album.releaseYear}', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                         ],
                       ),
                     ),
@@ -284,17 +214,10 @@ class _ArtistHeader extends ConsumerWidget {
                 PopupMenuButton<LibrarySort>(
                   tooltip: 'Sort tracks',
                   initialValue: ref.watch(artistTrackSortProvider),
-                  onSelected: (value) =>
-                      ref.read(artistTrackSortProvider.notifier).set(value),
+                  onSelected: (value) => ref.read(artistTrackSortProvider.notifier).set(value),
                   icon: const Icon(Icons.sort),
                   itemBuilder: (context) => [
-                    for (final option in const [
-                      LibrarySort.albumThenTrack,
-                      LibrarySort.nameAscending,
-                      LibrarySort.releaseYear,
-                      LibrarySort.mostPlayed,
-                      LibrarySort.duration,
-                    ])
+                    for (final option in const [LibrarySort.albumThenTrack, LibrarySort.nameAscending, LibrarySort.releaseYear, LibrarySort.mostPlayed, LibrarySort.duration])
                       PopupMenuItem(value: option, child: Text(option.label)),
                   ],
                 ),

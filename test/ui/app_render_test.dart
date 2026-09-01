@@ -1164,15 +1164,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an artist with no links offers no link icon at all',
+  testWidgets(
+      'an artist with no links still offers the icon, to add the first one',
       (tester) async {
+    // Editing is always reachable from the running app, so the only way to
+    // add a first link is for the icon to survive having none yet.
     await open(tester);
     await tester.tap(railItem('Artists'));
     await settle(tester);
     await tester.tap(find.text('PinocchioP').first);
     await settle(tester);
 
-    expect(find.byIcon(Icons.link), findsNothing);
+    expect(find.byIcon(Icons.link), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.link));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit links'), findsOneWidget);
   });
 
   testWidgets('search groups what it found and leads with the best',
