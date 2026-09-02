@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -491,6 +492,13 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                   // button in its header and the chevron in the bar below, both
                   // of which stay visible.
                   Positioned.fill(child: _shadeLayer()),
+                  // A bleeding page's own content can scroll all the way
+                  // behind the (transparent) caption strip -- that is the
+                  // point of bleeding at all -- so it needs its own frosted
+                  // surface there, or scrolled text ends up sitting directly
+                  // behind the window buttons. Not needed for the shade: it
+                  // has no scrolling that could reach behind its own strip.
+                  if (_contentBleeds && !_shadeOpen) _captionScrim(),
                   // Above everything, including the shade: a window that cannot
                   // be moved or closed because a panel is open would be a poor
                   // trade for the extra immersion.
@@ -640,6 +648,39 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
       ref.read(lyricsPaneVisibleProvider.notifier).set(lyrics);
       if (lyrics) ref.read(queuePaneVisibleProvider.notifier).set(false);
     }
+  }
+
+  /// A frosted strip the height of the caption bar, for a bleeding page's
+  /// content to scroll behind.
+  ///
+  /// Positioned identically to [WindowChrome] but underneath it in the
+  /// stack, so the strip's own controls stay perfectly sharp while whatever
+  /// scrolls past behind them gets blurred first -- the same "frosted glass
+  /// toolbar" treatment a phone's status bar uses over content scrolling
+  /// under it.
+  Widget _captionScrim() {
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: WindowChrome.height,
+      // BackdropFilter clips its own paint to this box either way, confirmed
+      // by eye -- but without an explicit ClipRect its blur samples the
+      // entire scene behind it, not just this strip, and the whole page
+      // comes out smeared. The clip has to be explicit, not implied by the
+      // Positioned around it.
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surface.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// The now-playing shade, drawn up from the bottom edge.
