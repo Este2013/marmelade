@@ -246,11 +246,20 @@ class _Credits extends ConsumerWidget {
       return Text(fallback, style: style, textAlign: TextAlign.center);
     }
 
+    // The same artist can be credited more than once on one track -- main
+    // artist and composer, say -- and a link for each role would read as two
+    // different people got equal billing instead of one with two roles.
+    final seen = <int>{};
+    final unique = [
+      for (final credit in credits)
+        if (seen.add(credit.artistId)) credit,
+    ];
+
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        for (var i = 0; i < credits.length; i++) ...[
+        for (var i = 0; i < unique.length; i++) ...[
           if (i > 0)
             Text(
               ' · ',
@@ -260,11 +269,11 @@ class _Credits extends ConsumerWidget {
               ),
             ),
           _Link(
-            text: credits[i].creditedAs ?? credits[i].name,
+            text: unique[i].creditedAs ?? unique[i].name,
             style: style,
             onTap: onOpenArtist == null
                 ? null
-                : () => onOpenArtist!(credits[i].artistId),
+                : () => onOpenArtist!(unique[i].artistId),
           ),
         ],
       ],

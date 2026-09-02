@@ -21,7 +21,7 @@ import 'package:marmelade/data/repositories/search_repository.dart';
 import 'package:marmelade/features/library/album_detail_view.dart';
 import 'package:marmelade/features/library/albums_view.dart' show AlbumsToolbar;
 import 'package:marmelade/features/library/artist_detail_view.dart'
-    show ArtistDetailChrome;
+    show ArtistDetailChrome, ArtistDetailView;
 import 'package:marmelade/features/library/artists_view.dart'
     show ArtistsToolbar;
 import 'package:marmelade/features/library/songs_view.dart' show SongsToolbar;
@@ -820,6 +820,54 @@ void main() {
     expect(find.text('Now playing'), findsNothing);
   });
 
+  testWidgets('an artist credited twice on one track is only linked once',
+      (tester) async {
+    const doubleCredit = TrackRow(
+      id: 4,
+      title: 'Cross Separator',
+      // Same artist, two roles -- the case that used to print their name
+      // (and link it) twice.
+      credits: [
+        TrackCreditRef(artistId: 2, name: 'Camellia', role: 'mainArtist'),
+        TrackCreditRef(artistId: 2, name: 'Camellia', role: 'composer'),
+      ],
+      durationMs: 202000,
+      albumId: 2,
+      albumTitle: 'Comic and Cosmic',
+      trackNo: 2,
+    );
+    await open(
+      tester,
+      app: buildApp(
+        playing: true,
+        tracks: [..._antennaTracks, doubleCredit],
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    expect(find.text('Camellia'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'following an artist or album link from now playing minimises the '
+      'shade', (tester) async {
+    await open(tester, app: buildApp(playing: true));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    await tester.tap(find.text('Camellia').first);
+    await settle(tester);
+
+    // Landed on the artist's page, and the shade is out of the way so the
+    // page pushed behind it is actually visible.
+    expect(find.text('Now playing'), findsNothing);
+    expect(find.byType(ArtistDetailView), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the queue can be collapsed inside the shade', (tester) async {
     await open(tester, app: buildApp(playing: true));
     await tester.tap(find.byTooltip('Open now playing'));
@@ -1479,6 +1527,30 @@ void main() {
 
     expect(tester.takeException(), isNull);
     await capture(tester, '08-search');
+  });
+
+  testWidgets(
+      "following a section's \"N more\" opens its full list with the same "
+      'query already filtering it', (tester) async {
+    await open(tester, app: buildApp(searchResults: _searchResults));
+    await tester.tap(railItem('Search'));
+    await settle(tester);
+
+    await tester.tap(find.text('8 more'));
+    await settle(tester);
+
+    // Landed on Songs, not still on Search.
+    expect(
+      find.descendant(
+        of: find.byType(WindowChrome),
+        matching: find.byType(SongsToolbar),
+      ),
+      findsOneWidget,
+    );
+    // With the same query already in its filter field, so the "more" it
+    // promised is actually there rather than an empty, unfiltered list.
+    expect(find.widgetWithText(TextField, 'camellia'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('opening a result stays inside search', (tester) async {

@@ -32,6 +32,7 @@ class SearchView extends ConsumerWidget {
     this.onOpenTag,
     this.onOpenPlaylist,
     this.onEditTrack,
+    this.onSeeMore,
   });
 
   /// Clears the query and refocuses the field, for the Escape shortcut.
@@ -42,6 +43,14 @@ class SearchView extends ConsumerWidget {
   final void Function(int tagId)? onOpenTag;
   final void Function(int playlistId)? onOpenPlaylist;
   final void Function(int trackId)? onEditTrack;
+
+  /// Opens the full list for a section that had more matches than it showed
+  /// here, with the same query already typed into that list's own filter.
+  ///
+  /// Nothing to carry the query into for tags or playlists -- neither list
+  /// has a filter field of its own -- so this just switches to the section
+  /// for those two.
+  final void Function(SearchEntity kind)? onSeeMore;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -69,6 +78,7 @@ class SearchView extends ConsumerWidget {
             onOpenTag: onOpenTag,
             onOpenPlaylist: onOpenPlaylist,
             onEditTrack: onEditTrack,
+            onSeeMore: onSeeMore,
           ),
         _ => const Center(child: CircularProgressIndicator()),
       },
@@ -133,6 +143,7 @@ class _Results extends ConsumerWidget {
     this.onOpenTag,
     this.onOpenPlaylist,
     this.onEditTrack,
+    this.onSeeMore,
   });
 
   final SearchResults results;
@@ -142,6 +153,7 @@ class _Results extends ConsumerWidget {
   final void Function(int tagId)? onOpenTag;
   final void Function(int playlistId)? onOpenPlaylist;
   final void Function(int trackId)? onEditTrack;
+  final void Function(SearchEntity kind)? onSeeMore;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -177,6 +189,9 @@ class _Results extends ConsumerWidget {
         _Section(
           title: 'Artists',
           hidden: results.hidden(SearchEntity.artist, results.artists.length),
+          onSeeMore: onSeeMore == null
+              ? null
+              : () => onSeeMore!(SearchEntity.artist),
           children: [
             for (final artist in results.artists)
               _ResultRow(
@@ -201,6 +216,9 @@ class _Results extends ConsumerWidget {
         _Section(
           title: 'Albums',
           hidden: results.hidden(SearchEntity.album, results.albums.length),
+          onSeeMore: onSeeMore == null
+              ? null
+              : () => onSeeMore!(SearchEntity.album),
           children: [
             for (final album in results.albums)
               _ResultRow(
@@ -221,6 +239,9 @@ class _Results extends ConsumerWidget {
         _Section(
           title: 'Songs',
           hidden: results.hidden(SearchEntity.track, results.tracks.length),
+          onSeeMore: onSeeMore == null
+              ? null
+              : () => onSeeMore!(SearchEntity.track),
           children: [
             // Reusing the library's row, so a song looks and behaves the same
             // here as everywhere else -- play, queue, rate, open, edit.
@@ -239,6 +260,8 @@ class _Results extends ConsumerWidget {
         _Section(
           title: 'Tags',
           hidden: results.hidden(SearchEntity.tag, results.tags.length),
+          onSeeMore:
+              onSeeMore == null ? null : () => onSeeMore!(SearchEntity.tag),
           children: [
             for (final tag in results.tags)
               _ResultRow(
@@ -260,6 +283,9 @@ class _Results extends ConsumerWidget {
           title: 'Playlists',
           hidden:
               results.hidden(SearchEntity.playlist, results.playlists.length),
+          onSeeMore: onSeeMore == null
+              ? null
+              : () => onSeeMore!(SearchEntity.playlist),
           children: [
             for (final playlist in results.playlists)
               _ResultRow(
@@ -492,6 +518,7 @@ class _Section extends StatelessWidget {
     required this.title,
     required this.children,
     this.hidden = 0,
+    this.onSeeMore,
   });
 
   final String title;
@@ -500,6 +527,11 @@ class _Section extends StatelessWidget {
   /// How many more matched than are listed. Said out loud rather than silently
   /// cut off, so six results never read as "that is all there is".
   final int hidden;
+
+  /// Opens the full list for this section, with the query already in its
+  /// filter. Null when there is nowhere to send it to (no `onSeeMore` was
+  /// wired up at all), in which case the count is said but not tappable.
+  final VoidCallback? onSeeMore;
 
   @override
   Widget build(BuildContext context) {
@@ -514,12 +546,42 @@ class _Section extends StatelessWidget {
               Text(title, style: theme.textTheme.titleMedium),
               if (hidden > 0) ...[
                 const SizedBox(width: 10),
-                Text(
-                  '$hidden more',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (onSeeMore == null)
+                  Text(
+                    '$hidden more',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  InkWell(
+                    onTap: onSeeMore,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$hidden more',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.arrow_forward,
+                            size: 14,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
               ],
             ],
           ),

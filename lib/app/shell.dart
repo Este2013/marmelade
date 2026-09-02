@@ -26,6 +26,7 @@ import '../features/settings/changelog_dialog.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
+import '../data/db/database.dart' show SearchEntity;
 import '../data/db/enums.dart' show ScanTrigger;
 import '../widgets/section_title.dart';
 import '../widgets/time_text.dart';
@@ -359,6 +360,21 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     bleed: true,
   );
 
+  /// Follows an artist or album link from the now-playing shade.
+  ///
+  /// Opening the page and closing the shade in one motion: the shade covers
+  /// the whole window, so leaving it up would open the page behind it where
+  /// nobody can see it.
+  void _openArtistFromShade(int artistId) {
+    _toggleShade(open: false);
+    _openArtist(artistId);
+  }
+
+  void _openAlbumFromShade(int albumId) {
+    _toggleShade(open: false);
+    _openAlbum(albumId);
+  }
+
   void _openTag(int tagId) => _push(
     TagDetailView(tagId: tagId, onBack: _pop, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
     chrome: (_) => TagDetailChrome(tagId: tagId, onBack: _pop),
@@ -425,6 +441,31 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
       navigator!.pop();
     }
     _focusSearchField();
+  }
+
+  /// Follows a search section's "N more" to that section's own full list,
+  /// with the same query already in its filter where it has one.
+  ///
+  /// Tags and playlists have no filter field of their own to carry the
+  /// query into, so this just switches to the section for those two --
+  /// still better than nowhere, and there is nothing else to set.
+  void _seeMoreFromSearch(SearchEntity kind) {
+    final query = ref.read(searchQueryProvider);
+    switch (kind) {
+      case SearchEntity.album:
+        ref.read(albumFilterProvider.notifier).set(query);
+        _select(LibrarySection.albums);
+      case SearchEntity.track:
+        ref.read(songFilterProvider.notifier).set(query);
+        _select(LibrarySection.songs);
+      case SearchEntity.artist:
+        ref.read(artistFilterProvider.notifier).set(query);
+        _select(LibrarySection.artists);
+      case SearchEntity.tag:
+        _select(LibrarySection.tags);
+      case SearchEntity.playlist:
+        _select(LibrarySection.playlists);
+    }
   }
 
   void _openCreditReview() {
@@ -716,7 +757,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                 child: SizedBox(
                   height: constraints.maxHeight,
                   width: constraints.maxWidth,
-                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
+                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtistFromShade, onOpenAlbum: _openAlbumFromShade, onEditTrack: _editTrack),
                 ),
               ),
             ),
@@ -727,7 +768,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   }
 
   Widget _rootFor(LibrarySection section) => switch (section) {
-    LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack),
+    LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack, onSeeMore: _seeMoreFromSearch),
     LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId)),
     LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
     LibrarySection.artists => ArtistsView(onOpenArtist: _openArtist, onOpenReview: _openCreditReview),
