@@ -11,6 +11,7 @@ import '../features/library/artists_view.dart';
 import '../features/library/credit_review_view.dart';
 import '../features/edit/album_editor_view.dart';
 import '../features/edit/artist_editor_view.dart';
+import '../features/edit/editor_save_state.dart';
 import '../features/edit/track_editor_view.dart';
 import '../features/library/songs_view.dart';
 import '../features/player/now_playing_view.dart';
@@ -25,6 +26,7 @@ import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
 import '../data/db/enums.dart' show ScanTrigger;
+import '../widgets/section_title.dart';
 import '../widgets/time_text.dart';
 import 'providers.dart';
 import 'window_chrome.dart';
@@ -53,14 +55,7 @@ enum LibrarySection {
   ///
   /// Settings is excluded and pinned to the foot of the rail instead: it is
   /// where the app gets configured, not another way to browse music.
-  static const railDestinations = [
-    search,
-    albums,
-    songs,
-    artists,
-    tags,
-    playlists,
-  ];
+  static const railDestinations = [search, albums, songs, artists, tags, playlists];
 }
 
 /// The application frame: navigation rail, content, and the player strip.
@@ -74,34 +69,25 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell>
-    with TickerProviderStateMixin {
+class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMixin {
   var _section = LibrarySection.albums;
 
   /// Drives the now-playing shade, drawn up out of the player bar.
-  late final AnimationController _shade = AnimationController(
-    duration: const Duration(milliseconds: 320),
-    reverseDuration: const Duration(milliseconds: 240),
-    vsync: this,
-  );
+  late final AnimationController _shade = AnimationController(duration: const Duration(milliseconds: 320), reverseDuration: const Duration(milliseconds: 240), vsync: this);
 
   /// Drives the player bar itself, which slides up the first time there is
   /// something to play and stays out of the way until then.
-  late final AnimationController _bar = AnimationController(
-    duration: const Duration(milliseconds: 340),
-    reverseDuration: const Duration(milliseconds: 240),
-    vsync: this,
-  );
+  late final AnimationController _bar = AnimationController(duration: const Duration(milliseconds: 340), reverseDuration: const Duration(milliseconds: 240), vsync: this);
 
-  late final Animation<double> _barCurve = CurvedAnimation(
-    parent: _bar,
-    curve: Curves.easeOutCubic,
-  );
+  late final Animation<double> _barCurve = CurvedAnimation(parent: _bar, curve: Curves.easeOutCubic);
 
   @override
   void initState() {
     super.initState();
     Screenshotter.scheduleIfRequested();
+    // The query outlives the field itself, so coming back shows what was
+    // typed.
+    _searchController.text = ref.read(searchQueryProvider);
 
     // Debug affordance: start playback without driving the mouse.
     if (Platform.environment['MARMELADE_PLAY'] == '1') {
@@ -109,14 +95,7 @@ class _AppShellState extends ConsumerState<AppShell>
         AppLog.instance.warn('play requested by MARMELADE_PLAY');
         await ref.read(playerProvider.notifier).togglePlayPause();
         final player = ref.read(playerProvider);
-        AppLog.instance.info(
-          'play requested',
-          fields: {
-            'status': player.status.name,
-            'track': player.current?.title ?? '(none)',
-            'error': player.errorMessage ?? '(none)',
-          },
-        );
+        AppLog.instance.info('play requested', fields: {'status': player.status.name, 'track': player.current?.title ?? '(none)', 'error': player.errorMessage ?? '(none)'});
       });
     }
 
@@ -126,53 +105,31 @@ class _AppShellState extends ConsumerState<AppShell>
     final section = Platform.environment['MARMELADE_SECTION'];
     if (section != null && section.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final target = LibrarySection.values
-            .where((s) => s.name == section)
-            .firstOrNull;
+        final target = LibrarySection.values.where((s) => s.name == section).firstOrNull;
         if (target == null) {
-          AppLog.instance.warn(
-            'unknown MARMELADE_SECTION',
-            fields: {
-              'value': section,
-              'known': LibrarySection.values.map((s) => s.name).join(','),
-            },
-          );
+          AppLog.instance.warn('unknown MARMELADE_SECTION', fields: {'value': section, 'known': LibrarySection.values.map((s) => s.name).join(',')});
           return;
         }
         _select(target);
         if (Platform.environment['MARMELADE_OPEN_REVIEW'] == '1') {
           _openCreditReview();
         }
-        final artist = int.tryParse(
-          Platform.environment['MARMELADE_ARTIST'] ?? '',
-        );
+        final artist = int.tryParse(Platform.environment['MARMELADE_ARTIST'] ?? '');
         if (artist != null) _openArtist(artist);
-        final album = int.tryParse(
-          Platform.environment['MARMELADE_ALBUM'] ?? '',
-        );
+        final album = int.tryParse(Platform.environment['MARMELADE_ALBUM'] ?? '');
         if (album != null) _openAlbum(album);
-        final editArtist = int.tryParse(
-          Platform.environment['MARMELADE_EDIT_ARTIST'] ?? '',
-        );
+        final editArtist = int.tryParse(Platform.environment['MARMELADE_EDIT_ARTIST'] ?? '');
         if (editArtist != null) _editArtist(editArtist);
-        final editAlbum = int.tryParse(
-          Platform.environment['MARMELADE_EDIT_ALBUM'] ?? '',
-        );
+        final editAlbum = int.tryParse(Platform.environment['MARMELADE_EDIT_ALBUM'] ?? '');
         if (editAlbum != null) _editAlbum(editAlbum);
-        final editTrack = int.tryParse(
-          Platform.environment['MARMELADE_EDIT_TRACK'] ?? '',
-        );
+        final editTrack = int.tryParse(Platform.environment['MARMELADE_EDIT_TRACK'] ?? '');
         if (editTrack != null) _editTrack(editTrack);
-        final playlist = int.tryParse(
-          Platform.environment['MARMELADE_PLAYLIST'] ?? '',
-        );
+        final playlist = int.tryParse(Platform.environment['MARMELADE_PLAYLIST'] ?? '');
         if (playlist != null) _openPlaylist(playlist);
         final tag = int.tryParse(Platform.environment['MARMELADE_TAG'] ?? '');
         if (tag != null) _openTag(tag);
         if (Platform.environment['MARMELADE_REINDEX'] == '1') {
-          ref.read(searchIndexerProvider).rebuildAll().then(
-                (_) => AppLog.instance.info('search index rebuilt on request'),
-              );
+          ref.read(searchIndexerProvider).rebuildAll().then((_) => AppLog.instance.info('search index rebuilt on request'));
         }
         // Debug affordance: pre-fill a list's filter box, so a filtered view
         // can be photographed without driving the keyboard.
@@ -186,14 +143,12 @@ class _AppShellState extends ConsumerState<AppShell>
             case LibrarySection.artists:
               ref.read(artistFilterProvider.notifier).set(listFilter);
             default:
-              AppLog.instance.warn(
-                'MARMELADE_FILTER does not apply to this section',
-                fields: {'section': target.name},
-              );
+              AppLog.instance.warn('MARMELADE_FILTER does not apply to this section', fields: {'section': target.name});
           }
         }
         final query = Platform.environment['MARMELADE_SEARCH'];
         if (query != null && query.isNotEmpty) {
+          _searchController.text = query;
           ref.read(searchQueryProvider.notifier).set(query);
         }
       });
@@ -226,9 +181,7 @@ class _AppShellState extends ConsumerState<AppShell>
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         AppLog.instance.warn('autoscan requested by MARMELADE_AUTOSCAN');
         _select(LibrarySection.settings);
-        await ref
-            .read(indexProgressProvider.notifier)
-            .refreshAll(trigger: ScanTrigger.startup);
+        await ref.read(indexProgressProvider.notifier).refreshAll(trigger: ScanTrigger.startup);
         AppLog.instance.info('autoscan complete');
         if (Platform.environment['MARMELADE_AUTOSCAN_EXIT'] == '1') {
           AppLog.instance.sessionEnd('autoscan finished');
@@ -242,6 +195,8 @@ class _AppShellState extends ConsumerState<AppShell>
   void dispose() {
     _shade.dispose();
     _bar.dispose();
+    _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -256,14 +211,31 @@ class _AppShellState extends ConsumerState<AppShell>
     _toggleShade(open: false);
   }
 
-  /// The search page, so a keystroke from anywhere can put the caret in it.
-  final _searchKey = GlobalKey<SearchViewState>();
+  /// The search field, owned here rather than by the search page: it now
+  /// lives in the title bar (see [SearchToolbar]), and a keystroke from
+  /// anywhere (Ctrl+F, Ctrl+K) needs to reach it regardless of which section's
+  /// page happens to be mounted.
+  final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+
+  /// Puts the caret in the search field and selects what is there.
+  ///
+  /// Selecting rather than appending: arriving at search with something
+  /// already typed almost always means a new search, and typing replaces it.
+  void _focusSearchField() {
+    if (!mounted) return;
+    _searchFocus.requestFocus();
+    _searchController.selection = TextSelection(baseOffset: 0, extentOffset: _searchController.text.length);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    ref.read(searchQueryProvider.notifier).set('');
+    _searchFocus.requestFocus();
+  }
 
   /// One navigator key per section, so each keeps its own history.
-  final _navigatorKeys = {
-    for (final section in LibrarySection.values)
-      section: GlobalKey<NavigatorState>(),
-  };
+  final _navigatorKeys = {for (final section in LibrarySection.values) section: GlobalKey<NavigatorState>()};
 
   /// Sections that have been opened, in the order they were first opened.
   ///
@@ -271,10 +243,62 @@ class _AppShellState extends ConsumerState<AppShell>
   /// costs nothing at all.
   final _visitedOrder = <LibrarySection>[LibrarySection.albums];
 
+  /// What each section's title bar shows, mirroring that section's own
+  /// Navigator stack one entry at a time.
+  ///
+  /// A detail page's back/edit row lives in the title bar rather than in the
+  /// page itself now (see `WindowChrome.content`), so pushing a page and
+  /// pushing its title-bar content are the same event -- tracked here,
+  /// alongside the existing `_push`/`_pop`, rather than through a provider a
+  /// hidden `IndexedStack` sibling could just as easily write to. The empty
+  /// list means "show the section's own root toolbar".
+  ///
+  /// Every `_push` adds exactly one entry here, even a null-returning one for
+  /// a page with no chrome of its own (an editor, still deferred) -- so this
+  /// stack's depth always matches the Navigator's, and `_pop` can always pop
+  /// exactly one of each without needing to know what the page pushed.
+  ///
+  /// `bleed` marks a page whose own background (a blurred backdrop, for the
+  /// album and artist pages) should paint behind the caption strip instead
+  /// of stopping below it -- see [_contentBleeds].
+  final _chromeStack = <LibrarySection, List<({Widget? Function(BuildContext) builder, bool bleed})>>{for (final section in LibrarySection.values) section: []};
+
+  void _pushChrome(Widget? Function(BuildContext) builder, {bool bleed = false}) => setState(() => _chromeStack[_section]!.add((builder: builder, bleed: bleed)));
+
+  void _popChrome() {
+    final stack = _chromeStack[_section]!;
+    if (stack.isNotEmpty) setState(() => stack.removeLast());
+  }
+
+  /// Whether the section's current top page wants its own background to
+  /// bleed behind the caption strip rather than starting below it.
+  ///
+  /// Only ever true for a pushed detail page (see [_push]); a section's root
+  /// view is always a plain list with nothing to bleed.
+  bool get _contentBleeds {
+    final stack = _chromeStack[_section]!;
+    return stack.isNotEmpty && stack.last.bleed;
+  }
+
+  /// Where the rail ends, so a section's chrome content can start there
+  /// instead of under it.
+  ///
+  /// A rail with labels is wider than its `minWidth` suggests -- the widest
+  /// label decides it -- so this is measured rather than guessed, once the
+  /// rail has actually laid out. The starting value is only ever seen for the
+  /// first frame or two.
+  final _railKey = GlobalKey();
+  var _railWidth = 96.0;
+
+  void _measureRail() {
+    final width = (_railKey.currentContext?.findRenderObject() as RenderBox?)?.size.width;
+    if (width != null && (width - _railWidth).abs() > 0.5) {
+      setState(() => _railWidth = width);
+    }
+  }
+
   /// Whether the shade is open or on its way open.
-  bool get _shadeOpen =>
-      _shade.status == AnimationStatus.forward ||
-      _shade.status == AnimationStatus.completed;
+  bool get _shadeOpen => _shade.status == AnimationStatus.forward || _shade.status == AnimationStatus.completed;
 
   void _toggleShade({bool? open, bool showQueue = false}) {
     final target = open ?? !_shadeOpen;
@@ -290,6 +314,7 @@ class _AppShellState extends ConsumerState<AppShell>
       // Tapping the current section pops it back to its root, which is what
       // every other app with a rail does.
       _navigatorKeys[section]!.currentState?.popUntil((r) => r.isFirst);
+      setState(() => _chromeStack[section]!.clear());
       return;
     }
     setState(() {
@@ -298,81 +323,74 @@ class _AppShellState extends ConsumerState<AppShell>
     });
   }
 
-  void _push(Widget page, {bool retry = true}) {
+  void _push(Widget page, {Widget? Function(BuildContext)? chrome, bool bleed = false, bool retry = true}) {
     final navigator = _navigatorKeys[_section]!.currentState;
     if (navigator == null) {
       // A section selected in this same frame has no Navigator yet, so the
       // push would silently do nothing. One retry after the tree is built is
       // enough; failing twice means the section is genuinely not there.
       if (retry) {
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _push(page, retry: false),
-        );
+        WidgetsBinding.instance.addPostFrameCallback((_) => _push(page, chrome: chrome, bleed: bleed, retry: false));
       }
       return;
     }
+    // Always exactly one chrome entry per pushed page -- null when the page
+    // has no chrome of its own yet -- so `_pop` never has to guess whether a
+    // matching chrome entry exists to pop.
+    _pushChrome(chrome ?? (_) => null, bleed: bleed);
     navigator.push(MaterialPageRoute(builder: (_) => page));
   }
 
-  void _pop() => _navigatorKeys[_section]!.currentState?.maybePop();
+  void _pop() {
+    _navigatorKeys[_section]!.currentState?.maybePop();
+    _popChrome();
+  }
 
   void _openAlbum(int albumId) => _push(
-    AlbumDetailView(
-      albumId: albumId,
-      onOpenArtist: _openArtist,
-      onOpenTag: _openTag,
-      onBack: _pop,
-      onEditAlbum: _editAlbum,
-      onEditTrack: _editTrack,
-    ),
+    AlbumDetailView(albumId: albumId, onOpenArtist: _openArtist, onOpenTag: _openTag, onEditTrack: _editTrack, topInset: WindowChrome.height),
+    chrome: (_) => AlbumDetailChrome(albumId: albumId, onBack: _pop, onEdit: () => _editAlbum(albumId)),
+    bleed: true,
   );
 
   void _openArtist(int artistId) => _push(
-    ArtistDetailView(
-      artistId: artistId,
-      onOpenAlbum: _openAlbum,
-      onOpenArtist: _openArtist,
-      onBack: _pop,
-      onEditArtist: _editArtist,
-      onEditTrack: _editTrack,
-    ),
+    ArtistDetailView(artistId: artistId, onOpenAlbum: _openAlbum, onOpenArtist: _openArtist, onEditArtist: _editArtist, onEditTrack: _editTrack, topInset: WindowChrome.height),
+    chrome: (_) => ArtistDetailChrome(onBack: _pop, onEdit: () => _editArtist(artistId)),
+    bleed: true,
   );
 
   void _openTag(int tagId) => _push(
-    TagDetailView(
-      tagId: tagId,
-      onBack: _pop,
-      onOpenArtist: _openArtist,
-      onOpenAlbum: _openAlbum,
-      onEditTrack: _editTrack,
-    ),
+    TagDetailView(tagId: tagId, onBack: _pop, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
+    chrome: (_) => TagDetailChrome(tagId: tagId, onBack: _pop),
   );
 
   void _openPlaylist(int playlistId) => _push(
-    PlaylistDetailView(
-      playlistId: playlistId,
-      onBack: _pop,
-      onOpenPlaylist: _openPlaylist,
-      onOpenArtist: _openArtist,
-      onOpenAlbum: _openAlbum,
-      onEditTrack: _editTrack,
-      onOpenTag: _openTag,
-    ),
+    PlaylistDetailView(playlistId: playlistId, onBack: _pop, onOpenPlaylist: _openPlaylist, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack, onOpenTag: _openTag),
+    chrome: (_) => PlaylistDetailChrome(playlistId: playlistId, onBack: _pop),
   );
 
-  void _editArtist(int artistId) => _push(
-    ArtistEditorView(
-      artistId: artistId,
-      onBack: _pop,
-      onOpenArtist: _openArtist,
-    ),
-  );
+  void _editArtist(int artistId) {
+    final saveState = EditorSaveState();
+    _push(
+      ArtistEditorView(artistId: artistId, onBack: _pop, onOpenArtist: _openArtist, saveState: saveState),
+      chrome: (_) => ArtistEditorChrome(artistId: artistId, onBack: _pop, saveState: saveState),
+    );
+  }
 
-  void _editAlbum(int albumId) =>
-      _push(AlbumEditorView(albumId: albumId, onBack: _pop));
+  void _editAlbum(int albumId) {
+    final saveState = EditorSaveState();
+    _push(
+      AlbumEditorView(albumId: albumId, onBack: _pop, saveState: saveState),
+      chrome: (_) => AlbumEditorChrome(albumId: albumId, onBack: _pop, saveState: saveState),
+    );
+  }
 
-  void _editTrack(int trackId) =>
-      _push(TrackEditorView(trackId: trackId, onBack: _pop));
+  void _editTrack(int trackId) {
+    final saveState = EditorSaveState();
+    _push(
+      TrackEditorView(trackId: trackId, onBack: _pop, saveState: saveState),
+      chrome: (_) => TrackEditorChrome(trackId: trackId, onBack: _pop, saveState: saveState),
+    );
+  }
 
   /// Shows the release notes once, after the version has changed.
   Future<void> _showWhatIsNew() async {
@@ -382,16 +400,9 @@ class _AppShellState extends ConsumerState<AppShell>
     // Screenshots would otherwise all be taken through this dialog.
     if (!forced && Platform.environment['MARMELADE_SHOT'] != null) return;
 
-    final notes = forced
-        ? await ref.read(currentChangesProvider.future)
-        : await ref.read(justUpdatedProvider.future);
+    final notes = forced ? await ref.read(currentChangesProvider.future) : await ref.read(justUpdatedProvider.future);
     if (notes == null || !mounted) return;
-    await showChangelog(
-      context,
-      versions: [notes],
-      title: 'What is new in ${notes.version}',
-      subtitle: 'You have just updated.',
-    );
+    await showChangelog(context, versions: [notes], title: 'What is new in ${notes.version}', subtitle: 'You have just updated.');
   }
 
   /// Goes to search and puts the caret in the field.
@@ -402,11 +413,9 @@ class _AppShellState extends ConsumerState<AppShell>
     _toggleShade(open: false);
     if (_section != LibrarySection.search) {
       _select(LibrarySection.search);
-      // The page does not exist yet in this frame, so the caret has to wait for
-      // it. Selecting the section is what mounts it.
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _searchKey.currentState?.focusField(),
-      );
+      // The chrome for the newly-selected section does not exist yet in this
+      // frame, so the caret has to wait for it.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
       return;
     }
     // Already there: pop anything opened from a result, then focus.
@@ -414,7 +423,7 @@ class _AppShellState extends ConsumerState<AppShell>
     while (navigator?.canPop() ?? false) {
       navigator!.pop();
     }
-    _searchKey.currentState?.focusField();
+    _focusSearchField();
   }
 
   void _openCreditReview() {
@@ -431,21 +440,21 @@ class _AppShellState extends ConsumerState<AppShell>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // The rail's width settles after its first real layout, not before.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _measureRail();
+    });
+
     // Nothing playing and nothing queued means no player bar at all, rather
     // than a permanent strip saying so.
-    ref.listen(
-      playerProvider.select((s) => s.hasTrack || s.hasQueue),
-      (_, canPlay) => _syncBar(canPlay),
-    );
+    ref.listen(playerProvider.select((s) => s.hasTrack || s.hasQueue), (_, canPlay) => _syncBar(canPlay));
 
     return CallbackShortcuts(
       bindings: {
         // Both, because both are muscle memory: Ctrl+F from file managers and
         // browsers, Ctrl+K from everything built in the last five years.
-        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-            _openSearch,
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-            _openSearch,
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true): _openSearch,
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openSearch,
       },
       child: Scaffold(
         body: Column(
@@ -458,25 +467,18 @@ class _AppShellState extends ConsumerState<AppShell>
                       children: [
                         // The rail runs to the top edge of the window, which is
                         // the point of drawing our own caption.
-                        _Rail(
-                          selected: _section,
-                          onSelect: _select,
-                          pendingCredits:
-                              ref.watch(pendingCreditCountProvider).value ?? 0,
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: scheme.outlineVariant.withValues(alpha: 0.4),
-                        ),
+                        _Rail(key: _railKey, selected: _section, onSelect: _select, pendingCredits: ref.watch(pendingCreditCountProvider).value ?? 0),
+                        VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: 0.4)),
                         Expanded(
                           child: Column(
                             children: [
-                              // Room for the caption strip. The strip itself is
-                              // transparent and drawn on top, so this keeps the
-                              // content from scrolling underneath the window
-                              // buttons.
-                              const SizedBox(height: WindowChrome.height),
+                              // Room for the caption strip, unless the page on
+                              // top wants to bleed its own background behind
+                              // it instead (see `_contentBleeds`) -- the
+                              // strip itself is transparent either way, so
+                              // this is only about keeping ordinary content
+                              // from scrolling underneath the window buttons.
+                              if (!_contentBleeds) const SizedBox(height: WindowChrome.height),
                               Expanded(child: _sections()),
                             ],
                           ),
@@ -501,8 +503,12 @@ class _AppShellState extends ConsumerState<AppShell>
                     child: AnimatedBuilder(
                       animation: _shade,
                       builder: (context, _) => WindowChrome(
-                        leading: _shadeLeading(),
-                        trailing: _shadeTrailing(),
+                        content: _shadeOpen ? _shadeLeading() : (_chromeStack[_section]!.isEmpty ? _rootChromeFor(_section) : _chromeStack[_section]!.last.builder(context)),
+                        trailing: _shadeOpen ? _shadeTrailing() : null,
+                        // Zero while the shade is open: its own backdrop
+                        // already covers the rail by then, so its controls
+                        // can start flush left as they always have.
+                        contentInset: _shadeOpen ? 0 : _railWidth + 1,
                       ),
                     ),
                   ),
@@ -526,11 +532,7 @@ class _AppShellState extends ConsumerState<AppShell>
                   // Bottom-aligned, so the bar's own bottom edge stays put and
                   // the rest of it rises into view.
                   alignment: Alignment.bottomCenter,
-                  child: PlayerBar(
-                    expanded: _shadeOpen,
-                    onToggleExpanded: () => _toggleShade(),
-                    onOpenQueue: () => _toggleShade(open: true, showQueue: true),
-                  ),
+                  child: PlayerBar(expanded: _shadeOpen, onToggleExpanded: () => _toggleShade(), onOpenQueue: () => _toggleShade(open: true, showQueue: true)),
                 );
               },
             ),
@@ -553,10 +555,7 @@ class _AppShellState extends ConsumerState<AppShell>
       for (final section in _visitedOrder)
         Navigator(
           key: _navigatorKeys[section],
-          onGenerateRoute: (settings) => MaterialPageRoute(
-            settings: settings,
-            builder: (_) => _rootFor(section),
-          ),
+          onGenerateRoute: (settings) => MaterialPageRoute(settings: settings, builder: (_) => _rootFor(section)),
         ),
     ],
   );
@@ -582,19 +581,9 @@ class _AppShellState extends ConsumerState<AppShell>
       opacity: opacity,
       child: Row(
         children: [
+          IconButton(tooltip: 'Close now playing', onPressed: () => _toggleShade(open: false), icon: const Icon(Icons.keyboard_arrow_down)),
           const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Close now playing',
-            onPressed: () => _toggleShade(open: false),
-            icon: const Icon(Icons.keyboard_arrow_down),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Now playing',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          Text('Now playing', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           const SizedBox(width: 8),
         ],
       ),
@@ -625,9 +614,7 @@ class _AppShellState extends ConsumerState<AppShell>
               // The count lives in the tooltip rather than a badge: a permanent
               // red dot on a control that is not a notification reads as an
               // alert about nothing.
-              tooltip: queueVisible
-                  ? 'Hide the queue'
-                  : 'Show the queue (${pluralize(queueLength, 'track')})',
+              tooltip: queueVisible ? 'Hide the queue' : 'Show the queue (${pluralize(queueLength, 'track')})',
               isSelected: queueVisible,
               onPressed: () => _showSidePane(queue: !queueVisible),
               icon: const Icon(Icons.queue_music),
@@ -668,9 +655,7 @@ class _AppShellState extends ConsumerState<AppShell>
         // Fades in over the first part of the reveal and out over the last, so
         // the content is already legible while the panel is still travelling
         // and does not blink out of existence at the end.
-        final opacity = Curves.easeOut.transform(
-          (_shade.value / 0.55).clamp(0.0, 1.0),
-        );
+        final opacity = Curves.easeOut.transform((_shade.value / 0.55).clamp(0.0, 1.0));
         return Opacity(
           opacity: opacity,
           child: LayoutBuilder(
@@ -685,12 +670,7 @@ class _AppShellState extends ConsumerState<AppShell>
                 child: SizedBox(
                   height: constraints.maxHeight,
                   width: constraints.maxWidth,
-                  child: NowPlayingView(
-                    topInset: WindowChrome.height,
-                    onOpenArtist: _openArtist,
-                    onOpenAlbum: _openAlbum,
-                    onEditTrack: _editTrack,
-                  ),
+                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
                 ),
               ),
             ),
@@ -701,43 +681,39 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   Widget _rootFor(LibrarySection section) => switch (section) {
-    LibrarySection.search => SearchView(
-            key: _searchKey,
-            onOpenArtist: _openArtist,
-            onOpenAlbum: _openAlbum,
-            onOpenTag: _openTag,
-            onOpenPlaylist: _openPlaylist,
-            onEditTrack: _editTrack,
-          ),
-    LibrarySection.albums => AlbumsView(
-      onOpenAlbum: _openAlbum,
-      onOpenTrack: (trackId) =>
-          ref.read(playerProvider.notifier).playTrack(trackId),
-    ),
-    LibrarySection.songs => SongsView(
-            onOpenArtist: _openArtist,
-            onOpenAlbum: _openAlbum,
-            onEditTrack: _editTrack,
-          ),
-    LibrarySection.artists => ArtistsView(
-      onOpenArtist: _openArtist,
-      onOpenReview: _openCreditReview,
-    ),
+    LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack),
+    LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId)),
+    LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
+    LibrarySection.artists => ArtistsView(onOpenArtist: _openArtist, onOpenReview: _openCreditReview),
     LibrarySection.tags => TagsView(onOpenTag: _openTag),
-    LibrarySection.playlists => PlaylistsView(
-          onOpenPlaylist: _openPlaylist,
-        ),
+    LibrarySection.playlists => PlaylistsView(onOpenPlaylist: _openPlaylist),
     LibrarySection.settings => const SettingsView(),
+  };
+
+  /// What the caption strip shows for a section's root page, before anything
+  /// has been pushed onto its [_chromeStack].
+  ///
+  /// Parallels [_rootFor] one level up: that switch picks the page, this one
+  /// picks what used to be that page's own toolbar row. Sections not yet
+  /// migrated return null, which leaves the strip showing nothing but drag
+  /// space for now -- the same as before this change, just without a toolbar
+  /// underneath it either.
+  Widget? _rootChromeFor(LibrarySection section) => switch (section) {
+    LibrarySection.search => SearchToolbar(controller: _searchController, focusNode: _searchFocus, onClear: _clearSearch),
+    LibrarySection.albums => const AlbumsToolbar(),
+    LibrarySection.songs => const SongsToolbar(),
+    LibrarySection.artists => const ArtistsToolbar(),
+    LibrarySection.tags => const TagsToolbar(),
+    LibrarySection.playlists => const PlaylistsToolbar(),
+    // A static title, not its own toolbar widget: nothing here reads from a
+    // provider, so there is nothing a dedicated widget would buy over this.
+    LibrarySection.settings => const SectionTitle(icon: Icons.settings, label: 'Settings'),
   };
 }
 
 /// The navigation rail: the app name at the top, Settings at the foot.
 class _Rail extends StatelessWidget {
-  const _Rail({
-    required this.selected,
-    required this.onSelect,
-    this.pendingCredits = 0,
-  });
+  const _Rail({super.key, required this.selected, required this.onSelect, this.pendingCredits = 0});
 
   final LibrarySection selected;
   final ValueChanged<LibrarySection> onSelect;
@@ -756,8 +732,9 @@ class _Rail extends StatelessWidget {
       // is selected while it is open. A null index says exactly that.
       selectedIndex: selectedIndex < 0 ? null : selectedIndex,
       onDestinationSelected: (index) => onSelect(destinations[index]),
-      labelType: NavigationRailLabelType.all,
+      labelType: NavigationRailLabelType.selected,
       backgroundColor: theme.colorScheme.surfaceContainerLow,
+      groupAlignment: 0,
       // The rail's own scrolling, rather than a wrapper: labelled destinations
       // plus the logo and Settings do not fit once the player strip has taken
       // its share of a short window.
@@ -769,28 +746,16 @@ class _Rail extends StatelessWidget {
           message: 'marmelade',
           child: Text(
             'm',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w300,
-            ),
+            style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w300),
           ),
         ),
       ),
       trailing: Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: _RailFootButton(
-          section: LibrarySection.settings,
-          selected: selected == LibrarySection.settings,
-          onTap: () => onSelect(LibrarySection.settings),
-        ),
+        child: _RailFootButton(section: LibrarySection.settings, selected: selected == LibrarySection.settings, onTap: () => onSelect(LibrarySection.settings)),
       ),
       destinations: [
-        for (final section in destinations)
-          NavigationRailDestination(
-            icon: _badged(section, section.icon),
-            selectedIcon: _badged(section, section.selectedIcon),
-            label: Text(section.label),
-          ),
+        for (final section in destinations) NavigationRailDestination(icon: _badged(section, section.icon), selectedIcon: _badged(section, section.selectedIcon), label: Text(section.label)),
       ],
     );
   }
@@ -815,11 +780,7 @@ class _Rail extends StatelessWidget {
 /// indicator, icon, label underneath -- because looking like a different kind
 /// of control would suggest it does a different kind of thing.
 class _RailFootButton extends StatelessWidget {
-  const _RailFootButton({
-    required this.section,
-    required this.selected,
-    required this.onTap,
-  });
+  const _RailFootButton({required this.section, required this.selected, required this.onTap});
 
   final LibrarySection section;
   final bool selected;
@@ -831,46 +792,19 @@ class _RailFootButton extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return SizedBox(
-      width: 72,
+      width: 56,
+
       child: InkWell(
         onTap: onTap,
         customBorder: const StadiumBorder(),
-        child: Padding(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
-                width: 56,
-                height: 32,
-                decoration: ShapeDecoration(
-                  shape: const StadiumBorder(),
-                  color: selected
-                      ? scheme.secondaryContainer
-                      : Colors.transparent,
-                ),
-                child: Center(
-                  child: Icon(
-                    selected ? section.selectedIcon : section.icon,
-                    size: 24,
-                    color: selected
-                        ? scheme.onSecondaryContainer
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                section.label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
+
+          height: 32,
+          decoration: ShapeDecoration(shape: const StadiumBorder(), color: selected ? scheme.secondaryContainer : Colors.transparent),
+          child: Center(child: Icon(selected ? section.selectedIcon : section.icon, size: 20, color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant)),
         ),
       ),
     );

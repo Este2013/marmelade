@@ -9,6 +9,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
+import 'editor_save_state.dart';
 import 'picture_section.dart';
 import 'tag_section.dart';
 
@@ -23,11 +24,16 @@ class ArtistEditorView extends ConsumerWidget {
     super.key,
     required this.artistId,
     required this.onBack,
+    required this.saveState,
     this.onOpenArtist,
   });
 
   final int artistId;
   final VoidCallback onBack;
+
+  /// Bridges the form's dirty/saving state to [ArtistEditorChrome], which is
+  /// built outside this widget's own subtree -- see `AppShell._editArtist`.
+  final EditorSaveState saveState;
   final void Function(int artistId)? onOpenArtist;
 
   @override
@@ -55,9 +61,95 @@ class ArtistEditorView extends ConsumerWidget {
           key: ValueKey(edit.id),
           edit: edit,
           onBack: onBack,
+          saveState: saveState,
           onOpenArtist: onOpenArtist,
         );
       },
+    );
+  }
+}
+
+/// An artist editor's identity (picture, name, track count) and Save
+/// button, merged into the window's title bar. See [AppShell].
+///
+/// A [ConsumerWidget] rather than taking the artist's name as a parameter,
+/// matching [ArtistDetailChrome]: the chrome is built before the page's own
+/// data has necessarily loaded, so it watches [artistEditProvider] itself.
+/// [saveState] is what actually drives the Save button, since "is the form
+/// dirty" lives in the editor's own widget state, not in a provider.
+class ArtistEditorChrome extends ConsumerWidget {
+  const ArtistEditorChrome({
+    super.key,
+    required this.artistId,
+    required this.onBack,
+    required this.saveState,
+  });
+
+  final int artistId;
+  final VoidCallback onBack;
+  final EditorSaveState saveState;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final edit = ref.watch(artistEditProvider(artistId)).value;
+    final theme = Theme.of(context);
+
+    return ListenableBuilder(
+      listenable: saveState,
+      builder: (context, _) => Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          const SizedBox(width: 8),
+          if (edit == null)
+            const Spacer()
+          else ...[
+            Artwork(
+              storedPath: edit.imagePath,
+              size: 36,
+              borderRadius: 18,
+              fallbackSeed: edit.name,
+              fallbackIcon: edit.isGroup
+                  ? Icons.groups_outlined
+                  : Icons.person_outline,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    edit.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  Text(
+                    '${pluralize(edit.trackCount, 'track')}'
+                    '${edit.isVerified ? ' · reviewed' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: saveState.saving || !saveState.dirty
+                ? null
+                : saveState.onSave,
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Save'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -67,11 +159,13 @@ class _Editor extends ConsumerStatefulWidget {
     super.key,
     required this.edit,
     required this.onBack,
+    required this.saveState,
     this.onOpenArtist,
   });
 
   final ArtistEdit edit;
   final VoidCallback onBack;
+  final EditorSaveState saveState;
   final void Function(int artistId)? onOpenArtist;
 
   @override
@@ -172,54 +266,21 @@ class _EditorState extends ConsumerState<_Editor> {
   @override
   Widget build(BuildContext context) {
     final edit = widget.edit;
-    final theme = Theme.of(context);
+
+    // After every build, not during it: notifying the chrome's Save button
+    // mid-build risks tripping Flutter's "setState during build" guard, and
+    // a one-frame-later sync is not something anyone typing can notice.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.saveState.update(
+        dirty: _dirty,
+        saving: _saving,
+        onSave: _saving || !_dirty ? null : _save,
+      );
+    });
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 24, 8),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Back',
-                onPressed: widget.onBack,
-                icon: const Icon(Icons.arrow_back),
-              ),
-              const SizedBox(width: 8),
-              Artwork(
-                storedPath: edit.imagePath,
-                size: 40,
-                borderRadius: 20,
-                fallbackSeed: edit.name,
-                fallbackIcon: edit.isGroup
-                    ? Icons.groups_outlined
-                    : Icons.person_outline,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(edit.name, style: theme.textTheme.titleLarge),
-                    Text(
-                      '${pluralize(edit.trackCount, 'track')}'
-                      '${edit.isVerified ? ' · reviewed' : ''}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _saving || !_dirty ? null : _save,
-                icon: const Icon(Icons.check, size: 18),
-                label: const Text('Save'),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: Align(
             alignment: Alignment.topCenter,

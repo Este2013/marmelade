@@ -9,9 +9,26 @@ import '../../data/repositories/tag_repository.dart' show TagTarget;
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
+import '../../widgets/section_title.dart';
 import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
+
+/// Every artist, and the ones that survive the current filter.
+///
+/// Shared between [ArtistsToolbar] (which only needs the counts) and the
+/// grid (which needs the filtered list) so the filtering itself happens once
+/// regardless of which of them rebuilds.
+final artistsShownProvider =
+    Provider<({List<ArtistCard> all, List<ArtistCard> shown})>((ref) {
+  final all = ref.watch(artistsProvider).value ?? const <ArtistCard>[];
+  final filter = ref.watch(artistFilterProvider);
+  final shown = [
+    for (final artist in all)
+      if (matchesQuery(filter, [artist.name])) artist,
+  ];
+  return (all: all, shown: shown);
+});
 
 /// The artists and groups list.
 ///
@@ -33,71 +50,14 @@ class ArtistsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final artists = ref.watch(artistsProvider);
-    final sort = ref.watch(artistSortProvider);
     final filter = ref.watch(artistFilterProvider);
-    final theme = Theme.of(context);
-
-    final all = artists.value ?? const <ArtistCard>[];
-    final shown = [
-      for (final artist in all)
-        if (matchesQuery(filter, [artist.name])) artist,
-    ];
-
+    final shown = ref.watch(artistsShownProvider).shown;
     final pendingCredits = ref.watch(pendingCreditCountProvider).value ?? 0;
 
     return Column(
       children: [
         if (pendingCredits > 0 && onOpenReview != null)
           _ReviewBanner(count: pendingCredits, onOpen: onOpenReview!),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-          child: Row(
-            children: [
-              Text('Artists', style: theme.textTheme.headlineSmall),
-              const SizedBox(width: 12),
-              Text(
-                filter.isEmpty
-                    ? pluralize(all.length, 'artist')
-                    : '${shown.length} of ${pluralize(all.length, 'artist')}',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    child: FilterField(
-                      value: filter,
-                      width: null,
-                      hint: 'Filter artists',
-                      onChanged: (value) =>
-                          ref.read(artistFilterProvider.notifier).set(value),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              PopupMenuButton<LibrarySort>(
-                tooltip: 'Sort',
-                initialValue: sort,
-                onSelected: (value) =>
-                    ref.read(artistSortProvider.notifier).set(value),
-                icon: const Icon(Icons.sort),
-                itemBuilder: (context) => [
-                  for (final option in const [
-                    LibrarySort.nameAscending,
-                    LibrarySort.nameDescending,
-                    LibrarySort.trackCount,
-                    LibrarySort.recentlyAdded,
-                  ])
-                    PopupMenuItem(value: option, child: Text(option.label)),
-                ],
-              ),
-            ],
-          ),
-        ),
         _ArtistSelectionBar(artists: shown, onOpenArtist: onOpenArtist),
         Expanded(
           child: artists.when(
@@ -132,6 +92,72 @@ class ArtistsView extends ConsumerWidget {
   }
 }
 
+/// Title, count, filter and sort -- the artists section's own toolbar,
+/// merged into the window's title bar. See [AppShell] and
+/// `WindowChrome.content`.
+///
+/// The credit-review banner is deliberately not part of this: it is
+/// contextual to the list underneath (it disappears once the queue is
+/// empty), not a toolbar control, so it stays in [ArtistsView]'s own body.
+class ArtistsToolbar extends ConsumerWidget {
+  const ArtistsToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final sort = ref.watch(artistSortProvider);
+    final filter = ref.watch(artistFilterProvider);
+    final data = ref.watch(artistsShownProvider);
+
+    return Row(
+      children: [
+        const SectionTitle(icon: Icons.people, label: 'Artists'),
+        const SizedBox(width: 12),
+        Text(
+          filter.isEmpty
+              ? pluralize(data.all.length, 'artist')
+              : '${data.shown.length} of ${pluralize(data.all.length, 'artist')}',
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: FilterField(
+                value: filter,
+                width: null,
+                hint: 'Filter artists',
+                onChanged: (value) =>
+                    ref.read(artistFilterProvider.notifier).set(value),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        PopupMenuButton<LibrarySort>(
+          tooltip: 'Sort',
+          initialValue: sort,
+          onSelected: (value) =>
+              ref.read(artistSortProvider.notifier).set(value),
+          icon: const Icon(Icons.sort),
+          itemBuilder: (context) => [
+            for (final option in const [
+              LibrarySort.nameAscending,
+              LibrarySort.nameDescending,
+              LibrarySort.trackCount,
+              LibrarySort.recentlyAdded,
+            ])
+              PopupMenuItem(value: option, child: Text(option.label)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _ArtistGrid extends StatelessWidget {
   const _ArtistGrid({required this.artists, required this.onOpen});
 
@@ -147,7 +173,10 @@ class _ArtistGrid extends StatelessWidget {
         const target = 170.0;
         final columns = (constraints.maxWidth / target).floor().clamp(2, 12);
         return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          // A few pixels of headroom at the top: the hover lift scales a
+          // tile up in place, and with no top padding the top row's lift
+          // pokes past the grid's own clip boundary and gets cut off.
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             crossAxisSpacing: 18,

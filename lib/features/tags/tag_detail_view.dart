@@ -64,9 +64,94 @@ class TagDetailView extends ConsumerWidget {
           onEditTrack: onEditTrack,
           queueSource: QueueSource.tag,
           queueSourceId: tagId,
-          header: _Header(tag: tag, tracks: items, onBack: onBack),
+          header: _Header(tag: tag, tracks: items),
         );
       },
+    );
+  }
+}
+
+/// A tag page's back, edit and delete controls, merged into the window's
+/// title bar rather than sitting as the first row of the page itself.
+///
+/// A [ConsumerWidget] rather than taking the tag as a parameter: the chrome
+/// is built before the page's own data has necessarily loaded (see
+/// [AppShell]), so it watches [taggedProvider] itself and simply disables
+/// the edit and menu buttons until there is a tag to act on.
+class TagDetailChrome extends ConsumerWidget {
+  const TagDetailChrome({super.key, required this.tagId, required this.onBack});
+
+  final int tagId;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tag = ref
+        .watch(taggedProvider)
+        .value
+        ?.where((t) => t.id == tagId)
+        .firstOrNull;
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Back',
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Edit this tag',
+          onPressed: tag == null
+              ? null
+              : () => editTag(
+                    context,
+                    ref,
+                    tagId: tag.id,
+                    name: tag.name,
+                    categoryId: tag.categoryId,
+                  ),
+          icon: const Icon(Icons.edit_outlined),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'More',
+          enabled: tag != null,
+          icon: const Icon(Icons.more_vert),
+          onSelected: (action) async {
+            if (action != 'delete') return;
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text('Delete ${tag!.name}?'),
+                content: Text(
+                  'It comes off everything carrying it -- '
+                  '${pluralize(tag.trackCount, 'track')}. The music itself '
+                  'is untouched.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true) return;
+            await ref.read(tagRepositoryProvider).deleteTag(tag!.id);
+            // Back, because this page is about a tag that no longer exists --
+            // staying would show the "that tag is gone" card where a page
+            // used to be.
+            onBack();
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'delete', child: Text('Delete')),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -75,12 +160,10 @@ class _Header extends ConsumerWidget {
   const _Header({
     required this.tag,
     required this.tracks,
-    required this.onBack,
   });
 
   final TagCard tag;
   final List<TrackRow> tracks;
-  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,69 +183,10 @@ class _Header extends ConsumerWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 12),
+      padding: const EdgeInsets.only(top: 20, bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Back',
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back),
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Edit this tag',
-                onPressed: () => editTag(
-                  context,
-                  ref,
-                  tagId: tag.id,
-                  name: tag.name,
-                  categoryId: tag.categoryId,
-                ),
-                icon: const Icon(Icons.edit_outlined),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'More',
-                icon: const Icon(Icons.more_vert),
-                onSelected: (action) async {
-                  if (action != 'delete') return;
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('Delete ${tag.name}?'),
-                      content: Text(
-                        'It comes off everything carrying it -- '
-                        '${pluralize(tag.trackCount, 'track')}. The music '
-                        'itself is untouched.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true) return;
-                  await ref.read(tagRepositoryProvider).deleteTag(tag.id);
-                  // Back, because this page is about a tag that no longer
-                  // exists -- staying would show the "that tag is gone" card
-                  // where a page used to be.
-                  onBack();
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           Row(
             children: [
               Icon(visuals.icon, size: 34, color: visuals.color),

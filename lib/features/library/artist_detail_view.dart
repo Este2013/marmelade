@@ -19,14 +19,21 @@ import '../edit/link_menu_button.dart';
 /// than a string on the track, a guest appearance shows up here without the UI
 /// doing anything special.
 class ArtistDetailView extends ConsumerWidget {
-  const ArtistDetailView({super.key, required this.artistId, required this.onOpenAlbum, required this.onOpenArtist, required this.onBack, this.onEditArtist, this.onEditTrack});
+  const ArtistDetailView({super.key, required this.artistId, required this.onOpenAlbum, required this.onOpenArtist, this.onEditArtist, this.onEditTrack, this.topInset = 0});
 
   final int artistId;
   final void Function(int albumId) onOpenAlbum;
   final void Function(int artistId) onOpenArtist;
-  final VoidCallback onBack;
   final void Function(int artistId)? onEditArtist;
   final void Function(int trackId)? onEditTrack;
+
+  /// Space to leave clear at the top for the window's caption strip.
+  ///
+  /// The blurred backdrop bleeds all the way to the top of the window now
+  /// that its own back/edit row lives in the strip (see [ArtistDetailChrome]
+  /// and [AppShell]), so without this the name and Play/Shuffle row would
+  /// start underneath the window buttons.
+  final double topInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -57,8 +64,8 @@ class ArtistDetailView extends ConsumerWidget {
               albums: albums.value ?? const [],
               tracks: items,
               onOpenAlbum: onOpenAlbum,
-              onBack: onBack,
               onEdit: onEditArtist == null ? null : () => onEditArtist!(artistId),
+              topInset: topInset,
             ),
           ),
         ],
@@ -67,18 +74,43 @@ class ArtistDetailView extends ConsumerWidget {
   }
 }
 
+/// An artist page's back and edit controls, merged into the window's title
+/// bar rather than sitting as the first row of the page itself.
+class ArtistDetailChrome extends StatelessWidget {
+  const ArtistDetailChrome({super.key, required this.onBack, this.onEdit});
+
+  final VoidCallback onBack;
+
+  /// Opens the artist editor.
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back)),
+        const Spacer(),
+        if (onEdit != null) IconButton(tooltip: 'Edit this artist', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
+      ],
+    );
+  }
+}
+
 class _ArtistHeader extends ConsumerWidget {
-  const _ArtistHeader({this.onEdit, required this.artist, required this.albums, required this.tracks, required this.onOpenAlbum, required this.onBack});
+  const _ArtistHeader({this.onEdit, required this.artist, required this.albums, required this.tracks, required this.onOpenAlbum, this.topInset = 0});
 
   final ArtistCard? artist;
   final List<AlbumCard> albums;
   final List<TrackRow> tracks;
 
   /// Opens the artist editor.
+  ///
+  /// Only ever checked for null here, to gate the link menu's editability --
+  /// the button itself now lives in [ArtistDetailChrome].
   final VoidCallback? onEdit;
 
   final void Function(int albumId) onOpenAlbum;
-  final VoidCallback onBack;
+  final double topInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -88,21 +120,10 @@ class _ArtistHeader extends ConsumerWidget {
     final links = artist == null ? const <LinkRow>[] : ref.watch(artistLinksProvider(artist!.id)).value ?? const [];
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 20),
+      padding: EdgeInsets.only(top: topInset + 20, bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Row(
-              children: [
-                IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back)),
-                const Spacer(),
-                if (onEdit != null) IconButton(tooltip: 'Edit this artist', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

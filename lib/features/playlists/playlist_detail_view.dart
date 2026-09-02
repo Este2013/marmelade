@@ -93,7 +93,6 @@ class PlaylistDetailView extends ConsumerWidget {
             playlist: card,
             tracks: items,
             entries: entries.value ?? const [],
-            onBack: onBack,
             onOpenPlaylist: onOpenPlaylist,
             onOpenTag: onOpenTag,
           ),
@@ -103,12 +102,130 @@ class PlaylistDetailView extends ConsumerWidget {
   }
 }
 
+/// A playlist page's back and "add" controls, merged into the window's
+/// title bar rather than sitting as the first row of the page itself.
+///
+/// A [ConsumerWidget] rather than taking the playlist's name as a parameter:
+/// the chrome is built before the page's own data has necessarily loaded
+/// (see [AppShell]), so it watches [playlistProvider] itself and simply
+/// disables the "add" buttons until there is a playlist to add to.
+class PlaylistDetailChrome extends ConsumerWidget {
+  const PlaylistDetailChrome({
+    super.key,
+    required this.playlistId,
+    required this.onBack,
+  });
+
+  final int playlistId;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playlist = ref.watch(playlistProvider(playlistId)).value;
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Back',
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Add songs',
+          onPressed: playlist == null
+              ? null
+              : () => showAddTracksToPlaylist(
+                    context,
+                    ref,
+                    playlist.id,
+                    playlistName: playlist.name,
+                  ),
+          icon: const Icon(Icons.music_note_outlined),
+        ),
+        IconButton(
+          tooltip: 'Add an album',
+          onPressed: playlist == null
+              ? null
+              : () => showAddAlbumToThisPlaylist(
+                    context,
+                    ref,
+                    playlist.id,
+                    playlistName: playlist.name,
+                  ),
+          icon: const Icon(Icons.album_outlined),
+        ),
+        IconButton(
+          tooltip: 'Add a playlist inside this one',
+          onPressed: playlist == null
+              ? null
+              : () => _includePlaylist(context, ref, playlist),
+          icon: const Icon(Icons.playlist_add),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _includePlaylist(
+    BuildContext context,
+    WidgetRef ref,
+    PlaylistCard playlist,
+  ) async {
+    final all = await ref.read(playlistsProvider.future);
+    if (!context.mounted) return;
+
+    final candidates = all.where((p) => p.id != playlist.id).toList();
+    if (candidates.isEmpty) {
+      final created = await createPlaylist(context, ref);
+      if (created == null) return;
+      await ref
+          .read(playlistRepositoryProvider)
+          .addChildPlaylist(playlist.id, created);
+      return;
+    }
+
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('Include a playlist in ${playlist.name}'),
+        children: [
+          for (final candidate in candidates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(candidate.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  '${candidate.name} · '
+                  '${pluralize(candidate.trackCount, 'track')}',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || !context.mounted) return;
+
+    final ok = await ref
+        .read(playlistRepositoryProvider)
+        .addChildPlaylist(playlist.id, chosen);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'That playlist already contains this one, so including it would '
+            'make a loop.',
+          ),
+        ),
+      );
+    }
+  }
+}
+
 class _Header extends ConsumerWidget {
   const _Header({
     required this.playlist,
     required this.tracks,
     required this.entries,
-    required this.onBack,
     required this.onOpenPlaylist,
     this.onOpenTag,
   });
@@ -116,7 +233,6 @@ class _Header extends ConsumerWidget {
   final PlaylistCard playlist;
   final List<TrackRow> tracks;
   final List<PlaylistEntry> entries;
-  final VoidCallback onBack;
   final void Function(int playlistId) onOpenPlaylist;
   final void Function(int tagId)? onOpenTag;
 
@@ -145,46 +261,10 @@ class _Header extends ConsumerWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 16),
+      padding: const EdgeInsets.only(top: 20, bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Back',
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back),
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Add songs',
-                onPressed: () => showAddTracksToPlaylist(
-                  context,
-                  ref,
-                  playlist.id,
-                  playlistName: playlist.name,
-                ),
-                icon: const Icon(Icons.music_note_outlined),
-              ),
-              IconButton(
-                tooltip: 'Add an album',
-                onPressed: () => showAddAlbumToThisPlaylist(
-                  context,
-                  ref,
-                  playlist.id,
-                  playlistName: playlist.name,
-                ),
-                icon: const Icon(Icons.album_outlined),
-              ),
-              IconButton(
-                tooltip: 'Add a playlist inside this one',
-                onPressed: () => _includePlaylist(context, ref),
-                icon: const Icon(Icons.playlist_add),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -331,56 +411,6 @@ class _Header extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _includePlaylist(BuildContext context, WidgetRef ref) async {
-    final all = await ref.read(playlistsProvider.future);
-    if (!context.mounted) return;
-
-    final candidates = all.where((p) => p.id != playlist.id).toList();
-    if (candidates.isEmpty) {
-      final created = await createPlaylist(context, ref);
-      if (created == null) return;
-      await ref
-          .read(playlistRepositoryProvider)
-          .addChildPlaylist(playlist.id, created);
-      return;
-    }
-
-    final chosen = await showDialog<int>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('Include a playlist in ${playlist.name}'),
-        children: [
-          for (final candidate in candidates)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(candidate.id),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  '${candidate.name} · '
-                  '${pluralize(candidate.trackCount, 'track')}',
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (chosen == null || !context.mounted) return;
-
-    final ok = await ref
-        .read(playlistRepositoryProvider)
-        .addChildPlaylist(playlist.id, chosen);
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'That playlist already contains this one, so including it would '
-            'make a loop.',
-          ),
-        ),
-      );
-    }
   }
 }
 

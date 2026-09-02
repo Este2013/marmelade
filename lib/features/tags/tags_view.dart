@@ -9,6 +9,7 @@ import '../../widgets/empty_state.dart';
 import 'category_dialog.dart';
 import 'category_icons.dart';
 import 'tag_visuals.dart';
+import '../../widgets/section_title.dart';
 import '../../widgets/time_text.dart';
 
 /// Every tag in the library, grouped by category.
@@ -26,30 +27,9 @@ class TagsView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tags = ref.watch(taggedProvider);
     final categories = ref.watch(tagCategoriesProvider).value ?? const [];
-    final theme = Theme.of(context);
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-          child: Row(
-            children: [
-              Text('Tags', style: theme.textTheme.headlineSmall),
-              const SizedBox(width: 12),
-              Text(
-                pluralize(tags.value?.length ?? 0, 'tag'),
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const Spacer(),
-              OutlinedButton.icon(
-                onPressed: () => _newCategory(context, ref),
-                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-                label: const Text('New category'),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: tags.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -79,18 +59,48 @@ class TagsView extends ConsumerWidget {
       ],
     );
   }
+}
 
-  Future<void> _newCategory(BuildContext context, WidgetRef ref) async {
-    final result = await editCategory(context, title: 'New tag category');
-    if (result == null) return;
-    final repository = ref.read(tagRepositoryProvider);
-    final id = await repository.createCategory(
-      result.name,
-      color: result.color,
+/// Title, count and "New category" -- the tags section's own toolbar, merged
+/// into the window's title bar. See [AppShell] and `WindowChrome.content`.
+class TagsToolbar extends ConsumerWidget {
+  const TagsToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tags = ref.watch(taggedProvider);
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        const SectionTitle(icon: Icons.label, label: 'Tags'),
+        const SizedBox(width: 12),
+        Text(
+          pluralize(tags.value?.length ?? 0, 'tag'),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => _newCategory(context, ref),
+          icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+          label: const Text('New category'),
+        ),
+      ],
     );
-    if (result.icon != null) {
-      await repository.updateCategory(id, icon: result.icon, setIcon: true);
-    }
+  }
+}
+
+Future<void> _newCategory(BuildContext context, WidgetRef ref) async {
+  final result = await editCategory(context, title: 'New tag category');
+  if (result == null) return;
+  final repository = ref.read(tagRepositoryProvider);
+  final id = await repository.createCategory(
+    result.name,
+    color: result.color,
+  );
+  if (result.icon != null) {
+    await repository.updateCategory(id, icon: result.icon, setIcon: true);
   }
 }
 

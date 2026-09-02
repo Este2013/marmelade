@@ -8,6 +8,7 @@ import '../../domain/search/smart_query.dart';
 import 'smart_query_field.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/section_title.dart';
 import '../../widgets/time_text.dart';
 
 /// The playlists, as a tree.
@@ -26,36 +27,9 @@ class PlaylistsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playlists = ref.watch(playlistsProvider);
-    final theme = Theme.of(context);
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-          child: Row(
-            children: [
-              Text('Playlists', style: theme.textTheme.headlineSmall),
-              const SizedBox(width: 12),
-              Text(
-                pluralize(playlists.value?.length ?? 0, 'playlist'),
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const Spacer(),
-              OutlinedButton.icon(
-                onPressed: () => createSmartPlaylist(context, ref),
-                icon: const Icon(Icons.auto_awesome, size: 18),
-                label: const Text('New smart playlist'),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: () => createPlaylist(context, ref),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('New playlist'),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: playlists.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -89,6 +63,43 @@ class PlaylistsView extends ConsumerWidget {
               );
             },
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Title, count and the two "new playlist" actions -- the playlists
+/// section's own toolbar, merged into the window's title bar. See [AppShell]
+/// and `WindowChrome.content`.
+class PlaylistsToolbar extends ConsumerWidget {
+  const PlaylistsToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playlists = ref.watch(playlistsProvider);
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        const SectionTitle(icon: Icons.playlist_play, label: 'Playlists'),
+        const SizedBox(width: 12),
+        Text(
+          pluralize(playlists.value?.length ?? 0, 'playlist'),
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const Spacer(),
+        OutlinedButton.icon(
+          onPressed: () => createSmartPlaylist(context, ref),
+          icon: const Icon(Icons.auto_awesome, size: 18),
+          label: const Text('New smart playlist'),
+        ),
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          onPressed: () => createPlaylist(context, ref),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New playlist'),
         ),
       ],
     );

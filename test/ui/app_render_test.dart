@@ -19,8 +19,17 @@ import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/data/repositories/review_repository.dart';
 import 'package:marmelade/data/repositories/search_repository.dart';
 import 'package:marmelade/features/library/album_detail_view.dart';
+import 'package:marmelade/features/library/albums_view.dart' show AlbumsToolbar;
+import 'package:marmelade/features/library/artist_detail_view.dart'
+    show ArtistDetailChrome;
+import 'package:marmelade/features/library/artists_view.dart'
+    show ArtistsToolbar;
+import 'package:marmelade/features/library/songs_view.dart' show SongsToolbar;
 import 'package:marmelade/features/player/player_bar.dart';
+import 'package:marmelade/features/playlists/playlists_view.dart'
+    show PlaylistsToolbar;
 import 'package:marmelade/features/search/search_view.dart';
+import 'package:marmelade/features/tags/tags_view.dart' show TagsToolbar;
 import 'package:marmelade/data/repositories/tag_repository.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
@@ -491,6 +500,14 @@ void main() {
         allTracksProvider.overrideWith((ref) => Stream.value(tracks)),
         artistsProvider.overrideWith((ref) => Stream.value(_artists)),
         taggedProvider.overrideWith((ref) => Stream.value(const <TagCard>[])),
+        // Same reason as every other stream in this scope: a real one works
+        // until the test tears down, then the fake clock never drains its
+        // cancellation timer. Nothing had opened Playlists before the window
+        // chrome tests, so this one was missing until it started tripping.
+        playlistsProvider
+            .overrideWith((ref) => Stream.value(const <PlaylistCard>[])),
+        tagCategoriesProvider
+            .overrideWith((ref) => Stream.value(const <TagCategoryRow>[])),
         // A real drift stream here would work, but cancelling one schedules a
         // cleanup timer the test binding's fake clock never drains -- see the
         // note in smart_query_field_test.dart. TagLine on the album header
@@ -553,6 +570,14 @@ void main() {
   Finder railItem(String label) => find.descendant(
         of: find.byType(NavigationRail),
         matching: find.text(label),
+      );
+
+  /// Settings sits at the foot of the rail as an icon alone, with no label
+  /// underneath -- unlike every other destination, so it needs its own
+  /// lookup instead of [railItem].
+  Finder settingsRailItem() => find.descendant(
+        of: find.byType(NavigationRail),
+        matching: find.byIcon(Icons.settings_outlined),
       );
 
   /// Pumps a bounded number of frames.
@@ -662,7 +687,7 @@ void main() {
   testWidgets('settings shows the folder controls and the repo link',
       (tester) async {
     await open(tester);
-    await tester.tap(railItem('Settings'));
+    await tester.tap(settingsRailItem());
     await settle(tester);
     expect(tester.takeException(), isNull);
 
@@ -754,7 +779,7 @@ void main() {
     await open(tester);
 
     final railBox = tester.getRect(find.byType(NavigationRail));
-    final settings = tester.getRect(find.text('Settings'));
+    final settings = tester.getRect(settingsRailItem());
     final playlists = tester.getRect(railItem('Playlists'));
 
     expect(settings.top, greaterThan(playlists.bottom));
@@ -986,6 +1011,255 @@ void main() {
       // area begins.
       expect(tester.getRect(find.byType(IndexedStack)).top,
           WindowChrome.height);
+    });
+
+    testWidgets(
+        "an album page's blurred backdrop bleeds behind the caption "
+        'strip instead of starting below it', (tester) async {
+      await open(tester);
+
+      // Still true for the grid behind it.
+      expect(tester.getRect(find.byType(IndexedStack)).top,
+          WindowChrome.height);
+
+      await tester.tap(find.text('Antenna'));
+      await settle(tester);
+
+      // Zero, not WindowChrome.height: the backdrop now paints all the way
+      // to the top, with only its own content (the title, Play/Shuffle row)
+      // pushed down to clear the strip.
+      expect(tester.getRect(find.byType(IndexedStack)).top, 0);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byTooltip('Back'));
+      await settle(tester);
+
+      // And restored once the bleeding page is gone.
+      expect(tester.getRect(find.byType(IndexedStack)).top,
+          WindowChrome.height);
+    });
+
+    testWidgets(
+        "a migrated view's own toolbar lives in the caption strip, not "
+        'the view', (tester) async {
+      // Albums opens by default: no need to navigate there first.
+      await open(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byType(AlbumsToolbar),
+        ),
+        findsOneWidget,
+      );
+      // Only the one copy -- the view itself no longer builds its own.
+      expect(find.byType(AlbumsToolbar), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.widgetWithText(TextField, 'Filter albums'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        "a migrated toolbar starts clear of the rail, not on top of it",
+        (tester) async {
+      await open(tester);
+
+      final rail = tester.getRect(find.byType(NavigationRail));
+      final toolbar = tester.getRect(find.byType(AlbumsToolbar));
+      expect(
+        toolbar.left,
+        greaterThanOrEqualTo(rail.right),
+        reason: "the toolbar's title must not land on the rail's own icon",
+      );
+    });
+
+    testWidgets(
+        'the window buttons stay pinned to the right edge with no content '
+        'to push them there', (tester) async {
+      // Songs has not been migrated yet, so its chrome content is null --
+      // the case that used to leave the buttons stranded at the left edge.
+      await open(tester);
+      await tester.tap(railItem('Songs'));
+      await settle(tester);
+
+      final buttons = tester.getRect(find.byType(WindowCaptionButton).last);
+      expect(buttons.right, moreOrLessEquals(1400, epsilon: 1));
+    });
+
+    testWidgets(
+        "search's own field lives in the caption strip, not the page",
+        (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Search'));
+      await settle(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byType(SearchToolbar),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(SearchToolbar), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.widgetWithText(
+            TextField,
+            'An artist, a song, an album, a tag, a playlist',
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        "a detail page's back and edit controls live in the caption "
+        'strip, not the page', (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Artists'));
+      await settle(tester);
+      await tester.tap(find.text('PinocchioP').first);
+      await settle(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byType(ArtistDetailChrome),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(ArtistDetailChrome), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byTooltip('Back'),
+        ),
+        findsOneWidget,
+      );
+      // Only the one copy -- the page itself no longer builds its own.
+      expect(find.byTooltip('Back'), findsOneWidget);
+
+      // Backing out from the chrome still works, and leaves the chrome
+      // stack empty again rather than out of step with the page stack.
+      await tester.tap(find.byTooltip('Back'));
+      await settle(tester);
+      expect(find.byType(ArtistDetailChrome), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        "a chrome-less page pushed on top does not desync the chrome "
+        'stack from the page stack', (tester) async {
+      // The credit review queue has not been migrated -- its chrome entry
+      // is a null placeholder -- so popping out of it must consume exactly
+      // that placeholder and land back on the section's own chrome, not
+      // skip past it or double-pop.
+      await open(tester, app: buildApp(pending: _pending));
+      await tester.tap(railItem('Artists'));
+      await settle(tester);
+      expect(find.byType(ArtistsToolbar), findsOneWidget);
+
+      await tester.tap(find.text('Review'));
+      await settle(tester);
+      expect(find.text('Credits to review'), findsOneWidget);
+      expect(find.byType(ArtistsToolbar), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await settle(tester);
+
+      expect(find.byType(ArtistsToolbar), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        "an album page's back, add-to-playlist and sort controls live in "
+        'the caption strip, not the page', (tester) async {
+      await open(tester);
+      await tester.tap(find.text('Antenna'));
+      await settle(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byType(AlbumDetailChrome),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(AlbumDetailChrome), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byTooltip('Back'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Back'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byTooltip('Sort tracks'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Back'));
+      await settle(tester);
+      expect(find.byType(AlbumDetailChrome), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("every migrated list view's toolbar lives in the caption "
+        'strip, not the view', (tester) async {
+      // One test for all four rather than four near-identical ones: same
+      // shape as the Albums and Search cases above, just swept across the
+      // rest of the rail.
+      final cases = <String, Type>{
+        'Songs': SongsToolbar,
+        'Artists': ArtistsToolbar,
+        'Tags': TagsToolbar,
+        'Playlists': PlaylistsToolbar,
+      };
+
+      await open(tester);
+      for (final MapEntry(key: label, value: toolbar) in cases.entries) {
+        await tester.tap(railItem(label));
+        await settle(tester);
+
+        expect(
+          find.descendant(
+            of: find.byType(WindowChrome),
+            matching: find.byWidgetPredicate((w) => w.runtimeType == toolbar),
+          ),
+          findsOneWidget,
+          reason: '$label should show $toolbar in the caption strip',
+        );
+        expect(
+          find.byWidgetPredicate((w) => w.runtimeType == toolbar),
+          findsOneWidget,
+          reason: '$toolbar should not also be built by the view itself',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("settings' title is a static line in the caption strip",
+        (tester) async {
+      await open(tester);
+      await tester.tap(settingsRailItem());
+      await settle(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.text('Settings'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 

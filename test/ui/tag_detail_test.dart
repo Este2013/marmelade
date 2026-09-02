@@ -49,7 +49,17 @@ void main() {
         ],
         child: MaterialApp(
           home: Scaffold(
-            body: TagDetailView(tagId: 10, onBack: () {}),
+            // The edit/delete controls now live in TagDetailChrome, the
+            // window title bar's content in the real app (see AppShell) --
+            // stood up alongside the page here rather than inside it.
+            body: Column(
+              children: [
+                const TagDetailChrome(tagId: 10, onBack: _noop),
+                Expanded(
+                  child: TagDetailView(tagId: 10, onBack: _noop),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -87,3 +97,5 @@ void main() {
     expect(find.text('Delete Hardcore?'), findsOneWidget);
   });
 }
+
+void _noop() {}

@@ -9,9 +9,28 @@ import '../../data/repositories/tag_repository.dart' show TagTarget;
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
+import '../../widgets/section_title.dart';
 import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
+
+/// Every album, and the ones that survive the current filter.
+///
+/// Shared between [AlbumsToolbar] (which only needs the counts) and the grid
+/// (which needs the filtered list) so the filtering itself -- matched on the
+/// two things visible on a card -- happens once regardless of which of them
+/// rebuilds. Kept beside the view it belongs to rather than in the shared
+/// providers file: this is this view's own derived state, not library data.
+final albumsShownProvider =
+    Provider<({List<AlbumCard> all, List<AlbumCard> shown})>((ref) {
+  final all = ref.watch(albumsProvider).value ?? const <AlbumCard>[];
+  final filter = ref.watch(albumFilterProvider);
+  final shown = [
+    for (final album in all)
+      if (matchesQuery(filter, [album.title, album.artistName])) album,
+  ];
+  return (all: all, shown: shown);
+});
 
 /// The albums grid. The app's default view.
 class AlbumsView extends ConsumerWidget {
@@ -25,28 +44,11 @@ class AlbumsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final albums = ref.watch(albumsProvider);
-    final showSingles = ref.watch(showSinglesProvider);
-    final sort = ref.watch(albumSortProvider);
     final filter = ref.watch(albumFilterProvider);
-
-    // Filtered here rather than in SQL: the list is already in memory, the
-    // answer has to keep up with typing, and an album is matched on the two
-    // things visible on its card.
-    final all = albums.value ?? const <AlbumCard>[];
-    final shown = [
-      for (final album in all)
-        if (matchesQuery(filter, [album.title, album.artistName])) album,
-    ];
+    final shown = ref.watch(albumsShownProvider).shown;
 
     return Column(
       children: [
-        _AlbumsToolbar(
-          sort: sort,
-          showSingles: showSingles,
-          count: all.length,
-          shown: shown.length,
-          filter: filter,
-        ),
         _AlbumSelectionBar(albums: shown),
         Expanded(
           child: albums.when(
@@ -81,93 +83,81 @@ class AlbumsView extends ConsumerWidget {
   }
 }
 
-/// Sort control, singles toggle and a count.
-class _AlbumsToolbar extends ConsumerWidget {
-  const _AlbumsToolbar({
-    required this.sort,
-    required this.showSingles,
-    required this.count,
-    required this.shown,
-    required this.filter,
-  });
-
-  final LibrarySort sort;
-  final bool showSingles;
-  final int count;
-
-  /// How many survive the filter, which is what the count should say when one
-  /// is typed -- "437 albums" above eleven cards is a lie.
-  final int shown;
-
-  final String filter;
+/// Title, count, filter, singles toggle and sort -- the albums section's own
+/// toolbar, merged into the window's title bar rather than sitting in a
+/// separate row underneath it. See [AppShell] and `WindowChrome.content`.
+class AlbumsToolbar extends ConsumerWidget {
+  const AlbumsToolbar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-      child: Row(
-        children: [
-          Text('Albums', style: theme.textTheme.headlineSmall),
-          const SizedBox(width: 12),
-          Text(
-            filter.isEmpty
-                ? pluralize(count, 'album')
-                : '$shown of ${pluralize(count, 'album')}',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(width: 16),
-          // Takes the slack rather than a fixed width, and capped so it does
-          // not sprawl across a wide window.
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: FilterField(
-                  value: filter,
-                  width: null,
-                  hint: 'Filter albums',
-                  onChanged: (value) =>
-                      ref.read(albumFilterProvider.notifier).set(value),
-                ),
+    final showSingles = ref.watch(showSinglesProvider);
+    final sort = ref.watch(albumSortProvider);
+    final filter = ref.watch(albumFilterProvider);
+    final data = ref.watch(albumsShownProvider);
+
+    return Row(
+      children: [
+        const SectionTitle(icon: Icons.album, label: 'Albums'),
+        const SizedBox(width: 12),
+        Text(
+          filter.isEmpty
+              ? pluralize(data.all.length, 'album')
+              : '${data.shown.length} of ${pluralize(data.all.length, 'album')}',
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(width: 16),
+        // Takes the slack rather than a fixed width, and capped so it does
+        // not sprawl across a wide window.
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: FilterField(
+                value: filter,
+                width: null,
+                hint: 'Filter albums',
+                onChanged: (value) =>
+                    ref.read(albumFilterProvider.notifier).set(value),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          // A plain visible toggle rather than something buried in a menu: the
-          // user asked for singles to be one click away.
-          FilterChip(
-            selected: showSingles,
-            onSelected: (value) =>
-                ref.read(showSinglesProvider.notifier).set(value),
-            avatar: const Icon(Icons.music_note_outlined, size: 18),
-            label: const Text('Singles'),
-            tooltip: 'Also show tracks that belong to no album',
-          ),
-          const SizedBox(width: 8),
-          PopupMenuButton<LibrarySort>(
-            tooltip: 'Sort',
-            initialValue: sort,
-            onSelected: (value) =>
-                ref.read(albumSortProvider.notifier).set(value),
-            icon: const Icon(Icons.sort),
-            itemBuilder: (context) => [
-              for (final option in const [
-                LibrarySort.nameAscending,
-                LibrarySort.nameDescending,
-                LibrarySort.recentlyAdded,
-                LibrarySort.releaseYear,
-                LibrarySort.trackCount,
-                LibrarySort.duration,
-                LibrarySort.random,
-              ])
-                PopupMenuItem(value: option, child: Text(option.label)),
-            ],
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        // A plain visible toggle rather than something buried in a menu: the
+        // user asked for singles to be one click away.
+        FilterChip(
+          selected: showSingles,
+          onSelected: (value) =>
+              ref.read(showSinglesProvider.notifier).set(value),
+          avatar: const Icon(Icons.music_note_outlined, size: 18),
+          label: const Text('Singles'),
+          tooltip: 'Also show tracks that belong to no album',
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<LibrarySort>(
+          tooltip: 'Sort',
+          initialValue: sort,
+          onSelected: (value) =>
+              ref.read(albumSortProvider.notifier).set(value),
+          icon: const Icon(Icons.sort),
+          itemBuilder: (context) => [
+            for (final option in const [
+              LibrarySort.nameAscending,
+              LibrarySort.nameDescending,
+              LibrarySort.recentlyAdded,
+              LibrarySort.releaseYear,
+              LibrarySort.trackCount,
+              LibrarySort.duration,
+              LibrarySort.random,
+            ])
+              PopupMenuItem(value: option, child: Text(option.label)),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -199,7 +189,10 @@ class _AlbumGrid extends StatelessWidget {
             (constraints.maxWidth / target).floor().clamp(2, 12);
 
         return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          // A few pixels of headroom at the top: the hover lift scales a
+          // tile up in place, and with no top padding the top row's lift
+          // pokes past the grid's own clip boundary and gets cut off.
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             crossAxisSpacing: 18,

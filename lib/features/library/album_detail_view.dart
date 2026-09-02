@@ -20,9 +20,8 @@ class AlbumDetailView extends ConsumerWidget {
     required this.albumId,
     required this.onOpenArtist,
     this.onOpenTag,
-    required this.onBack,
-    this.onEditAlbum,
     this.onEditTrack,
+    this.topInset = 0,
   });
 
   final int albumId;
@@ -30,9 +29,15 @@ class AlbumDetailView extends ConsumerWidget {
 
   /// Opens a tag's page, when there is somewhere to open it.
   final void Function(int tagId)? onOpenTag;
-  final VoidCallback onBack;
-  final void Function(int albumId)? onEditAlbum;
   final void Function(int trackId)? onEditTrack;
+
+  /// Space to leave clear at the top for the window's caption strip.
+  ///
+  /// The blurred backdrop bleeds all the way to the top of the window now
+  /// that its own back/edit row lives in the strip (see [AlbumDetailChrome]
+  /// and [AppShell]), so without this the title and Play/Shuffle row would
+  /// start underneath the window buttons.
+  final double topInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -86,10 +91,7 @@ class AlbumDetailView extends ConsumerWidget {
                   tracks: items,
                   onOpenArtist: onOpenArtist,
                   onOpenTag: onOpenTag,
-                  onBack: onBack,
-                  onEdit: onEditAlbum == null
-                      ? null
-                      : () => onEditAlbum!(albumId),
+                  topInset: topInset,
                 ),
               ),
             ),
@@ -100,25 +102,98 @@ class AlbumDetailView extends ConsumerWidget {
   }
 }
 
+/// An album page's back, add-to-playlist, edit and sort controls, merged
+/// into the window's title bar rather than sitting as the first row of the
+/// page itself.
+///
+/// A [ConsumerWidget] rather than taking the album's title as a parameter:
+/// the chrome is built before the page's own data has necessarily loaded
+/// (see [AppShell]), so it watches [albumDetailProvider] itself and simply
+/// disables the add-to-playlist button until there is a title to show.
+class AlbumDetailChrome extends ConsumerWidget {
+  const AlbumDetailChrome({
+    super.key,
+    required this.albumId,
+    required this.onBack,
+    this.onEdit,
+  });
+
+  final int albumId;
+  final VoidCallback onBack;
+
+  /// Opens the album editor.
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final album = ref.watch(albumDetailProvider(albumId)).value;
+
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Back',
+          onPressed: onBack,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Add this album to a playlist',
+          onPressed: album == null
+              ? null
+              : () => showAddAlbumToPlaylist(
+                    context,
+                    ref,
+                    album.id,
+                    albumTitle: album.title,
+                  ),
+          icon: const Icon(Icons.library_add_outlined),
+        ),
+        if (onEdit != null)
+          IconButton(
+            tooltip: 'Edit this album',
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+        // Track order is what an album is normally read in, but a long
+        // compilation is easier to search alphabetically and a soundtrack is
+        // sometimes easier by length.
+        PopupMenuButton<LibrarySort>(
+          tooltip: 'Sort tracks',
+          initialValue: ref.watch(albumTrackSortProvider),
+          onSelected: (value) =>
+              ref.read(albumTrackSortProvider.notifier).set(value),
+          icon: const Icon(Icons.sort),
+          itemBuilder: (context) => [
+            for (final option in const [
+              LibrarySort.trackNumber,
+              LibrarySort.nameAscending,
+              LibrarySort.duration,
+              LibrarySort.mostPlayed,
+              LibrarySort.random,
+            ])
+              PopupMenuItem(value: option, child: Text(option.label)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 /// Cover, title, artist and the album-level actions.
 class _AlbumHeader extends ConsumerWidget {
   const _AlbumHeader({
     required this.album,
     required this.tracks,
     required this.onOpenArtist,
-    required this.onBack,
     this.onOpenTag,
-    this.onEdit,
+    this.topInset = 0,
   });
 
   final AlbumCard album;
   final List<TrackRow> tracks;
   final void Function(int artistId) onOpenArtist;
   final void Function(int tagId)? onOpenTag;
-  final VoidCallback onBack;
-
-  /// Opens the album editor.
-  final VoidCallback? onEdit;
+  final double topInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -127,60 +202,10 @@ class _AlbumHeader extends ConsumerWidget {
     final trackIds = tracks.map((t) => t.id).toList();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 24),
+      padding: EdgeInsets.only(top: topInset + 20, bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: 'Back',
-                  onPressed: onBack,
-                  icon: const Icon(Icons.arrow_back),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Add this album to a playlist',
-                  onPressed: () => showAddAlbumToPlaylist(
-                    context,
-                    ref,
-                    album.id,
-                    albumTitle: album.title,
-                  ),
-                  icon: const Icon(Icons.library_add_outlined),
-                ),
-                if (onEdit != null)
-                  IconButton(
-                    tooltip: 'Edit this album',
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                // Track order is what an album is normally read in, but a
-                // long compilation is easier to search alphabetically and a
-                // soundtrack is sometimes easier by length.
-                PopupMenuButton<LibrarySort>(
-                  tooltip: 'Sort tracks',
-                  initialValue: ref.watch(albumTrackSortProvider),
-                  onSelected: (value) =>
-                      ref.read(albumTrackSortProvider.notifier).set(value),
-                  icon: const Icon(Icons.sort),
-                  itemBuilder: (context) => [
-                    for (final option in const [
-                      LibrarySort.trackNumber,
-                      LibrarySort.nameAscending,
-                      LibrarySort.duration,
-                      LibrarySort.mostPlayed,
-                      LibrarySort.random,
-                    ])
-                      PopupMenuItem(value: option, child: Text(option.label)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

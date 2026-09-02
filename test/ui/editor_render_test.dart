@@ -9,6 +9,7 @@ import 'package:marmelade/data/db/enums.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart';
 import 'package:marmelade/features/edit/album_editor_view.dart';
 import 'package:marmelade/features/edit/artist_editor_view.dart';
+import 'package:marmelade/features/edit/editor_save_state.dart';
 import 'package:marmelade/features/edit/track_editor_view.dart';
 import 'package:marmelade/services/art/art_store.dart';
 
@@ -115,20 +116,17 @@ void main() {
     }
   }
 
-  /// The Save button, so its enabled state can be checked.
-  FilledButton saveButton(WidgetTester tester) => tester.widget<FilledButton>(
-        find.ancestor(
-          of: find.text('Save'),
-          matching: find.byType(FilledButton),
-        ),
-      );
+  /// Whether the Save button -- now in the chrome, not the editor's own
+  /// widget tree -- would be enabled, per the bridge that drives it.
+  bool saveEnabled(EditorSaveState state) => state.onSave != null;
 
   group('artist editor', () {
     testWidgets('shows every part of the artist', (tester) async {
+      final saveState = EditorSaveState();
       await open(
         tester,
         wrap(
-          const ArtistEditorView(artistId: 1, onBack: _noop),
+          ArtistEditorView(artistId: 1, onBack: _noop, saveState: saveState),
           artist: artistEdit(
             aliases: const [
               AliasRow(id: 1, alias: 'ピノキオピー', kind: AliasKind.nativeScript),
@@ -151,7 +149,7 @@ void main() {
       expect(find.text('Split'), findsOne);
       expect(find.text('Merge'), findsOne);
       // Save is inert until something actually changes.
-      expect(saveButton(tester).onPressed, isNull);
+      expect(saveEnabled(saveState), isFalse);
       expect(tester.takeException(), isNull);
     });
 
@@ -159,7 +157,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const ArtistEditorView(artistId: 1, onBack: _noop),
+          ArtistEditorView(
+              artistId: 1, onBack: _noop, saveState: EditorSaveState()),
           artist: artistEdit(kind: ArtistKind.person),
         ),
       );
@@ -171,7 +170,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const ArtistEditorView(artistId: 1, onBack: _noop),
+          ArtistEditorView(
+              artistId: 1, onBack: _noop, saveState: EditorSaveState()),
           artist: artistEdit(
             name: 'Xista',
             kind: ArtistKind.group,
@@ -198,21 +198,22 @@ void main() {
     });
 
     testWidgets('typing a new name enables Save', (tester) async {
+      final saveState = EditorSaveState();
       await open(
         tester,
         wrap(
-          const ArtistEditorView(artistId: 1, onBack: _noop),
+          ArtistEditorView(artistId: 1, onBack: _noop, saveState: saveState),
           artist: artistEdit(name: 'LukHassh'),
         ),
       );
-      expect(saveButton(tester).onPressed, isNull);
+      expect(saveEnabled(saveState), isFalse);
 
       await tester.enterText(
         find.widgetWithText(TextField, 'LukHassh'),
         'LukHash',
       );
       await tester.pump();
-      expect(saveButton(tester).onPressed, isNotNull);
+      expect(saveEnabled(saveState), isTrue);
       expect(tester.takeException(), isNull);
     });
 
@@ -220,7 +221,8 @@ void main() {
         (tester) async {
       await open(
         tester,
-        wrap(const ArtistEditorView(artistId: 1, onBack: _noop)),
+        wrap(ArtistEditorView(
+            artistId: 1, onBack: _noop, saveState: EditorSaveState())),
       );
       expect(find.text('That artist is gone'), findsOne);
     });
@@ -231,7 +233,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const ArtistEditorView(artistId: 1, onBack: _noop),
+          ArtistEditorView(
+              artistId: 1, onBack: _noop, saveState: EditorSaveState()),
           artist: artistEdit(kind: ArtistKind.group),
         ),
         size: const Size(860, 620),
@@ -242,10 +245,11 @@ void main() {
 
   group('album editor', () {
     testWidgets('shows the release and its album artist', (tester) async {
+      final saveState = EditorSaveState();
       await open(
         tester,
         wrap(
-          const AlbumEditorView(albumId: 1, onBack: _noop),
+          AlbumEditorView(albumId: 1, onBack: _noop, saveState: saveState),
           album: albumEdit,
         ),
         // Picture, other titles and tags now sit above the album artist, so a
@@ -256,7 +260,7 @@ void main() {
       expect(find.text('Diverse System'), findsOne);
       expect(find.text('Various artists'), findsOne);
       expect(find.widgetWithText(TextField, '2024'), findsOne);
-      expect(saveButton(tester).onPressed, isNull);
+      expect(saveEnabled(saveState), isFalse);
       expect(tester.takeException(), isNull);
     });
 
@@ -264,7 +268,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const AlbumEditorView(albumId: 1, onBack: _noop),
+          AlbumEditorView(
+              albumId: 1, onBack: _noop, saveState: EditorSaveState()),
           album: albumEdit,
         ),
         size: const Size(860, 620),
@@ -279,7 +284,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const TrackEditorView(trackId: 1, onBack: _noop),
+          TrackEditorView(
+              trackId: 1, onBack: _noop, saveState: EditorSaveState()),
           track: trackEdit,
         ),
         size: const Size(1200, 1800),
@@ -295,21 +301,22 @@ void main() {
     });
 
     testWidgets('removing a credit enables Save', (tester) async {
+      final saveState = EditorSaveState();
       await open(
         tester,
         wrap(
-          const TrackEditorView(trackId: 1, onBack: _noop),
+          TrackEditorView(trackId: 1, onBack: _noop, saveState: saveState),
           track: trackEdit,
         ),
         size: const Size(1200, 1800),
       );
-      expect(saveButton(tester).onPressed, isNull);
+      expect(saveEnabled(saveState), isFalse);
 
       await tester.tap(find.byTooltip('Remove').first);
       await tester.pump();
 
       expect(find.byTooltip('Remove'), findsOne);
-      expect(saveButton(tester).onPressed, isNotNull);
+      expect(saveEnabled(saveState), isTrue);
       expect(tester.takeException(), isNull);
     });
 
@@ -317,7 +324,8 @@ void main() {
       await open(
         tester,
         wrap(
-          const TrackEditorView(trackId: 1, onBack: _noop),
+          TrackEditorView(
+              trackId: 1, onBack: _noop, saveState: EditorSaveState()),
           track: trackEdit,
         ),
         size: const Size(860, 620),

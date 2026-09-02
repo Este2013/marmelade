@@ -9,46 +9,100 @@ import 'package:window_manager/window_manager.dart';
 /// Windows' -- so this is only the caption strip, not a reimplementation of the
 /// window.
 ///
-/// Drawn as the topmost layer and transparent, so whatever is beneath shows
-/// through and the strip is never a differently-coloured band. It stays above
-/// the now-playing shade too: a window you cannot move or close because a panel
-/// is open would be a poor trade for the extra immersion.
+/// [content] is the merged toolbar: a view's own title, filters and sort
+/// controls, or a detail page's back/edit row, or the now-playing shade's
+/// close button and label -- whatever the current screen would otherwise have
+/// drawn as a separate bar directly underneath. There used to be one; the
+/// space it took is exactly the drag area this strip has always had, so
+/// merging the two loses nothing draggable: the drag area moves *behind*
+/// [content] instead of sitting empty beside it. A real control (a button, a
+/// text field) is painted on top and wins the hit test where it sits; anywhere
+/// else in the strip -- the gap between a title and its controls, the margin
+/// around a chip -- falls through to the drag area behind it. No view has to
+/// reserve or calculate its own draggable gap for this to work.
+///
+/// Drawn as the topmost layer, so it stays above the now-playing shade too: a
+/// window you cannot move or close because a panel is open would be a poor
+/// trade for the extra immersion.
 class WindowChrome extends StatelessWidget {
-  const WindowChrome({super.key, this.leading, this.trailing});
+  const WindowChrome({
+    super.key,
+    this.content,
+    this.trailing,
+    this.contentInset = 0,
+  });
 
   /// Height of the strip, in logical pixels.
   ///
-  /// Matches Windows' own caption height closely enough that the controls land
-  /// where the muscle memory expects them.
-  static const height = 40.0;
+  /// Tall enough for a full toolbar row -- title, count, a filter field, a
+  /// sort dropdown -- on one line; the same height everywhere, now-playing
+  /// included, rather than one height for a slim strip and another for a busy
+  /// one.
+  static const height = 56.0;
 
-  /// Controls placed at the left end of the strip, before the drag area.
+  /// The current screen's own toolbar, filling the strip apart from
+  /// [trailing] and the window buttons.
   ///
-  /// The strip is the only chrome the window has, so anything that belongs to
-  /// the window as a whole rather than to a view belongs here. Kept as opaque
-  /// widgets so this file stays about the window and knows nothing about the
-  /// player.
-  final Widget? leading;
+  /// Null when a screen has nothing to put here (there always is one in
+  /// practice, but nothing requires it). Kept as an opaque widget so this file
+  /// stays about the window and knows nothing about any particular view.
+  final Widget? content;
 
-  /// Controls placed after the drag area, before the window buttons.
+  /// Controls placed after [content], before the window buttons.
+  ///
+  /// A second slot rather than folding everything into [content] because a
+  /// couple of screens (the now-playing shade) want a small fixed-width group
+  /// pinned next to the window buttons regardless of how [content] lays
+  /// itself out.
   final Widget? trailing;
+
+  /// Space reserved before [content] starts.
+  ///
+  /// The strip runs the full width, over the rail's top as well -- see the
+  /// drag layer below -- but [content] itself must not: unlike the drag area,
+  /// it actually paints something, and painted content starting at the
+  /// window's left edge lands on top of whatever the rail draws there (its
+  /// logo, a destination). The caller measures the rail and passes its width
+  /// here; zero on the one screen where that no longer applies, the
+  /// now-playing shade, because the shade's own backdrop already covers the
+  /// rail by the time its controls would need to clear it.
+  final double contentInset;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: height,
-      child: Row(
+      child: Stack(
         children: [
-          ?leading,
-          // The strip runs the full width, over the rail's top as well. The
-          // rail's first destination starts below it, so nothing interactive is
-          // covered, and in exchange the entire top edge of the window drags --
-          // which is what the edge of a window is expected to do. Reserving a
-          // gap for the rail would mean hard-coding its width, and a rail with
-          // labels is wider than its minWidth suggests.
-          const Expanded(child: _DragStrip()),
-          ?trailing,
-          const _WindowButtons(),
+          // Full width, underneath everything else: see the class comment for
+          // why this is a background layer rather than a slice of the Row.
+          const Positioned.fill(child: _DragStrip()),
+          Row(
+            children: [
+              // The strip runs the full width, over the rail's top as well. The
+              // rail's first destination starts below it, so nothing
+              // interactive is covered, and in exchange the entire top edge of
+              // the window drags -- which is what the edge of a window is
+              // expected to do.
+              SizedBox(width: contentInset),
+              // Always an Expanded, even with nothing to show, so this claims
+              // the flex space that keeps trailing and the window buttons
+              // pinned to the right edge instead of collapsing left.
+              Expanded(
+                child: content == null
+                    ? const SizedBox.shrink()
+                    // One place for the margin every screen's toolbar used to
+                    // set for itself, so moving a toolbar here does not also
+                    // mean copying its padding.
+                    : Padding(
+                        padding: const EdgeInsets.only(left: 24, right: 8),
+                        child: content!,
+                      ),
+              ),
+              ?trailing,
+              const _WindowButtons(),
+            ],
+          ),
         ],
       ),
     );

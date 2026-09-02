@@ -80,7 +80,17 @@ void main() {
           tagCategoriesProvider.overrideWith((ref) => Stream.value(categories)),
         ],
         child: MaterialApp(
-          home: Scaffold(body: TagsView(onOpenTag: (_) {})),
+          home: Scaffold(
+            // "New category" now lives in TagsToolbar, the window title
+            // bar's content in the real app (see AppShell) -- stood up
+            // alongside the view here rather than inside it.
+            body: Column(
+              children: [
+                const TagsToolbar(),
+                Expanded(child: TagsView(onOpenTag: (_) {})),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -7,10 +7,35 @@ import '../../data/repositories/tag_repository.dart' show TagTarget;
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
+import '../../widgets/section_title.dart';
 import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+
+/// Every song, and the ones that survive the current filter.
+///
+/// Shared between [SongsToolbar] (which only needs the counts and the
+/// shuffle button) and the list (which needs the filtered rows) so the
+/// filtering itself happens once regardless of which of them rebuilds.
+final songsShownProvider =
+    Provider<({List<TrackRow> all, List<TrackRow> shown})>((ref) {
+  final all = ref.watch(allTracksProvider).value ?? const <TrackRow>[];
+  final filter = ref.watch(songFilterProvider);
+  // Matched on everything the row shows: a song is as likely to be looked for
+  // by who is on it or which release it is from as by its title.
+  final shown = [
+    for (final track in all)
+      if (matchesQuery(filter, [
+        track.title,
+        track.albumTitle,
+        for (final credit in track.credits) credit.name,
+        for (final credit in track.credits) credit.creditedAs,
+      ]))
+        track,
+  ];
+  return (all: all, shown: shown);
+});
 
 /// The full song list.
 class SongsView extends ConsumerWidget {
@@ -28,89 +53,11 @@ class SongsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tracks = ref.watch(allTracksProvider);
-    final sort = ref.watch(trackSortProvider);
     final filter = ref.watch(songFilterProvider);
-    final theme = Theme.of(context);
-
-    // Matched on everything the row shows: a song is as likely to be looked
-    // for by who is on it or which release it is from as by its title.
-    final all = tracks.value ?? const <TrackRow>[];
-    final shown = [
-      for (final track in all)
-        if (matchesQuery(filter, [
-          track.title,
-          track.albumTitle,
-          for (final credit in track.credits) credit.name,
-          for (final credit in track.credits) credit.creditedAs,
-        ]))
-          track,
-    ];
+    final shown = ref.watch(songsShownProvider).shown;
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-          child: Row(
-            children: [
-              Text('Songs', style: theme.textTheme.headlineSmall),
-              const SizedBox(width: 12),
-              Text(
-                filter.isEmpty
-                    ? pluralize(all.length, 'song')
-                    : '${shown.length} of ${pluralize(all.length, 'song')}',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    child: FilterField(
-                      value: filter,
-                      width: null,
-                      hint: 'Filter songs',
-                      onChanged: (value) =>
-                          ref.read(songFilterProvider.notifier).set(value),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (shown.isNotEmpty)
-                OutlinedButton.icon(
-                  // Shuffles what is on screen, so a filter narrows this too.
-                  onPressed: () => _shuffleEverything(ref, shown),
-                  icon: const Icon(Icons.shuffle, size: 18),
-                  label: Text(
-                    filter.isEmpty ? 'Shuffle all' : 'Shuffle these',
-                  ),
-                ),
-              const SizedBox(width: 8),
-              PopupMenuButton<LibrarySort>(
-                tooltip: 'Sort',
-                initialValue: sort,
-                onSelected: (value) =>
-                    ref.read(trackSortProvider.notifier).set(value),
-                icon: const Icon(Icons.sort),
-                itemBuilder: (context) => [
-                  for (final option in const [
-                    LibrarySort.nameAscending,
-                    LibrarySort.nameDescending,
-                    LibrarySort.recentlyAdded,
-                    LibrarySort.recentlyPlayed,
-                    LibrarySort.mostPlayed,
-                    LibrarySort.releaseYear,
-                    LibrarySort.duration,
-                    LibrarySort.random,
-                  ])
-                    PopupMenuItem(value: option, child: Text(option.label)),
-                ],
-              ),
-            ],
-          ),
-        ),
         _SongSelectionBar(tracks: shown, onEditTrack: onEditTrack),
         Expanded(
           child: tracks.when(
@@ -218,13 +165,88 @@ class SongsView extends ConsumerWidget {
     ];
   }
 
-  /// Queues the whole library in a random order and starts playing.
-  Future<void> _shuffleEverything(WidgetRef ref, List<TrackRow> tracks) async {
-    final player = ref.read(playerProvider.notifier);
-    await player.playAll(tracks.map((t) => t.id).toList());
-    await player.shuffleQueue();
-    await player.playAt(0);
+}
+
+/// Title, count, filter, shuffle and sort -- the songs section's own
+/// toolbar, merged into the window's title bar. See [AppShell] and
+/// `WindowChrome.content`.
+class SongsToolbar extends ConsumerWidget {
+  const SongsToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final sort = ref.watch(trackSortProvider);
+    final filter = ref.watch(songFilterProvider);
+    final data = ref.watch(songsShownProvider);
+
+    return Row(
+      children: [
+        const SectionTitle(icon: Icons.music_note, label: 'Songs'),
+        const SizedBox(width: 12),
+        Text(
+          filter.isEmpty
+              ? pluralize(data.all.length, 'song')
+              : '${data.shown.length} of ${pluralize(data.all.length, 'song')}',
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: FilterField(
+                value: filter,
+                width: null,
+                hint: 'Filter songs',
+                onChanged: (value) =>
+                    ref.read(songFilterProvider.notifier).set(value),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        if (data.shown.isNotEmpty)
+          OutlinedButton.icon(
+            // Shuffles what is on screen, so a filter narrows this too.
+            onPressed: () => _shuffleEverything(ref, data.shown),
+            icon: const Icon(Icons.shuffle, size: 18),
+            label: Text(filter.isEmpty ? 'Shuffle all' : 'Shuffle these'),
+          ),
+        const SizedBox(width: 8),
+        PopupMenuButton<LibrarySort>(
+          tooltip: 'Sort',
+          initialValue: sort,
+          onSelected: (value) =>
+              ref.read(trackSortProvider.notifier).set(value),
+          icon: const Icon(Icons.sort),
+          itemBuilder: (context) => [
+            for (final option in const [
+              LibrarySort.nameAscending,
+              LibrarySort.nameDescending,
+              LibrarySort.recentlyAdded,
+              LibrarySort.recentlyPlayed,
+              LibrarySort.mostPlayed,
+              LibrarySort.releaseYear,
+              LibrarySort.duration,
+              LibrarySort.random,
+            ])
+              PopupMenuItem(value: option, child: Text(option.label)),
+          ],
+        ),
+      ],
+    );
   }
+}
+
+/// Queues the whole library in a random order and starts playing.
+Future<void> _shuffleEverything(WidgetRef ref, List<TrackRow> tracks) async {
+  final player = ref.read(playerProvider.notifier);
+  await player.playAll(tracks.map((t) => t.id).toList());
+  await player.shuffleQueue();
+  await player.playAt(0);
 }
 
 /// The bulk actions for a selection of songs.

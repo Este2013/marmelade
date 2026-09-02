@@ -22,13 +22,9 @@ class SettingsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
-        Text('Settings', style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 20),
         const AppearanceSection(),
         const SizedBox(height: 28),
         const _LibrarySection(),

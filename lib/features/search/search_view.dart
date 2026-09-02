@@ -13,21 +13,29 @@ import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
 import '../tags/category_icons.dart';
 
-/// One field, and everything in the library it could mean.
+/// Everything in the library a query could mean.
 ///
 /// Results are grouped by kind rather than mixed into one list: "which artist"
 /// and "which song" are different questions, and a single ranked list answers
 /// neither well. The one exception is the top result, which leads because most
 /// searches have an obvious answer and scanning five headings for it is work.
-class SearchView extends ConsumerStatefulWidget {
+///
+/// The field itself lives in the window's title bar now (see [SearchToolbar]
+/// and [AppShell]), not here: a keystroke from anywhere in the app needs to
+/// reach it, which only works if something outside this page owns it.
+class SearchView extends ConsumerWidget {
   const SearchView({
     super.key,
+    required this.onClear,
     this.onOpenArtist,
     this.onOpenAlbum,
     this.onOpenTag,
     this.onOpenPlaylist,
     this.onEditTrack,
   });
+
+  /// Clears the query and refocuses the field, for the Escape shortcut.
+  final VoidCallback onClear;
 
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
@@ -36,114 +44,82 @@ class SearchView extends ConsumerStatefulWidget {
   final void Function(int trackId)? onEditTrack;
 
   @override
-  ConsumerState<SearchView> createState() => SearchViewState();
-}
-
-class SearchViewState extends ConsumerState<SearchView> {
-  final _controller = TextEditingController();
-  final _focus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    // The query outlives the view, so coming back shows what was typed.
-    _controller.text = ref.read(searchQueryProvider);
-    WidgetsBinding.instance.addPostFrameCallback((_) => focusField());
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focus.dispose();
-    super.dispose();
-  }
-
-  /// Puts the caret in the field and selects what is there.
-  ///
-  /// Selecting rather than appending: arriving at search with something already
-  /// typed almost always means a new search, and typing replaces it.
-  void focusField() {
-    if (!mounted) return;
-    _focus.requestFocus();
-    _controller.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _controller.text.length,
-    );
-  }
-
-  void _clear() {
-    _controller.clear();
-    ref.read(searchQueryProvider.notifier).set('');
-    _focus.requestFocus();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(searchQueryProvider);
     final results = ref.watch(searchResultsProvider);
+
+    return CallbackShortcuts(
+      bindings: {
+        // Escape clears rather than leaving: the field is the page.
+        const SingleActivator(LogicalKeyboardKey.escape): onClear,
+      },
+      child: switch (results) {
+        AsyncValue(hasError: true, :final error) => EmptyState(
+            icon: Icons.error_outline,
+            title: 'The search failed',
+            message: '$error',
+          ),
+        // Previous results stay visible while the next search runs, so the
+        // page does not flash empty between keystrokes.
+        AsyncValue(:final value?) => _Results(
+            results: value,
+            query: query,
+            onOpenArtist: onOpenArtist,
+            onOpenAlbum: onOpenAlbum,
+            onOpenTag: onOpenTag,
+            onOpenPlaylist: onOpenPlaylist,
+            onEditTrack: onEditTrack,
+          ),
+        _ => const Center(child: CircularProgressIndicator()),
+      },
+    );
+  }
+}
+
+/// The search field, merged into the window's title bar.
+///
+/// Owned by [AppShell] rather than by [SearchView]: [controller] and
+/// [focusNode] are handed in from there, so a keystroke from anywhere in the
+/// app (Ctrl+F, Ctrl+K) can reach this field without going through the
+/// section's own page, which may not even be the one on screen.
+class SearchToolbar extends ConsumerWidget {
+  const SearchToolbar({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final query = ref.watch(searchQueryProvider);
     final theme = Theme.of(context);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focus,
-                  autocorrect: false,
-                  textInputAction: TextInputAction.search,
-                  style: theme.textTheme.titleMedium,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: query.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear',
-                            onPressed: _clear,
-                            icon: const Icon(Icons.close),
-                          ),
-                    hintText: 'An artist, a song, an album, a tag, a playlist',
-                    border: const OutlineInputBorder(),
-                  ),
-                  onChanged: (value) =>
-                      ref.read(searchQueryProvider.notifier).set(value),
-                  // Escape clears rather than leaving: the field is the page.
-                  onSubmitted: (_) => _focus.requestFocus(),
-                ),
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      autocorrect: false,
+      textInputAction: TextInputAction.search,
+      style: theme.textTheme.titleMedium,
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: query.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                onPressed: onClear,
+                icon: const Icon(Icons.close),
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: CallbackShortcuts(
-            bindings: {
-              const SingleActivator(LogicalKeyboardKey.escape): _clear,
-            },
-            child: switch (results) {
-              AsyncValue(hasError: true, :final error) => EmptyState(
-                  icon: Icons.error_outline,
-                  title: 'The search failed',
-                  message: '$error',
-                ),
-              // Previous results stay visible while the next search runs, so
-              // the page does not flash empty between keystrokes.
-              AsyncValue(:final value?) => _Results(
-                  results: value,
-                  query: query,
-                  onOpenArtist: widget.onOpenArtist,
-                  onOpenAlbum: widget.onOpenAlbum,
-                  onOpenTag: widget.onOpenTag,
-                  onOpenPlaylist: widget.onOpenPlaylist,
-                  onEditTrack: widget.onEditTrack,
-                ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
-          ),
-        ),
-      ],
+        hintText: 'An artist, a song, an album, a tag, a playlist',
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (value) => ref.read(searchQueryProvider.notifier).set(value),
+      onSubmitted: (_) => focusNode.requestFocus(),
     );
   }
 }
