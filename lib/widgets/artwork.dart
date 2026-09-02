@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
+import 'dither_overlay.dart';
 
 /// Hard ceiling on decode width, in physical pixels.
 ///
@@ -244,6 +245,11 @@ class ArtworkBackdrop extends ConsumerWidget {
             ),
           ),
         ),
+        // Breaks up the banding a blur this heavy leaves in a mostly
+        // one-colour cover -- see DitherOverlay's own comment. Tuned by eye
+        // against a real album page: much above this and the grain reads as
+        // static instead of quietly smoothing the gradient.
+        const DitherOverlay(strength: 0.1),
         ?child,
       ],
     );
