@@ -662,7 +662,12 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     final scheme = Theme.of(context).colorScheme;
     return Positioned(
       top: 0,
-      left: 0,
+      // Unlike the strip's own drag area, which deliberately runs the full
+      // width including over the rail, this has nothing to do over the
+      // rail: nothing there ever scrolls, so blurring it would only smear
+      // the rail's own icon for no reason. Starts exactly where the content
+      // column does.
+      left: _railWidth + 1,
       right: 0,
       height: WindowChrome.height,
       // BackdropFilter clips its own paint to this box either way, confirmed
