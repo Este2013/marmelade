@@ -7,6 +7,8 @@ import '../../data/db/database.dart' show SearchEntity;
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/search_repository.dart';
 import '../../domain/models/library_views.dart';
+import '../../domain/search/query_suggestions.dart';
+import '../../domain/search/smart_query.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
@@ -92,7 +94,15 @@ class SearchView extends ConsumerWidget {
 /// [focusNode] are handed in from there, so a keystroke from anywhere in the
 /// app (Ctrl+F, Ctrl+K) can reach this field without going through the
 /// section's own page, which may not even be the one on screen.
-class SearchToolbar extends ConsumerWidget {
+///
+/// Understands the same field syntax a smart playlist's query does --
+/// `artist:`, `is:`, `not:`, `OR` -- and offers the same kind of suggestions
+/// [SmartQueryField] does. They cannot look the same, though: this field
+/// lives in the fixed-height title bar, which must not grow to fit a row of
+/// chips the way a playlist page can. Suggestions are a small floating popup
+/// instead, one line each, anchored under the field rather than pushing the
+/// bar taller.
+class SearchToolbar extends ConsumerStatefulWidget {
   const SearchToolbar({
     super.key,
     required this.controller,
@@ -105,31 +115,284 @@ class SearchToolbar extends ConsumerWidget {
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SearchToolbar> createState() => _SearchToolbarState();
+}
+
+class _SearchToolbarState extends ConsumerState<SearchToolbar> {
+  final _layerLink = LayerLink();
+  OverlayEntry? _overlay;
+  double _fieldWidth = 400;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_syncOverlay);
+    widget.focusNode.addListener(_syncOverlay);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncOverlay);
+    widget.focusNode.removeListener(_syncOverlay);
+    _removeOverlay();
+    super.dispose();
+  }
+
+  /// The request for wherever the caret is, same as [SmartQueryField]'s.
+  SuggestionRequest get _request {
+    final selection = widget.controller.selection;
+    final caret = selection.isValid
+        ? selection.baseOffset
+        : widget.controller.text.length;
+    return suggestionAt(widget.controller.text, caret);
+  }
+
+  /// Everything to offer right now. Empty without focus, so a query left
+  /// sitting in the field while something else has focus does not pop this
+  /// open on its own.
+  List<Suggestion> get _suggestions {
+    if (!widget.focusNode.hasFocus) return const [];
+    final request = _request;
+    return switch (request.kind) {
+      SuggestionKind.fields ||
+      SuggestionKind.matchingFields =>
+        suggestFields(request.partial),
+      SuggestionKind.names =>
+        request.field == QueryField.tag ? _tagSuggestions(request.partial) : const [],
+      SuggestionKind.ages => [
+          for (final age in ageSuggestions)
+            Suggestion(
+              insert: '${request.field!.keyword}:${age.value}',
+              label: '${request.field!.keyword}:${age.value}',
+              detail: age.label,
+            ),
+        ],
+      SuggestionKind.comparators => [
+          for (final comparator in comparatorSuggestions)
+            Suggestion(
+              insert: '${request.field!.keyword}:${comparator.value}',
+              label: '${request.field!.keyword}:${comparator.value}',
+              detail: comparator.label,
+              continues: true,
+            ),
+        ],
+      SuggestionKind.flags => [
+          for (final entry in flagSuggestions)
+            if (entry.flag.keyword
+                .toLowerCase()
+                .startsWith(request.partial.toLowerCase()))
+              Suggestion(
+                insert: 'is${request.separator}${entry.flag.keyword}',
+                label: 'is:${entry.flag.keyword}',
+                detail: entry.detail,
+              ),
+        ],
+      SuggestionKind.none => const [],
+    };
+  }
+
+  /// The tags matching what has been typed. No lookup needed -- unlike an
+  /// artist or an album, every tag is already sitting in [taggedProvider].
+  List<Suggestion> _tagSuggestions(String partial) {
+    final typed = partial.replaceAll('"', '').toLowerCase();
+    final tags = ref.read(taggedProvider).value ?? const [];
+    return [
+      for (final tag
+          in tags.where((t) => t.name.toLowerCase().contains(typed)).take(8))
+        Suggestion(
+          insert: 'tag=${quoteIfNeeded(tag.name)}',
+          label: tag.name,
+          detail: '${tag.trackCount} tracks',
+        ),
+    ];
+  }
+
+  void _accept(Suggestion suggestion) {
+    final applied =
+        applySuggestion(widget.controller.text, _request.token, suggestion);
+    widget.controller.value = TextEditingValue(
+      text: applied.text,
+      selection: TextSelection.collapsed(offset: applied.caret),
+    );
+    // Setting the controller directly bypasses the field's own onChanged.
+    ref.read(searchQueryProvider.notifier).set(applied.text);
+    widget.focusNode.requestFocus();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final suggestions = _suggestions;
+    if (suggestions.isEmpty) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      _accept(suggestions.first);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _removeOverlay();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _syncOverlay() {
+    if (!mounted) return;
+    if (_suggestions.isEmpty) {
+      _removeOverlay();
+      return;
+    }
+    if (_overlay == null) {
+      _overlay = OverlayEntry(builder: (_) => _buildPopup());
+      Overlay.of(context).insert(_overlay!);
+    } else {
+      _overlay!.markNeedsBuild();
+    }
+  }
+
+  void _removeOverlay() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  Widget _buildPopup() {
+    final suggestions = _suggestions;
+    if (suggestions.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Positioned(
+      width: _fieldWidth,
+      child: CompositedTransformFollower(
+        link: _layerLink,
+        showWhenUnlinked: false,
+        targetAnchor: Alignment.bottomLeft,
+        followerAnchor: Alignment.topLeft,
+        offset: const Offset(0, 6),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 6,
+            color: scheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(10),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: suggestions.length,
+                separatorBuilder: (_, _) => Divider(
+                  height: 1,
+                  color: scheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+                itemBuilder: (context, index) => _SuggestionRow(
+                  suggestion: suggestions[index],
+                  onSelect: () => _accept(suggestions[index]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final query = ref.watch(searchQueryProvider);
     final theme = Theme.of(context);
 
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      autocorrect: false,
-      textInputAction: TextInputAction.search,
-      style: theme.textTheme.titleMedium,
-      decoration: InputDecoration(
-        isDense: true,
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: query.isEmpty
-            ? null
-            : IconButton(
-                tooltip: 'Clear',
-                onPressed: onClear,
-                icon: const Icon(Icons.close),
+    // Watched so a tag suggestion can be offered as soon as the provider
+    // has an answer, not only whatever it held the moment focus landed here
+    // -- the popup itself is an OverlayEntry, which sits outside the tree
+    // Riverpod would otherwise rebuild on its own.
+    ref.watch(taggedProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _overlay?.markNeedsBuild();
+    });
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _fieldWidth = constraints.maxWidth;
+        return Focus(
+          onKeyEvent: _handleKey,
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: TextField(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              autocorrect: false,
+              textInputAction: TextInputAction.search,
+              style: theme.textTheme.titleMedium,
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear',
+                        onPressed: widget.onClear,
+                        icon: const Icon(Icons.close),
+                      ),
+                hintText: 'An artist, a song, an album, a tag, a playlist',
+                border: const OutlineInputBorder(),
               ),
-        hintText: 'An artist, a song, an album, a tag, a playlist',
-        border: const OutlineInputBorder(),
+              onChanged: (value) =>
+                  ref.read(searchQueryProvider.notifier).set(value),
+              onSubmitted: (_) => widget.focusNode.requestFocus(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One suggestion, one line: the completion on the left, what it means on
+/// the right.
+///
+/// Accepted on tap-down rather than tap: a tap's pointer-up is what closes
+/// the popup (the field loses focus first), and by then the row it landed on
+/// is already gone.
+class _SuggestionRow extends StatelessWidget {
+  const _SuggestionRow({required this.suggestion, required this.onSelect});
+
+  final Suggestion suggestion;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => onSelect(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: Row(
+          children: [
+            Text(
+              suggestion.label,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(fontFamily: 'Consolas'),
+            ),
+            if (suggestion.detail case final detail?) ...[
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  detail,
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
-      onChanged: (value) => ref.read(searchQueryProvider.notifier).set(value),
-      onSubmitted: (_) => focusNode.requestFocus(),
     );
   }
 }
