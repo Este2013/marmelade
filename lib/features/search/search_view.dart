@@ -123,16 +123,27 @@ class _SearchToolbarState extends ConsumerState<SearchToolbar> {
   OverlayEntry? _overlay;
   double _fieldWidth = 400;
 
+  /// Which suggestion the arrow keys have moved to. Reset to the first
+  /// whenever the text changes, since a fresh list of suggestions is a fresh
+  /// choice -- there is no reason for the highlight to survive from "artist:"
+  /// to "artist:nan".
+  var _highlighted = 0;
+
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_syncOverlay);
+    widget.controller.addListener(_onTextChanged);
     widget.focusNode.addListener(_syncOverlay);
+  }
+
+  void _onTextChanged() {
+    _highlighted = 0;
+    _syncOverlay();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_syncOverlay);
+    widget.controller.removeListener(_onTextChanged);
     widget.focusNode.removeListener(_syncOverlay);
     _removeOverlay();
     super.dispose();
@@ -219,6 +230,13 @@ class _SearchToolbarState extends ConsumerState<SearchToolbar> {
     widget.focusNode.requestFocus();
   }
 
+  /// Moves the highlight, clamped rather than wrapped -- arrowing past either
+  /// end should stop, not loop back around to surprise whoever is counting.
+  void _moveHighlight(int delta, int count) {
+    _highlighted = (_highlighted + delta).clamp(0, count - 1);
+    _overlay?.markNeedsBuild();
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final suggestions = _suggestions;
@@ -226,6 +244,19 @@ class _SearchToolbarState extends ConsumerState<SearchToolbar> {
 
     if (event.logicalKey == LogicalKeyboardKey.tab) {
       _accept(suggestions.first);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _moveHighlight(1, suggestions.length);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _moveHighlight(-1, suggestions.length);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      _accept(suggestions[_highlighted.clamp(0, suggestions.length - 1)]);
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
@@ -287,7 +318,13 @@ class _SearchToolbarState extends ConsumerState<SearchToolbar> {
                 ),
                 itemBuilder: (context, index) => _SuggestionRow(
                   suggestion: suggestions[index],
+                  highlighted: index == _highlighted,
                   onSelect: () => _accept(suggestions[index]),
+                  onHover: () {
+                    if (_highlighted == index) return;
+                    _highlighted = index;
+                    _overlay?.markNeedsBuild();
+                  },
                 ),
               ),
             ),
@@ -355,42 +392,61 @@ class _SearchToolbarState extends ConsumerState<SearchToolbar> {
 /// the popup (the field loses focus first), and by then the row it landed on
 /// is already gone.
 class _SuggestionRow extends StatelessWidget {
-  const _SuggestionRow({required this.suggestion, required this.onSelect});
+  const _SuggestionRow({
+    required this.suggestion,
+    required this.onSelect,
+    this.highlighted = false,
+    this.onHover,
+  });
 
   final Suggestion suggestion;
   final VoidCallback onSelect;
+
+  /// Whether the arrow keys (or a previous hover) landed here. Enter accepts
+  /// whichever row this is true for.
+  final bool highlighted;
+
+  /// Moves the highlight here on hover, so the mouse and the arrow keys agree
+  /// about which row Enter would accept.
+  final VoidCallback? onHover;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => onSelect(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        child: Row(
-          children: [
-            Text(
-              suggestion.label,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontFamily: 'Consolas'),
-            ),
-            if (suggestion.detail case final detail?) ...[
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  detail,
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
-                ),
+    return MouseRegion(
+      onEnter: (_) => onHover?.call(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => onSelect(),
+        child: Container(
+          color: highlighted
+              ? scheme.primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          child: Row(
+            children: [
+              Text(
+                suggestion.label,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontFamily: 'Consolas'),
               ),
+              if (suggestion.detail case final detail?) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    detail,
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
