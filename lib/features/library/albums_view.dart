@@ -6,6 +6,7 @@ import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../domain/search/smart_query.dart';
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
@@ -13,6 +14,39 @@ import '../../widgets/section_title.dart';
 import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
+
+/// The albums a smart-query filter currently matches, or null when the
+/// filter is not written that way.
+///
+/// The query language only ever filters tracks -- there is no album-level
+/// `is:Favourite` or `tag:` of its own (see [SmartPlaylistResolver]) -- so an
+/// album counts as a match here when at least one of its tracks does, the
+/// same way a synthetic single card counts as a match when its one track
+/// does. Debounced the same way search is: a fast typist should not fire one
+/// resolve per keystroke.
+final _smartAlbumFilterProvider = FutureProvider<Set<int>?>((ref) async {
+  final filter = ref.watch(albumFilterProvider);
+  if (SmartQuery.parse(filter).clauses.isEmpty) return null;
+
+  var superseded = false;
+  ref.onDispose(() => superseded = true);
+  await Future<void>.delayed(const Duration(milliseconds: 200));
+  if (superseded) return null;
+
+  final matchedTrackIds =
+      (await ref.read(smartPlaylistResolverProvider).resolve(filter)).toSet();
+  // Awaited, not read synchronously: this may be the first thing to ever
+  // watch allTracksProvider (nobody has visited Songs yet), in which case a
+  // synchronous read would race its own loading state and see nothing.
+  final tracks = await ref.watch(allTracksProvider.future);
+  return {
+    for (final track in tracks)
+      if (matchedTrackIds.contains(track.id))
+        // A standalone track shows up as a synthetic single card with a
+        // negative id -- see AlbumCard.id / LibraryRepository._singlesAsCards.
+        track.albumId ?? -track.id,
+  };
+});
 
 /// Every album, and the ones that survive the current filter.
 ///
@@ -25,6 +59,18 @@ final albumsShownProvider =
     Provider<({List<AlbumCard> all, List<AlbumCard> shown})>((ref) {
   final all = ref.watch(albumsProvider).value ?? const <AlbumCard>[];
   final filter = ref.watch(albumFilterProvider);
+
+  // A query written in field syntax -- `artist:Camellia`, `is:Favourite` --
+  // is answered precisely through the smart-query resolver instead of by
+  // treating the whole typed string as a literal substring.
+  final smartMatches = ref.watch(_smartAlbumFilterProvider).value;
+  if (smartMatches != null) {
+    return (
+      all: all,
+      shown: [for (final album in all) if (smartMatches.contains(album.id)) album],
+    );
+  }
+
   final shown = [
     for (final album in all)
       if (matchesQuery(filter, [album.title, album.artistName])) album,

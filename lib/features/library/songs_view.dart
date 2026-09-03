@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../domain/models/library_views.dart';
 import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../domain/search/smart_query.dart';
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
@@ -12,6 +13,22 @@ import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+
+/// The tracks a smart-query filter currently matches, or null when the
+/// filter is not written that way. Debounced the same way search is: a fast
+/// typist should not fire one resolve per keystroke.
+final _smartSongFilterProvider = FutureProvider<Set<int>?>((ref) async {
+  final filter = ref.watch(songFilterProvider);
+  if (SmartQuery.parse(filter).clauses.isEmpty) return null;
+
+  var superseded = false;
+  ref.onDispose(() => superseded = true);
+  await Future<void>.delayed(const Duration(milliseconds: 200));
+  if (superseded) return null;
+
+  return (await ref.read(smartPlaylistResolverProvider).resolve(filter))
+      .toSet();
+});
 
 /// Every song, and the ones that survive the current filter.
 ///
@@ -22,6 +39,18 @@ final songsShownProvider =
     Provider<({List<TrackRow> all, List<TrackRow> shown})>((ref) {
   final all = ref.watch(allTracksProvider).value ?? const <TrackRow>[];
   final filter = ref.watch(songFilterProvider);
+
+  // A query written in field syntax -- `artist:Camellia`, `is:Favourite` --
+  // is answered precisely through the smart-query resolver instead of by
+  // treating the whole typed string as a literal substring.
+  final smartMatches = ref.watch(_smartSongFilterProvider).value;
+  if (smartMatches != null) {
+    return (
+      all: all,
+      shown: [for (final track in all) if (smartMatches.contains(track.id)) track],
+    );
+  }
+
   // Matched on everything the row shows: a song is as likely to be looked for
   // by who is on it or which release it is from as by its title.
   final shown = [

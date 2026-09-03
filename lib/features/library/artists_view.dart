@@ -6,6 +6,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../domain/search/smart_query.dart';
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
@@ -13,6 +14,36 @@ import '../../widgets/section_title.dart';
 import '../../widgets/selection.dart';
 import 'bulk_actions.dart';
 import '../../widgets/time_text.dart';
+
+/// The artists a smart-query filter currently matches, or null when the
+/// filter is not written that way.
+///
+/// The query language only ever filters tracks -- there is no artist-level
+/// `is:Favourite` or `tag:` of its own (see [SmartPlaylistResolver]) -- so an
+/// artist counts as a match here when at least one track they are credited
+/// on does. Debounced the same way search is: a fast typist should not fire
+/// one resolve per keystroke.
+final _smartArtistFilterProvider = FutureProvider<Set<int>?>((ref) async {
+  final filter = ref.watch(artistFilterProvider);
+  if (SmartQuery.parse(filter).clauses.isEmpty) return null;
+
+  var superseded = false;
+  ref.onDispose(() => superseded = true);
+  await Future<void>.delayed(const Duration(milliseconds: 200));
+  if (superseded) return null;
+
+  final matchedTrackIds =
+      (await ref.read(smartPlaylistResolverProvider).resolve(filter)).toSet();
+  // Awaited, not read synchronously: this may be the first thing to ever
+  // watch allTracksProvider (nobody has visited Songs yet), in which case a
+  // synchronous read would race its own loading state and see nothing.
+  final tracks = await ref.watch(allTracksProvider.future);
+  return {
+    for (final track in tracks)
+      if (matchedTrackIds.contains(track.id))
+        for (final credit in track.credits) credit.artistId,
+  };
+});
 
 /// Every artist, and the ones that survive the current filter.
 ///
@@ -23,6 +54,18 @@ final artistsShownProvider =
     Provider<({List<ArtistCard> all, List<ArtistCard> shown})>((ref) {
   final all = ref.watch(artistsProvider).value ?? const <ArtistCard>[];
   final filter = ref.watch(artistFilterProvider);
+
+  // A query written in field syntax -- `artist:Camellia`, `is:Favourite` --
+  // is answered precisely through the smart-query resolver instead of by
+  // treating the whole typed string as a literal substring.
+  final smartMatches = ref.watch(_smartArtistFilterProvider).value;
+  if (smartMatches != null) {
+    return (
+      all: all,
+      shown: [for (final artist in all) if (smartMatches.contains(artist.id)) artist],
+    );
+  }
+
   final shown = [
     for (final artist in all)
       if (matchesQuery(filter, [artist.name])) artist,
