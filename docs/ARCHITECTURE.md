@@ -185,6 +185,31 @@ A *hybrid* playlist is the query's results plus rows added by hand, minus
 explicit exclusions. The exclusion is the reason hybrid exists: one otherwise
 perfect query with one song you never want to hear.
 
+### Transfer between computers: merge, never restore
+
+The same music on two machines, with the tagging done on whichever one it was
+downloaded to. A bundle of portable JSON carries everything hand-entered, keyed
+by what things *are* — a normalised name, an image's sha256, a track's payload
+fingerprint — so it means the same thing on a machine that has never seen this
+library. Files are matched on `quick_key`, which covers the audio bytes only and
+therefore survives retagging.
+
+The decision that shapes it: **both machines get used**, and nothing in the
+schema reliably says which edit came first — favourite toggles and play counters
+are written with raw SQL that never touches `updated_at`, and ten tables have no
+timestamp at all. So there is no last-writer-wins. Collections are unioned,
+scalars only fill blanks, flags are additive, counters take the larger side, and
+disagreements are counted rather than resolved silently. The cost is that
+deletions do not propagate; of the two ways to be wrong, resurrecting a tag is
+the one you can see.
+
+Sharing is a folder, not a service: each machine writes only
+`<folder>/machines/<its own id>/` and reads the others, so no two computers ever
+write the same file and a cloud client can sync it whenever it likes. Put the
+folder in Drive or Dropbox and that is the integration. Audio is opt-in.
+
+See [TRANSFER.md](TRANSFER.md).
+
 ### Lyrics: markdown with timestamps
 
 One format covering the three states lyrics actually arrive in -- a block of
