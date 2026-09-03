@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' show AllowedArgumentCount, Database;
 
 import '../../core/logging/app_log.dart';
 import '../../domain/credits/separator.dart';
@@ -116,13 +117,46 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
   static Future<MarmeladeDatabase> open(String path) async {
     await Directory(p.dirname(path)).create(recursive: true);
     return MarmeladeDatabase(
-      NativeDatabase.createInBackground(File(path)),
+      NativeDatabase.createInBackground(File(path), setup: _registerRegexp),
     );
   }
 
   /// An in-memory database, for tests.
   static MarmeladeDatabase memory({bool logStatements = false}) =>
-      MarmeladeDatabase(NativeDatabase.memory(logStatements: logStatements));
+      MarmeladeDatabase(NativeDatabase.memory(
+        logStatements: logStatements,
+        setup: _registerRegexp,
+      ));
+
+  /// Backs a smart-query `field:r"…"` clause.
+  ///
+  /// SQLite has no REGEXP operator of its own; it recognises `x REGEXP y` as
+  /// a call to an application-defined function named exactly `regexp`,
+  /// taking `(pattern, value)` in that order -- see
+  /// https://www.sqlite.org/lang_expr.html#the_like_glob_regexp_and_match_operators.
+  /// Case-insensitive, to match every other name clause, and never throws: a
+  /// pattern bad enough for [RegExp] itself to reject should behave like it
+  /// matched nothing rather than take the whole query down with it -- the
+  /// same "never throws" promise `SmartQuery` itself makes.
+  static void _registerRegexp(Database database) {
+    database.createFunction(
+      functionName: 'regexp',
+      argumentCount: const AllowedArgumentCount(2),
+      deterministic: true,
+      function: (args) {
+        final pattern = args[0] as String?;
+        final value = args[1] as String?;
+        if (pattern == null || value == null) return 0;
+        try {
+          return RegExp(pattern, caseSensitive: false).hasMatch(value)
+              ? 1
+              : 0;
+        } catch (_) {
+          return 0;
+        }
+      },
+    );
+  }
 
   @override
   int get schemaVersion => 3;

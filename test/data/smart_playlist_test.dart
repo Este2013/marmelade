@@ -18,9 +18,13 @@ void main() {
   late MarmeladeDatabase db;
   late PlaylistRepository playlists;
   late SmartPlaylistResolver resolver;
+  int? cachedFolderId;
+  var fileCounter = 0;
 
   setUp(() async {
     db = MarmeladeDatabase.memory();
+    cachedFolderId = null;
+    fileCounter = 0;
     await db.customSelect('SELECT 1').get();
     final indexer = SearchIndexer(db);
     final search = SearchRepository(
@@ -58,11 +62,18 @@ void main() {
     return id;
   }
 
-  Future<int> album(String title, {int? year}) =>
+  Future<int> album(
+    String title, {
+    int? year,
+    AlbumKind kind = AlbumKind.album,
+    bool isVariousArtists = false,
+  }) =>
       db.into(db.albums).insert(AlbumsCompanion.insert(
             title: title,
             nameKey: title.toLowerCase(),
             releaseYear: Value(year),
+            kind: Value(kind),
+            isVariousArtists: Value(isVariousArtists),
           ));
 
   Future<int> track(
@@ -74,6 +85,8 @@ void main() {
     int playCount = 0,
     DateTime? addedAt,
     DateTime? lastPlayedAt,
+    bool isFavorite = false,
+    bool isVerified = false,
   }) async {
     final id = await db.into(db.tracks).insert(TracksCompanion.insert(
           title: title,
@@ -84,6 +97,8 @@ void main() {
           playCount: Value(playCount),
           lastPlayedAt: Value(lastPlayedAt),
           addedAt: addedAt == null ? const Value.absent() : Value(addedAt),
+          isFavorite: Value(isFavorite),
+          isVerified: Value(isVerified),
         ));
     for (final artistId in credits) {
       await db.into(db.trackCredits).insert(
@@ -91,6 +106,30 @@ void main() {
           );
     }
     return id;
+  }
+
+  /// A media file for a track, so `is:Lossless`/`is:Missing` have something
+  /// to look at -- neither is a column on the track itself.
+  Future<void> file(
+    int trackId, {
+    bool lossless = false,
+    FileStatus status = FileStatus.present,
+  }) async {
+    final folderId = cachedFolderId ??= await db.into(db.libraryFolders).insert(
+          LibraryFoldersCompanion.insert(path: '/music'),
+        );
+    final n = fileCounter++;
+    await db.into(db.mediaFiles).insert(MediaFilesCompanion.insert(
+          folderId: folderId,
+          relativePath: 'track-$trackId-$n.flac',
+          fileName: 'track-$trackId-$n.flac',
+          extension: 'flac',
+          sizeBytes: 1000,
+          modifiedAt: DateTime.utc(2024),
+          lossless: Value(lossless),
+          status: Value(status),
+          trackId: Value(trackId),
+        ));
   }
 
   Future<int> tagged(int trackId, String name, {int? albumId}) async {
@@ -224,6 +263,157 @@ void main() {
         ),
         [hit],
       );
+    });
+  });
+
+  group('matching modes', () {
+    test('contains is the default and matches a substring', () async {
+      final id = await album('Comic and Cosmic');
+      final wanted = await track('Song', albumId: id);
+      final other = await album('Unrelated');
+      await track('Other', albumId: other);
+
+      expect(await resolver.resolve('album:Cosmic'), [wanted]);
+    });
+
+    test('exact requires the whole value, not a substring', () async {
+      final id = await album('Cosmic');
+      final wanted = await track('Song', albumId: id);
+      final longer = await album('Comic and Cosmic');
+      await track('Other', albumId: longer);
+
+      expect(await resolver.resolve('album=Cosmic'), [wanted]);
+    });
+
+    test('regex matches against the raw pattern', () async {
+      final v1 = await album('Vol. 1');
+      final v2 = await album('Vol. 12');
+      final other = await album('Compilation');
+      final t1 = await track('A', albumId: v1);
+      final t2 = await track('B', albumId: v2);
+      await track('C', albumId: other);
+
+      expect(
+        (await resolver.resolve(r'album:r"^Vol\.\s*\d+$"')).toSet(),
+        {t1, t2},
+      );
+    });
+
+    test('a percent sign in a contains value is not a wildcard', () async {
+      final id = await album('100% Chiptune');
+      final wanted = await track('Song', albumId: id);
+      final other = await album('Anything Chiptune');
+      await track('Other', albumId: other);
+
+      expect(await resolver.resolve('album:100%'), [wanted]);
+    });
+  });
+
+  group('is: flags', () {
+    test('favourite', () async {
+      final yes = await track('Loved', isFavorite: true);
+      await track('Not loved');
+      expect(await resolver.resolve('is:Favourite'), [yes]);
+    });
+
+    test('verified', () async {
+      final yes = await track('Checked', isVerified: true);
+      await track('Unchecked');
+      expect(await resolver.resolve('is:Verified'), [yes]);
+    });
+
+    test('various-artists reaches through the album', () async {
+      final va = await album('Compilation', isVariousArtists: true);
+      final yes = await track('Song', albumId: va);
+      final normal = await album('Solo Album');
+      await track('Other', albumId: normal);
+      expect(await resolver.resolve('is:VariousArtists'), [yes]);
+    });
+
+    test('album kind, e.g. single', () async {
+      final single = await album('A Single', kind: AlbumKind.single);
+      final yes = await track('Song', albumId: single);
+      final lp = await album('An LP');
+      await track('Other', albumId: lp);
+      expect(await resolver.resolve('is:Single'), [yes]);
+    });
+
+    test('lossless looks at any of a track\'s files', () async {
+      final yes = await track('Flac track');
+      await file(yes, lossless: true);
+      final no = await track('Mp3 track');
+      await file(no, lossless: false);
+      expect(await resolver.resolve('is:Lossless'), [yes]);
+    });
+
+    test('missing is true when no file is present', () async {
+      final present = await track('Here');
+      await file(present, status: FileStatus.present);
+      final gone = await track('Gone');
+      await file(gone, status: FileStatus.missing);
+      final untouched = await track('Never scanned');
+
+      expect(
+        (await resolver.resolve('is:Missing')).toSet(),
+        {gone, untouched},
+      );
+    });
+  });
+
+  group('negation', () {
+    test('not: works the same as a leading dash', () async {
+      final camellia = await artist('Camellia');
+      final wanted = await track('Ghost', credits: [camellia]);
+      final excluded = await track('Skit', credits: [camellia]);
+      await tagged(excluded, 'Skit');
+
+      expect(
+        await resolver.resolve('artist:camellia not:tag=skit'),
+        [wanted],
+      );
+    });
+
+    test('not: negates a flag', () async {
+      final yes = await track('Plain');
+      await track('Loved', isFavorite: true);
+
+      expect(await resolver.resolve('not:is:Favourite'), [yes]);
+    });
+  });
+
+  group('OR', () {
+    test('unions the results of each group', () async {
+      final a = await artist('Camellia');
+      final b = await artist('Nanahira');
+      final byA = await track('Ghost', credits: [a]);
+      final byB = await track('Song', credits: [b]);
+      await track('Neither');
+
+      expect(
+        (await resolver.resolve('artist:camellia OR artist:nanahira')).toSet(),
+        {byA, byB},
+      );
+    });
+
+    test('each side keeps its own AND\'d clauses', () async {
+      final a = await artist('Camellia');
+      final live = await track('Live cut', credits: [a]);
+      await tagged(live, 'Live');
+      final studio = await track('Studio cut', credits: [a]);
+
+      final b = await artist('Nanahira');
+      final remix = await track('Remix', credits: [b]);
+      await tagged(remix, 'Remix');
+      final plain = await track('Plain', credits: [b]);
+
+      expect(
+        (await resolver.resolve(
+                'artist:camellia tag=Live OR artist:nanahira tag=Remix'))
+            .toSet(),
+        {live, remix},
+      );
+      expect(studio, isNot(anyOf(live, remix)));
+      expect(plain, isNot(anyOf(live, remix)));
     });
   });
 

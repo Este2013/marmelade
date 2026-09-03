@@ -131,6 +131,151 @@ void main() {
     });
   });
 
+  group('modes', () {
+    test('a colon is contains by default', () {
+      final clause = SmartQuery.parse('album:Cosmic').clauses.single
+          as NameClause;
+      expect(clause.mode, QueryMode.contains);
+      expect(clause.value, 'Cosmic');
+    });
+
+    test('an equals sign is exact', () {
+      final clause = SmartQuery.parse('tag=rock').clauses.single
+          as NameClause;
+      expect(clause.mode, QueryMode.exact);
+      expect(clause.value, 'rock');
+    });
+
+    test('a quoted exact value keeps its spaces', () {
+      final clause = SmartQuery.parse('album="Comic and Cosmic"')
+          .clauses
+          .single as NameClause;
+      expect(clause.mode, QueryMode.exact);
+      expect(clause.value, 'Comic and Cosmic');
+    });
+
+    test('r"..." after a colon is a regex, unescaped', () {
+      final clause = SmartQuery.parse(r'album:r"^Vol\.\s*\d+"').clauses.single
+          as NameClause;
+      expect(clause.mode, QueryMode.regex);
+      expect(clause.value, r'^Vol\.\s*\d+');
+    });
+
+    test('a regex with a space in it stays one token', () {
+      final clause = SmartQuery.parse(r'title:r"^(Intro|Outro) \d+"')
+          .clauses
+          .single as NameClause;
+      expect(clause.value, r'^(Intro|Outro) \d+');
+    });
+
+    test('r"..." is only special after a colon, not after equals', () {
+      // No regex mode for `=` -- the field is named "field=r"pattern"" the
+      // same as any other exact literal, quotes and all kept out.
+      final clause = SmartQuery.parse('tag=r"literal"').clauses.single
+          as NameClause;
+      expect(clause.mode, QueryMode.exact);
+      expect(clause.value, 'r"literal"'.replaceAll('"', ''));
+    });
+
+    test('an equals sign in a value does not become a field separator', () {
+      // Same protection as the colon case: a real value can contain the
+      // character being used elsewhere as a separator.
+      final query = SmartQuery.parse('Play=Doe');
+      expect(query.terms, ['Play=Doe']);
+      expect(query.clauses, isEmpty);
+    });
+  });
+
+  group('is:', () {
+    test('a known flag becomes a clause', () {
+      final clause = SmartQuery.parse('is:Favourite').clauses.single
+          as FlagClause;
+      expect(clause.flag, QueryFlag.favourite);
+      expect(clause.negated, isFalse);
+    });
+
+    test('flags are matched case-insensitively', () {
+      expect(
+        (SmartQuery.parse('is:single').clauses.single as FlagClause).flag,
+        QueryFlag.single,
+      );
+      expect(
+        (SmartQuery.parse('is:EP').clauses.single as FlagClause).flag,
+        QueryFlag.ep,
+      );
+    });
+
+    test('an unknown flag stays a word', () {
+      final query = SmartQuery.parse('is:Purple');
+      expect(query.clauses, isEmpty);
+      expect(query.terms, ['Purple']);
+    });
+
+    test('a leading dash negates a flag the same as any other clause', () {
+      final clause = SmartQuery.parse('-is:Lossless').clauses.single
+          as FlagClause;
+      expect(clause.flag, QueryFlag.lossless);
+      expect(clause.negated, isTrue);
+    });
+  });
+
+  group('not:', () {
+    test('negates the clause the same as a leading dash', () {
+      final clause = SmartQuery.parse('not:tag=remix').clauses.single;
+      expect(clause.negated, isTrue);
+      expect((clause as NameClause).mode, QueryMode.exact);
+      expect(clause.value, 'remix');
+    });
+
+    test('negates a flag', () {
+      final clause = SmartQuery.parse('not:is:Favourite').clauses.single
+          as FlagClause;
+      expect(clause.negated, isTrue);
+      expect(clause.flag, QueryFlag.favourite);
+    });
+
+    test('is spelled exactly "not:" -- a field named not stays a word', () {
+      final query = SmartQuery.parse('notes:something');
+      expect(query.terms, ['notes:something']);
+    });
+  });
+
+  group('OR', () {
+    test('splits a query into alternative groups', () {
+      final query = SmartQuery.parse('artist:Nanahira OR artist:Camellia');
+      expect(query.groups, hasLength(2));
+      expect(
+        (query.groups[0].clauses.single as NameClause).value,
+        'Nanahira',
+      );
+      expect(
+        (query.groups[1].clauses.single as NameClause).value,
+        'Camellia',
+      );
+    });
+
+    test('everything else in a group stays AND\'d', () {
+      final query =
+          SmartQuery.parse('artist:A tag=live OR artist:B tag=remix');
+      expect(query.groups, hasLength(2));
+      expect(query.groups[0].clauses, hasLength(2));
+      expect(query.groups[1].clauses, hasLength(2));
+    });
+
+    test('a lowercase "or" is just a word, not the keyword', () {
+      final query = SmartQuery.parse('cake or pie');
+      expect(query.groups, hasLength(1));
+      expect(query.groups.single.terms, ['cake', 'or', 'pie']);
+    });
+
+    test('a query with no OR at all is a single group', () {
+      final query = SmartQuery.parse('artist:Nanahira tag=hardcore');
+      expect(query.groups, hasLength(1));
+      // And its flattened terms/clauses read exactly as before OR existed.
+      expect(query.clauses, hasLength(2));
+    });
+  });
+
   group('describing itself', () {
     test('a whole query reads as a phrase', () {
       expect(
