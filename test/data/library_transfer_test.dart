@@ -1,10 +1,15 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/data/db/database.dart';
+import 'package:marmelade/data/repositories/settings_repository.dart';
 import 'package:marmelade/data/transfer/library_exporter.dart';
 import 'package:marmelade/data/transfer/library_importer.dart';
+import 'package:marmelade/data/transfer/library_sync.dart';
 import 'package:marmelade/data/transfer/transfer_bundle.dart';
 import 'package:marmelade/data/transfer/transfer_report.dart';
+import 'package:path/path.dart' as p;
 
 /// Moving hand-entered data between two computers.
 ///
@@ -691,6 +696,179 @@ void main() {
     });
   });
 
+  group('sharing through a folder', () {
+    late Directory shared;
+
+    setUp(() async {
+      shared = await Directory.systemTemp.createTemp('marmelade-sync');
+    });
+
+    tearDown(() async {
+      if (await shared.exists()) await shared.delete(recursive: true);
+    });
+
+    test('each machine writes only its own subfolder', () async {
+      // The property the whole design rests on: two computers never write
+      // the same file, so a cloud client syncing whenever it likes cannot
+      // produce a conflict.
+      await work.track('Ghost').then(work.file);
+      await work.sync(shared);
+      await home.sync(shared);
+
+      final machines = Directory(p.join(shared.path, 'machines'));
+      final folders = await machines
+          .list()
+          .where((e) => e is Directory)
+          .map((e) => p.basename(e.path))
+          .toList();
+
+      expect(folders, hasLength(2));
+      expect(
+        await File(p.join(machines.path, folders.first, 'library.json'))
+            .exists(),
+        isTrue,
+      );
+    });
+
+    test('work done on one machine reaches the other', () async {
+      final workTrack = await work.track('Feel Right');
+      await work.file(workTrack, quickKey: 'qk-1');
+      final camellia = await work.artist('Camellia');
+      await work.credit(workTrack, camellia, creditedAs: 'かめりあ');
+      await work.rate(workTrack, 95, favorite: true);
+      await work.tagTrack(workTrack, await work.tag('Hardcore'));
+
+      final homeTrack = await home.track('Feel Right');
+      await home.file(homeTrack, quickKey: 'qk-1');
+
+      await work.sync(shared);
+      final outcome = await home.sync(shared);
+
+      expect(outcome.imported, hasLength(1));
+      expect(outcome.imported.single.origin, 'Work PC');
+      expect(await home.tagsOf('Feel Right'), {'Hardcore'});
+      expect(await home.creditsOf('Feel Right'), {'Camellia|mainArtist|かめりあ'});
+      expect(
+        (await home.trackRow('Feel Right')).readNullable<int>('rating'),
+        95,
+      );
+    });
+
+    test('a second sync skips a machine that has not changed', () async {
+      await work.track('Ghost').then(work.file);
+      await work.sync(shared);
+
+      final first = await home.sync(shared);
+      expect(first.imported, hasLength(1));
+
+      final second = await home.sync(shared);
+      expect(second.imported, isEmpty);
+      expect(second.upToDate.map((p) => p.origin.machineName), ['Work PC']);
+      expect(second.summarize(), contains('already up to date'));
+    });
+
+    test('and picks it up again once that machine re-exports', () async {
+      final workTrack = await work.track('Ghost');
+      await work.file(workTrack, quickKey: 'qk-1');
+      await work.sync(shared);
+
+      final homeTrack = await home.track('Ghost');
+      await home.file(homeTrack, quickKey: 'qk-1');
+      await home.sync(shared);
+
+      // Something happens at work, and it publishes again.
+      await work.rate(workTrack, 70);
+      await work.sync(shared);
+
+      final outcome = await home.sync(shared);
+      expect(outcome.imported, hasLength(1));
+      expect(
+        (await home.trackRow('Ghost')).readNullable<int>('rating'),
+        70,
+      );
+    });
+
+    test('both machines converge, whoever syncs first', () async {
+      // Divergence on both sides at once, which is the normal state after a
+      // week of using two computers.
+      final workTrack = await work.track('Shared');
+      await work.file(workTrack, quickKey: 'qk-1');
+      await work.tagTrack(workTrack, await work.tag('FromWork'));
+
+      final homeTrack = await home.track('Shared');
+      await home.file(homeTrack, quickKey: 'qk-1');
+      await home.tagTrack(homeTrack, await home.tag('FromHome'));
+
+      await work.sync(shared);
+      await home.sync(shared);
+      // Work reads what home published, and home reads work's second write.
+      await work.sync(shared);
+      await home.sync(shared);
+
+      expect(await work.tagsOf('Shared'), {'FromWork', 'FromHome'});
+      expect(await home.tagsOf('Shared'), {'FromWork', 'FromHome'});
+    });
+
+    test('a machine lists its peers without importing them', () async {
+      await work.track('Ghost').then(work.file);
+      await work.sync(shared);
+
+      final peers = await home.peers(shared);
+      expect(peers.map((p) => p.origin.machineName), ['Work PC']);
+      expect(peers.single.isSelf, isFalse);
+      expect(peers.single.counts['tracks'], 1);
+      expect(await home.trackCount(), 0, reason: 'listing imports nothing');
+    });
+
+    test('rubbish in the shared folder is skipped, not fatal', () async {
+      // A half-synced file, or a folder someone dropped something else into.
+      final rogue = Directory(p.join(shared.path, 'machines', 'nonsense'));
+      await rogue.create(recursive: true);
+      await File(p.join(rogue.path, 'library.json')).writeAsString('{oops');
+
+      await work.track('Ghost').then(work.file);
+      await work.sync(shared);
+
+      final outcome = await home.sync(shared);
+      expect(outcome.imported, hasLength(1));
+      expect(outcome.imported.single.origin, 'Work PC');
+    });
+
+    test('this computer keeps its identity across syncs', () async {
+      final first = await work.identity();
+      final second = await work.identity();
+      expect(second.machineId, first.machineId);
+      expect(second.machineId, isNotEmpty);
+      expect(second.machineName, 'Work PC');
+    });
+
+    test('audio only travels when it is asked for', () async {
+      // The user's own caution: a bundle often goes somewhere metered, so
+      // the audio is opt-in and the metadata is not.
+      final trackId = await work.track('Ghost');
+      await work.file(trackId, quickKey: 'qk-1');
+
+      await work.sync(shared);
+      final own = Directory(p.join(
+        shared.path,
+        'machines',
+        (await work.identity()).machineId,
+      ));
+      expect(
+        await Directory(p.join(own.path, 'audio')).exists(),
+        isFalse,
+        reason: 'audio is off by default',
+      );
+      expect(await File(p.join(own.path, 'library.json')).exists(), isTrue);
+
+      await work.sync(
+        shared,
+        export: const TransferExportOptions(includeAudio: true),
+      );
+      expect(await Directory(p.join(own.path, 'audio')).exists(), isTrue);
+    });
+  });
+
   group('previewing', () {
     test('reports what would change without writing anything', () async {
       // The same code path as a real import, rolled back -- so the preview
@@ -778,6 +956,37 @@ class _Machine {
     TransferImportOptions options = const TransferImportOptions(),
   }) async =>
       import(await other.export(), options: options);
+
+  // ------------------------------------------------------ the shared folder
+
+  LibrarySync get _sync => LibrarySync(
+        exporter: LibraryExporter(db: db),
+        importer: LibraryImporter(db: db),
+        settings: SettingsRepository(db),
+      );
+
+  /// Resolves this machine's identity, forcing the name so a test can read
+  /// it back rather than depending on the hostname of whatever runs it.
+  Future<TransferOrigin> identity() async {
+    final settings = SettingsRepository(db);
+    if ((await settings.get(SettingKeys.machineName, '')).isEmpty) {
+      await settings.set(SettingKeys.machineName, name);
+    }
+    return _sync.identity();
+  }
+
+  Future<SyncOutcome> sync(
+    Directory folder, {
+    TransferExportOptions export = const TransferExportOptions(),
+  }) async =>
+      _sync.syncNow(
+        folder: folder,
+        origin: await identity(),
+        export: export,
+      );
+
+  Future<List<SyncPeer>> peers(Directory folder) async =>
+      _sync.peers(folder, origin: await identity());
 
   // ----------------------------------------------------------------- writing
 

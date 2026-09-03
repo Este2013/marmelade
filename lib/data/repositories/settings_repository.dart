@@ -116,4 +116,23 @@ abstract final class SettingKeys {
   static const skippedVersion = 'updates.skippedVersion';
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
+
+  /// This installation's random, stable id, so a shared folder can hold one
+  /// bundle per computer without them writing over each other.
+  static const machineId = 'transfer.machineId';
+
+  /// What to call this computer in the UI. Defaults to the hostname.
+  static const machineName = 'transfer.machineName';
+
+  /// Folder the library is shared through, if any. Ordinarily somewhere a
+  /// cloud client already syncs.
+  static const syncFolder = 'transfer.syncFolder';
+  static const syncIncludeArtwork = 'transfer.includeArtwork';
+  static const syncIncludeAudio = 'transfer.includeAudio';
+  static const lastSyncAt = 'transfer.lastSyncAt';
+
+  /// When a particular machine's bundle was last read, so an unchanged one
+  /// can be skipped. Keyed per machine.
+  static String lastImportOf(String machineId) =>
+      'transfer.lastImport.$machineId';
 }
