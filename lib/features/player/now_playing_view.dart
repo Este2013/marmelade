@@ -63,120 +63,69 @@ class NowPlayingView extends ConsumerWidget {
       // the point of the backdrop is the ambiance, not a grey wash -- and heavy
       // enough that text stays readable over bright artwork.
       overlayOpacity: 0.56,
-      child: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // One toggle covers both layouts: on a wide window it adds or
-              // removes the queue beside the artwork, on a narrow one it
-              // swaps between them. Either way, "show the queue" means the
-              // same thing.
-              final twoPane = constraints.maxWidth >= _twoPaneBreakpoint;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // One toggle covers both layouts: on a wide window it adds or removes
+          // the queue beside the artwork, on a narrow one it swaps between
+          // them. Either way, "show the queue" means the same thing.
+          final twoPane = constraints.maxWidth >= _twoPaneBreakpoint;
 
-              final artwork = _NowPlayingPane(
-                onOpenArtist: onOpenArtist,
-                onOpenAlbum: onOpenAlbum,
-              );
+          final artwork = _NowPlayingPane(
+            onOpenArtist: onOpenArtist,
+            onOpenAlbum: onOpenAlbum,
+          );
 
-              // One slot, two possible contents. Three columns in the app's
-              // minimum window leaves none of them readable, and the toggles
-              // keep meaning the same thing at every width because of it.
-              final sideVisible = queueVisible || lyricsVisible;
-              final side = lyricsVisible
-                  ? LyricsPane(onEditTrack: onEditTrack)
-                  : const _QueuePane();
+          // One slot, two possible contents. Three columns in the app's
+          // minimum window leaves none of them readable, and the toggles keep
+          // meaning the same thing at every width because of it.
+          final sideVisible = queueVisible || lyricsVisible;
+          final side = lyricsVisible
+              ? LyricsPane(onEditTrack: onEditTrack)
+              : const _QueuePane();
 
-              return Column(
-                children: [
-                  SizedBox(height: topInset),
-                  Expanded(
-                    child: twoPane
-                        // Side by side: the queue slides in from the right
-                        // edge and the artwork gives up the room as it
-                        // arrives.
-                        ? Row(
-                            children: [
-                              Expanded(child: artwork),
-                              _SideSlide(
-                                visible: sideVisible,
-                                width: lyricsVisible ? 480 : 400,
-                                child: side,
-                              ),
-                            ],
-                          )
-                        // Too narrow for two: the queue takes the whole pane,
-                        // so it cross-fades with the artwork instead of
-                        // sliding in beside it, and floats as a rounded card
-                        // rather than butting a bare strip of colour up
-                        // against the header.
-                        : AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 240),
-                            switchInCurve: Curves.easeOut,
-                            switchOutCurve: Curves.easeIn,
-                            child: sideVisible
-                                ? Padding(
-                                    key: ValueKey(
-                                      lyricsVisible ? 'lyrics' : 'queue',
-                                    ),
-                                    padding: const EdgeInsets.fromLTRB(
-                                      12,
-                                      4,
-                                      12,
-                                      12,
-                                    ),
-                                    child: _SideCard(child: side),
-                                  )
-                                : KeyedSubtree(
-                                    key: const ValueKey('artwork'),
-                                    child: artwork,
-                                  ),
+          return Column(
+            children: [
+              SizedBox(height: topInset),
+              Expanded(
+                child: twoPane
+                    // Side by side: the queue slides in from the right edge
+                    // and the artwork gives up the room as it arrives.
+                    ? Row(
+                        children: [
+                          Expanded(child: artwork),
+                          _SideSlide(
+                            visible: sideVisible,
+                            width: lyricsVisible ? 480 : 400,
+                            child: side,
                           ),
-                  ),
-                ],
-              );
-            },
-          ),
-          _TopSeamFade(topInset: topInset),
-        ],
-      ),
-    );
-  }
-}
-
-/// Blends the caption strip's pure-backdrop gap into whatever starts right
-/// below it.
-///
-/// [topInset] reserves a strip of nothing but the blurred backdrop, so the
-/// window buttons have something plain to sit on. Below it, real content
-/// starts abruptly -- for a bright, high-contrast cover that reads as a hard
-/// seam instead of one continuous surface. This darkens the same strip a
-/// little further and tapers it out, so the edge blends rather than cuts.
-class _TopSeamFade extends StatelessWidget {
-  const _TopSeamFade({required this.topInset});
-
-  final double topInset;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      height: topInset + 48,
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                scheme.surface.withValues(alpha: 0.55),
-                Colors.transparent,
-              ],
-            ),
-          ),
-        ),
+                        ],
+                      )
+                    // Too narrow for two: the queue takes the whole pane, so
+                    // it cross-fades with the artwork instead of sliding in
+                    // beside it, and floats as a rounded card rather than
+                    // butting a bare strip of colour up against the header.
+                    : AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: sideVisible
+                            ? Padding(
+                                key: ValueKey(
+                                  lyricsVisible ? 'lyrics' : 'queue',
+                                ),
+                                padding:
+                                    const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                                child: _SideCard(child: side),
+                              )
+                            : KeyedSubtree(
+                                key: const ValueKey('artwork'),
+                                child: artwork,
+                              ),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
