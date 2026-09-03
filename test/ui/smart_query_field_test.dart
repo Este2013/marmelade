@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:marmelade/data/indexer/search_indexer.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart';
+import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/data/db/database.dart';
@@ -210,6 +211,52 @@ void main() {
       await tester.pump();
 
       expect(find.widgetWithText(ActionChip, 'year:>='), findsOneWidget);
+    });
+
+    testWidgets('a tag suggestion inserts exact, not contains',
+        (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.binding.setSurfaceSize(const Size(1300, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            editRepositoryProvider.overrideWithValue(_FakeEdits(db)),
+            taggedProvider.overrideWith(
+              (ref) => Stream.value(const [
+                TagCard(id: 1, name: 'Hardcore', trackCount: 4),
+              ]),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(body: SmartQueryField(controller: controller)),
+          ),
+        ),
+      );
+
+      await tester.enterText(find.byType(TextField), 'tag:hard');
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ActionChip, 'Hardcore'));
+      await tester.pump();
+
+      // Picking a real tag out of the list means that tag, not "contains" --
+      // even though `tag:` (contains) is what was being typed.
+      expect(controller.text, 'tag=Hardcore ');
+    });
+
+    testWidgets('"is:" offers flags', (tester) async {
+      final controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await pump(tester, controller);
+
+      await tester.enterText(find.byType(TextField), 'is:');
+      await tester.pump();
+
+      expect(find.widgetWithText(ActionChip, 'is:Favourite'), findsOneWidget);
+      expect(find.widgetWithText(ActionChip, 'is:Single'), findsOneWidget);
     });
 
     testWidgets('suggestions only touch the word being typed', (tester) async {

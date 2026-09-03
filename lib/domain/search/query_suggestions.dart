@@ -18,12 +18,20 @@ class QueryToken {
 
   bool get isEmpty => text.isEmpty;
 
-  /// The `-` that negates a clause, kept when a suggestion is applied so
-  /// `-tag:` does not silently become `tag:`.
-  bool get isNegated => text.startsWith('-');
+  /// Whether this token negates, and how it was spelled -- `-` or `not:`,
+  /// kept verbatim so a suggestion doesn't silently swap one for the other.
+  bool get isNegated => negationPrefix.isNotEmpty;
 
-  /// The token without its leading dash.
-  String get body => isNegated ? text.substring(1) : text;
+  String get negationPrefix {
+    if (text.startsWith('-') && text.length > 1) return '-';
+    if (text.toLowerCase().startsWith('not:') && text.length > 4) {
+      return 'not:';
+    }
+    return '';
+  }
+
+  /// The token without its negation prefix.
+  String get body => text.substring(negationPrefix.length);
 }
 
 /// What should be offered where the caret is.
@@ -34,7 +42,7 @@ enum SuggestionKind {
   /// A partial field name: offer the fields that match.
   matchingFields,
 
-  /// A field and a colon: offer names for it.
+  /// A field and a separator: offer names for it.
   names,
 
   /// A field that takes a number: offer comparators.
@@ -43,7 +51,10 @@ enum SuggestionKind {
   /// A field that takes an age: offer spans.
   ages,
 
-  /// A bare word, which searches everything. Nothing to suggest.
+  /// `is:` and a separator: offer flags.
+  flags,
+
+  /// A bare word, or a regex already being typed. Nothing to suggest.
   none,
 }
 
@@ -54,6 +65,7 @@ class SuggestionRequest {
     required this.token,
     this.field,
     this.partial = '',
+    this.separator = ':',
   });
 
   final SuggestionKind kind;
@@ -64,6 +76,11 @@ class SuggestionRequest {
 
   /// What has been typed of the value so far.
   final String partial;
+
+  /// The separator the field was written with -- `:` for contains/regex,
+  /// `=` for exact. Kept so a suggestion completes in the mode already being
+  /// typed instead of silently switching it to contains.
+  final String separator;
 }
 
 /// Reads the token at [caret] out of [text].
@@ -97,34 +114,65 @@ QueryToken tokenAt(String text, int caret) {
   );
 }
 
+/// Finds a leading `field:` or `field=` in [body], the same way the parser
+/// does -- checked against every known field's own keyword rather than by
+/// scanning for the first separator, so `AD:HOUSE` still reads as a bare
+/// word instead of a field named "ad".
+(QueryField, String, String)? _splitField(String body) {
+  for (final field in QueryField.values) {
+    if (body.length <= field.keyword.length) continue;
+    if (body.substring(0, field.keyword.length).toLowerCase() !=
+        field.keyword) {
+      continue;
+    }
+    final sep = body[field.keyword.length];
+    if (sep != ':' && sep != '=') continue;
+    return (field, sep, body.substring(field.keyword.length + 1));
+  }
+  return null;
+}
+
 /// Works out what to offer at [caret].
 SuggestionRequest suggestionAt(String text, int caret) {
   final token = tokenAt(text, caret);
   final body = token.body;
 
-  final colon = body.indexOf(':');
-  if (colon < 0) {
+  final split = _splitField(body);
+  if (split == null) {
+    // A separator that didn't match any known field -- "AD:HOUSE" is an
+    // album, not a field named "ad" -- is a bare word with nothing to
+    // suggest, not a partial field name to complete.
+    if (body.contains(':') || body.contains('=')) {
+      return SuggestionRequest(
+        kind: SuggestionKind.none,
+        token: token,
+        partial: body,
+      );
+    }
     return SuggestionRequest(
-      kind: body.isEmpty ? SuggestionKind.fields : SuggestionKind.matchingFields,
+      kind:
+          body.isEmpty ? SuggestionKind.fields : SuggestionKind.matchingFields,
       token: token,
       partial: body,
     );
   }
 
-  final field = QueryField.of(body.substring(0, colon).toLowerCase());
-  if (field == null) {
-    // Not a field, so this is a bare word that happens to contain a colon --
-    // "AD:HOUSE" is an album, not a field named ad.
+  final (field, separator, value) = split;
+
+  // A regex already under way: it is typed freely, not picked from a list.
+  if (separator == ':' && value.startsWith('r"')) {
     return SuggestionRequest(
       kind: SuggestionKind.none,
       token: token,
-      partial: body,
+      field: field,
+      partial: value,
+      separator: separator,
     );
   }
 
-  final value = body.substring(colon + 1);
   return SuggestionRequest(
     kind: switch (field) {
+      _ when field.isFlag => SuggestionKind.flags,
       _ when field.isName => SuggestionKind.names,
       _ when field.isAge => SuggestionKind.ages,
       _ => SuggestionKind.comparators,
@@ -132,6 +180,7 @@ SuggestionRequest suggestionAt(String text, int caret) {
     token: token,
     field: field,
     partial: value,
+    separator: separator,
   );
 }
 
@@ -171,6 +220,19 @@ const fieldSuggestions = <({QueryField field, String detail})>[
   (field: QueryField.playCount, detail: 'How many times played'),
   (field: QueryField.added, detail: 'How long ago it was added'),
   (field: QueryField.played, detail: 'How long ago it was played'),
+  (field: QueryField.flag, detail: 'A flag, like Favourite or Single'),
+];
+
+/// The keywords offered alongside fields -- worth discovering the same way a
+/// field is, since neither reads from the library like a value suggestion
+/// does.
+const keywordSuggestions = <({String keyword, String detail, bool continues})>[
+  (
+    keyword: 'not:',
+    detail: 'Excludes what follows, the same as a leading -',
+    continues: true,
+  ),
+  (keyword: 'OR', detail: 'Matches this or the next clause', continues: false),
 ];
 
 /// The spans offered for an age field.
@@ -190,7 +252,24 @@ const comparatorSuggestions = <({String value, String label})>[
   (value: '<', label: 'less than'),
 ];
 
-/// The field suggestions matching what has been typed.
+/// The flags offered for `is:`, with a word about each.
+const flagSuggestions = <({QueryFlag flag, String detail})>[
+  (flag: QueryFlag.favourite, detail: 'Favourited'),
+  (flag: QueryFlag.rated, detail: 'Has a rating'),
+  (flag: QueryFlag.verified, detail: 'Verified'),
+  (flag: QueryFlag.variousArtists, detail: 'On a various-artists release'),
+  (flag: QueryFlag.lossless, detail: 'Has a lossless file'),
+  (flag: QueryFlag.missing, detail: 'Missing its file'),
+  (flag: QueryFlag.single, detail: 'A single'),
+  (flag: QueryFlag.ep, detail: 'An EP'),
+  (flag: QueryFlag.live, detail: 'A live release'),
+  (flag: QueryFlag.compilation, detail: 'A compilation'),
+  (flag: QueryFlag.soundtrack, detail: 'A soundtrack'),
+  (flag: QueryFlag.demo, detail: 'A demo'),
+  (flag: QueryFlag.mixtape, detail: 'A mixtape'),
+];
+
+/// The field and keyword suggestions matching what has been typed.
 List<Suggestion> suggestFields(String partial) {
   final typed = partial.toLowerCase();
   return [
@@ -202,6 +281,14 @@ List<Suggestion> suggestFields(String partial) {
           detail: entry.detail,
           // A field alone matches nothing; the value is the point.
           continues: true,
+        ),
+    for (final entry in keywordSuggestions)
+      if (entry.keyword.toLowerCase().startsWith(typed))
+        Suggestion(
+          insert: entry.keyword,
+          label: entry.keyword,
+          detail: entry.detail,
+          continues: entry.continues,
         ),
   ];
 }
@@ -215,7 +302,7 @@ List<Suggestion> suggestFields(String partial) {
   QueryToken token,
   Suggestion suggestion,
 ) {
-  final prefix = token.isNegated ? '-' : '';
+  final prefix = token.negationPrefix;
   final replacement =
       '$prefix${suggestion.insert}${suggestion.continues ? '' : ' '}';
   final next = text.replaceRange(token.start, token.end, replacement);

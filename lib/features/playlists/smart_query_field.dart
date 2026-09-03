@@ -101,7 +101,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     // Tags are watched in build; only names that need a query are fetched.
     if (request.field == QueryField.tag) return;
 
-    final key = '${request.field!.keyword}:${request.partial}';
+    final key = '${request.field!.keyword}${request.separator}${request.partial}';
     if (key == _fetchedFor || _fetching) return;
     _fetching = true;
 
@@ -138,7 +138,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
         return [
           for (final artist in artists.take(8))
             Suggestion(
-              insert: 'artist:${quoteIfNeeded(artist.name)}',
+              insert: 'artist${request.separator}${quoteIfNeeded(artist.name)}',
               label: artist.name,
               detail: '${artist.trackCount} tracks',
             ),
@@ -150,7 +150,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
         return [
           for (final album in albums.take(8))
             Suggestion(
-              insert: 'album:${quoteIfNeeded(album.title)}',
+              insert: 'album${request.separator}${quoteIfNeeded(album.title)}',
               label: album.title,
               detail: album.artistName ?? 'Unknown artist',
             ),
@@ -194,14 +194,27 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
               continues: true,
             ),
         ],
+      SuggestionKind.flags => [
+          for (final entry in flagSuggestions)
+            if (entry.flag.keyword.toLowerCase().startsWith(
+                  request.partial.toLowerCase(),
+                ))
+              Suggestion(
+                insert: 'is${request.separator}${entry.flag.keyword}',
+                label: 'is:${entry.flag.keyword}',
+                detail: entry.detail,
+              ),
+        ],
       SuggestionKind.none => const [],
     };
   }
 
   /// The tags matching what has been typed.
   ///
-  /// Offered even with nothing typed after the colon, which is how someone
-  /// finds out what tags they have.
+  /// Offered even with nothing typed after the separator, which is how
+  /// someone finds out what tags they have. Always inserted as `tag=`, exact
+  /// -- picking a real tag from the list is picking that tag, not "something
+  /// containing it", even if `tag:` (contains) is what was being typed.
   List<Suggestion> _tagSuggestions(String partial) {
     final typed = partial.replaceAll('"', '').toLowerCase();
     final tags = ref.watch(taggedProvider).value ?? const [];
@@ -209,7 +222,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
       for (final tag
           in tags.where((t) => t.name.toLowerCase().contains(typed)).take(10))
         Suggestion(
-          insert: 'tag:${quoteIfNeeded(tag.name)}',
+          insert: 'tag=${quoteIfNeeded(tag.name)}',
           label: tag.name,
           detail: '${tag.trackCount} tracks',
         ),
@@ -234,8 +247,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
 
     final request = _request;
     final typed = request.token.text;
-    final whole = '${request.token.isNegated ? '-' : ''}'
-        '${suggestions.first.insert}';
+    final whole = '${request.token.negationPrefix}${suggestions.first.insert}';
     if (typed.isEmpty) return whole;
     if (!whole.toLowerCase().startsWith(typed.toLowerCase())) return null;
     if (whole.length == typed.length) return null;

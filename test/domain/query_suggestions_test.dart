@@ -94,6 +94,39 @@ void main() {
       expect(request.partial, 'rem');
       expect(request.token.isNegated, isTrue);
     });
+
+    test('"not:" negates the same as a leading dash', () {
+      final request = suggestionAt('not:tag:rem', 11);
+      expect(request.kind, SuggestionKind.names);
+      expect(request.field, QueryField.tag);
+      expect(request.partial, 'rem');
+      expect(request.token.isNegated, isTrue);
+      expect(request.token.negationPrefix, 'not:');
+    });
+
+    test('an equals sign is a name field too, in exact mode', () {
+      final request = suggestionAt('tag=roc', 7);
+      expect(request.kind, SuggestionKind.names);
+      expect(request.field, QueryField.tag);
+      expect(request.partial, 'roc');
+      expect(request.separator, '=');
+    });
+
+    test('"is:" offers flags', () {
+      final request = suggestionAt('is:Fav', 6);
+      expect(request.kind, SuggestionKind.flags);
+      expect(request.partial, 'Fav');
+    });
+
+    test('a regex already under way offers nothing', () {
+      final request = suggestionAt(r'album:r"^Vol', 12);
+      expect(request.kind, SuggestionKind.none);
+    });
+
+    test('the field list also offers not: and OR', () {
+      final fields = suggestFields('').map((s) => s.insert);
+      expect(fields, containsAll(['not:', 'OR']));
+    });
   });
 
   group('applying one', () {
