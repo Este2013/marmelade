@@ -1088,6 +1088,34 @@ void main() {
     });
 
     testWidgets(
+        'opening the shade over a bleeding page hides that page\'s own '
+        'caption scrim', (tester) async {
+      // The shade covers the whole window, including the strip, so a
+      // bleeding page's frosted strip underneath it has nothing left to do
+      // -- and no scrolling of its own can reach behind the shade's strip
+      // either. Regression test: toggling the shade drives an
+      // AnimationController directly, with no setState of its own, so a
+      // scrim gated by a plain `if` in build() would only ever reflect
+      // whatever it was the last time something else happened to rebuild
+      // the shell -- stale, and still showing through once the shade opened.
+      await open(tester, app: buildApp(playing: true));
+
+      await tester.tap(find.text('Antenna'));
+      await settle(tester);
+
+      // Bleeding page, shade closed: its own backdrop plus its scrim.
+      expect(find.byType(BackdropFilter), findsNWidgets(2));
+
+      await tester.tap(find.byTooltip('Open now playing'));
+      await settle(tester);
+
+      // Shade open: the scrim is gone, leaving only the bleeding page's own
+      // (now hidden behind the shade) backdrop and the shade's own.
+      expect(find.byType(BackdropFilter), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
         "a migrated view's own toolbar lives in the caption strip, not "
         'the view', (tester) async {
       // Albums opens by default: no need to navigate there first.

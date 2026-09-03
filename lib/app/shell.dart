@@ -539,7 +539,33 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                   // surface there, or scrolled text ends up sitting directly
                   // behind the window buttons. Not needed for the shade: it
                   // has no scrolling that could reach behind its own strip.
-                  if (_contentBleeds && !_shadeOpen) _captionScrim(),
+                  //
+                  // Wrapped in its own AnimatedBuilder rather than a plain
+                  // `if`: `_toggleShade` drives `_shade` without ever calling
+                  // setState, so a bare `if` here would only ever see
+                  // `_shadeOpen` as of the shell's last unrelated rebuild --
+                  // stale until something else happened to trigger one, which
+                  // is what let this scrim keep showing through the shade
+                  // right after opening it over a bleeding page.
+                  //
+                  // Wrapped in its own AnimatedBuilder rather than a plain
+                  // `if`: `_toggleShade` drives `_shade` without ever calling
+                  // setState, so a bare `if` here would only ever see
+                  // `_shadeOpen` as of the shell's last unrelated rebuild --
+                  // stale until something else happened to trigger one, which
+                  // is what let this scrim keep showing through the shade
+                  // right after opening it over a bleeding page. The "off"
+                  // branch stays a Positioned too, not a bare SizedBox: every
+                  // other child of this Stack is Positioned, which is what
+                  // lets it size itself to fill the available space at all --
+                  // one non-positioned child among them makes the Stack size
+                  // itself from that child instead, collapsing it to zero.
+                  AnimatedBuilder(
+                    animation: _shade,
+                    builder: (context, _) => _contentBleeds && !_shadeOpen
+                        ? _captionScrim()
+                        : const Positioned.fill(child: SizedBox.shrink()),
+                  ),
                   // Above everything, including the shade: a window that cannot
                   // be moved or closed because a panel is open would be a poor
                   // trade for the extra immersion.
