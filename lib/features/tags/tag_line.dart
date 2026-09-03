@@ -144,6 +144,11 @@ class _Chip extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       onDeleted: onRemove,
+      // The default delete icon is a filled circle around the X, which reads
+      // as its own shape next to the chip's own rounded outline rather than
+      // as part of it, and sits a little high besides. A bare X matches the
+      // chip instead of competing with it.
+      deleteIcon: const Icon(Icons.close, size: 14),
       deleteIconColor: visuals.color,
     );
 
