@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../core/logging/app_log.dart';
 import '../../domain/models/library_views.dart';
+import '../../domain/search/smart_query.dart';
 import '../db/database.dart';
 import 'library_repository.dart';
 import 'playlist_repository.dart';
@@ -34,12 +35,23 @@ class SearchRepository {
     required this.library,
     required this.tags,
     required this.playlists,
+    this.resolveAdvanced,
   });
 
   final MarmeladeDatabase db;
   final LibraryRepository library;
   final TagRepository tags;
   final PlaylistRepository playlists;
+
+  /// Resolves the smart-playlist query language against tracks, for a search
+  /// written that way -- `artist:Camellia tag=live`.
+  ///
+  /// A function rather than a [SmartPlaylistResolver] held directly: the
+  /// resolver's own word half runs through [trackIdsMatching], so holding one
+  /// another would be the same construction cycle [SmartPlaylistResolver]
+  /// itself avoids by taking a callback instead of this repository. Optional
+  /// so a caller with nothing to do with playlists can still build this.
+  final Future<List<int>> Function(String query, {int limit})? resolveAdvanced;
 
   /// How many index rows one query will look at.
   ///
@@ -75,6 +87,15 @@ class SearchRepository {
     int perKind = 6,
     Set<SearchEntity>? kinds,
   }) async {
+    // Written in the same grammar a smart playlist is -- `artist:Camellia
+    // tag=live`, `is:Favourite` -- rather than a plain word: a field means
+    // something specific, so it is answered precisely (tracks matching the
+    // query) instead of run through the fuzzy, cross-entity search below.
+    final advanced = resolveAdvanced;
+    if (advanced != null && SmartQuery.parse(text).clauses.isNotEmpty) {
+      return _searchAdvanced(text, advanced, perKind: perKind, kinds: kinds);
+    }
+
     final terms = searchTerms(text);
     if (terms.isEmpty) return SearchResults.empty(text);
     final wanted = kinds ?? SearchEntity.values.toSet();
@@ -332,6 +353,42 @@ class SearchRepository {
       kinds: {SearchEntity.track},
     );
     return [for (final track in results.tracks) track.id];
+  }
+
+  /// A search written in field syntax: tracks only, since a field like
+  /// `artist:` or `is:Favourite` filters tracks, not artists or albums in
+  /// their own right.
+  Future<SearchResults> _searchAdvanced(
+    String text,
+    Future<List<int>> Function(String query, {int limit}) advanced, {
+    required int perKind,
+    Set<SearchEntity>? kinds,
+  }) async {
+    if (kinds != null && !kinds.contains(SearchEntity.track)) {
+      return SearchResults.empty(text);
+    }
+
+    final cap = perKind > _candidatesPerKind ? perKind : _candidatesPerKind;
+    final ids = await advanced(text, limit: cap);
+    if (ids.isEmpty) return SearchResults.empty(text);
+
+    // Hydration does not promise to keep the order it was asked for, so the
+    // query's own order (its sort, or its default) is restored afterwards.
+    final hydrated = await _tracks(ids);
+    final byId = {for (final track in hydrated) track.id: track};
+    final ordered = [for (final id in ids) ?byId[id]];
+
+    return SearchResults(
+      query: text,
+      artists: const [],
+      albums: const [],
+      tracks: ordered.take(perKind).toList(),
+      tags: const [],
+      playlists: const [],
+      totals: {SearchEntity.track: ids.length},
+      truncated: ids.length >= cap,
+      best: null,
+    );
   }
 
   // ------------------------------------------------------------------ queries

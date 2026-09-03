@@ -5,6 +5,7 @@ import 'package:marmelade/data/indexer/search_indexer.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/playlist_repository.dart';
 import 'package:marmelade/data/repositories/search_repository.dart';
+import 'package:marmelade/data/repositories/smart_playlist_resolver.dart';
 import 'package:marmelade/data/repositories/tag_repository.dart';
 
 /// Search, which is the payoff for everything else in the catalog.
@@ -15,6 +16,7 @@ void main() {
   late MarmeladeDatabase db;
   late SearchIndexer indexer;
   late SearchRepository search;
+  late SmartPlaylistResolver resolver;
 
   setUp(() async {
     db = MarmeladeDatabase.memory();
@@ -25,6 +27,15 @@ void main() {
       library: LibraryRepository(db),
       tags: TagRepository(db: db, searchIndexer: indexer),
       playlists: PlaylistRepository(db: db, searchIndexer: indexer),
+      // Wired the same lazy way providers.dart wires the real two: each only
+      // reads the other when a query actually runs.
+      resolveAdvanced: (query, {int limit = 20000}) =>
+          resolver.resolve(query, limit: limit),
+    );
+    resolver = SmartPlaylistResolver(
+      db: db,
+      searchTracks: (query, {int limit = 20000}) =>
+          search.trackIdsMatching(query, limit: limit),
     );
   });
 
@@ -316,6 +327,58 @@ void main() {
 
       expect((await search.search('new name')).artists.map((a) => a.id), [id]);
       expect((await search.search('old name')).artists, isEmpty);
+    });
+  });
+
+  group('the smart-query syntax', () {
+    test('a field narrows to tracks, precisely', () async {
+      final camellia = await artist('Camellia');
+      final wanted = await track('Ghost', credits: [camellia]);
+      await track('Unrelated');
+      await indexer.rebuildAll();
+
+      final results = await search.search('artist:camellia');
+      expect(results.tracks.map((t) => t.id), [wanted]);
+      // Nothing else is answered by a field -- it names a track filter, not
+      // an artist or album in its own right.
+      expect(results.artists, isEmpty);
+      expect(results.albums, isEmpty);
+    });
+
+    test('a plain word still runs the ordinary fuzzy search', () async {
+      final id = await artist('Camellia');
+      await indexer.rebuildAll();
+
+      final results = await search.search('camellia');
+      expect(results.artists.map((a) => a.id), [id]);
+    });
+
+    test('is: and not: both work, same as in a smart playlist', () async {
+      final fav = await track('Loved', playCount: 1);
+      await db
+          .customUpdate('UPDATE tracks SET is_favorite = 1 WHERE id = ?1',
+              variables: [Variable(fav)], updates: {db.tracks});
+      await track('Not loved');
+
+      expect(
+        (await search.search('is:Favourite')).tracks.map((t) => t.id),
+        [fav],
+      );
+      expect(
+        (await search.search('not:is:Favourite')).tracks.map((t) => t.id),
+        isNot(contains(fav)),
+      );
+    });
+
+    test('asking only for another kind finds nothing', () async {
+      final camellia = await artist('Camellia');
+      await track('Ghost', credits: [camellia]);
+
+      final results = await search.search(
+        'artist:camellia',
+        kinds: {SearchEntity.artist},
+      );
+      expect(results.isEmpty, isTrue);
     });
   });
 }

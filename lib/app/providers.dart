@@ -180,6 +180,11 @@ final Provider<SearchRepository> searchRepositoryProvider = Provider(
     library: ref.watch(libraryRepositoryProvider),
     tags: ref.watch(tagRepositoryProvider),
     playlists: ref.watch(playlistRepositoryProvider),
+    // Read when a query runs, not when this is built: the resolver's own word
+    // half runs through this repository, so watching it here would close the
+    // same construction cycle [smartPlaylistResolverProvider] avoids above.
+    resolveAdvanced: (query, {int limit = 20000}) =>
+        ref.read(smartPlaylistResolverProvider).resolve(query, limit: limit),
   ),
 );
 
