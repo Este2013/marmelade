@@ -375,6 +375,11 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     _openAlbum(albumId);
   }
 
+  void _editTrackFromShade(int trackId) {
+    _toggleShade(open: false);
+    _editTrack(trackId);
+  }
+
   void _openTag(int tagId) => _push(
     TagDetailView(tagId: tagId, onBack: _pop, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
     chrome: (_) => TagDetailChrome(tagId: tagId, onBack: _pop),
@@ -783,7 +788,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                 child: SizedBox(
                   height: constraints.maxHeight,
                   width: constraints.maxWidth,
-                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtistFromShade, onOpenAlbum: _openAlbumFromShade, onEditTrack: _editTrack),
+                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtistFromShade, onOpenAlbum: _openAlbumFromShade, onEditTrack: _editTrackFromShade),
                 ),
               ),
             ),

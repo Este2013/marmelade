@@ -1,3 +1,5 @@
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,10 @@ import '../../app/providers.dart';
 import '../../data/repositories/lyrics_repository.dart';
 import '../../domain/lyrics/lyrics_document.dart';
 import '../../widgets/empty_state.dart';
+
+/// Extensions a dropped or picked file must have to be worth trying as
+/// lyrics.
+const _lyricsExtensions = ['md', 'lrc', 'txt'];
 
 /// The words, following the music.
 ///
@@ -363,10 +369,18 @@ class _NoLyrics extends ConsumerStatefulWidget {
 
 class _NoLyricsState extends ConsumerState<_NoLyrics> {
   var _looking = false;
+  var _linking = false;
+  var _dragging = false;
   int? _found;
+  String? _error;
+
+  bool get _busy => _looking || _linking;
 
   Future<void> _look() async {
-    setState(() => _looking = true);
+    setState(() {
+      _looking = true;
+      _error = null;
+    });
     final linked =
         await ref.read(lyricsRepositoryProvider).importSidecars(widget.trackId);
     if (!mounted) return;
@@ -376,33 +390,105 @@ class _NoLyricsState extends ConsumerState<_NoLyrics> {
     });
   }
 
+  Future<void> _pickFile() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'Lyrics', extensions: _lyricsExtensions),
+      ],
+    );
+    if (file == null || !mounted) return;
+    await _linkPath(file.path);
+  }
+
+  /// Shared by the file picker and a file dropped from the OS.
+  Future<void> _linkPath(String path) async {
+    setState(() {
+      _linking = true;
+      _error = null;
+    });
+    final ok = await ref
+        .read(lyricsRepositoryProvider)
+        .link(widget.trackId, path: path);
+    if (!mounted) return;
+    setState(() {
+      _linking = false;
+      if (!ok) _error = 'That file could not be read.';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return EmptyState(
-      icon: Icons.lyrics_outlined,
-      title: 'No lyrics for this track',
-      message: _found == 0
-          ? 'No .lrc, .md or .txt file named after the audio file sits next '
-              'to it. Write them in the track editor instead.'
-          : 'Write or paste them in the track editor, or link a markdown file '
-              'and keep editing it wherever you like.',
-      action: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          OutlinedButton.icon(
-            onPressed: _looking ? null : _look,
-            icon: const Icon(Icons.folder_open_outlined, size: 18),
-            label: Text(_looking ? 'Looking...' : 'Look next to the file'),
+    final scheme = Theme.of(context).colorScheme;
+
+    return DropTarget(
+      onDragEntered: (_) => setState(() => _dragging = true),
+      onDragExited: (_) => setState(() => _dragging = false),
+      onDragDone: (details) {
+        setState(() => _dragging = false);
+        if (_busy || details.files.isEmpty) return;
+        // The first file with a supported extension, not just the first
+        // file: dropping a folder's worth of things next to the audio
+        // shouldn't require picking the lyrics one out by hand first.
+        final path = details.files
+            .map((f) => f.path)
+            .where((p) => _lyricsExtensions
+                .any((ext) => p.toLowerCase().endsWith('.$ext')))
+            .firstOrNull;
+        if (path == null) {
+          setState(() => _error =
+              'That is not a .lrc, .md or .txt file.');
+          return;
+        }
+        _linkPath(path);
+      },
+      child: DecoratedBox(
+        // Only paints while something is actually being dragged over it --
+        // otherwise this would just be a permanent, pointless outline around
+        // an empty state that already reads as empty.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: _dragging
+              ? Border.all(color: scheme.primary, width: 2)
+              : Border.all(color: Colors.transparent, width: 2),
+          color: _dragging ? scheme.primary.withValues(alpha: 0.06) : null,
+        ),
+        child: EmptyState(
+          icon: _dragging ? Icons.file_download_outlined : Icons.lyrics_outlined,
+          title: _dragging ? 'Drop it here' : 'No lyrics for this track',
+          message: _dragging
+              ? 'A .lrc, .md or .txt file, linked and kept in sync with '
+                  'wherever it lives.'
+              : _error ??
+                  (_found == 0
+                      ? 'No .lrc, .md or .txt file named after the audio '
+                          'file sits next to it. Drag one in, link one, or '
+                          'write them in the track editor.'
+                      : 'Write or paste them in the track editor, or link a '
+                          'file and keep editing it wherever you like.'),
+          action: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _look,
+                icon: const Icon(Icons.folder_open_outlined, size: 18),
+                label: Text(_looking ? 'Looking...' : 'Look next to the file'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _pickFile,
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: Text(_linking ? 'Linking...' : 'Link a file'),
+              ),
+              if (widget.onEditTrack != null)
+                FilledButton.icon(
+                  onPressed: () => widget.onEditTrack!(widget.trackId),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Write them'),
+                ),
+            ],
           ),
-          if (widget.onEditTrack != null) ...[
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: () => widget.onEditTrack!(widget.trackId),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Write them'),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
