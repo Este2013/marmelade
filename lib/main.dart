@@ -58,6 +58,13 @@ Future<void> main() async {
     // takes those away, and it is not what is wanted here.
     log.info('initialising window');
     await windowManager.ensureInitialized();
+    // Without this, closing the window can tear the process down before (or
+    // while) the shutdown cleanup below runs, which is exactly how a WAL
+    // database gets left without its closing checkpoint -- see
+    // _ShutdownLogger.onWindowClose. Asking to be told first, and closing
+    // for real only once cleanup has finished, is what makes that ordering
+    // reliable instead of a race.
+    await windowManager.setPreventClose(true);
 
     // window_manager 0.5.2 takes these sizes in *physical* pixels on Windows,
     // not logical ones, so they have to be scaled by hand. On a 175% display
@@ -110,15 +117,35 @@ Future<void> main() async {
   });
 }
 
-/// Writes the session-end marker when the window closes.
+/// Closes the database and audio engine cleanly, then lets the window close.
+///
+/// `NativeDatabase` runs in WAL mode, which relies on the last connection
+/// closing normally to fold the WAL back into the main file. Left to the OS
+/// tearing the process down instead -- which is what happened before this
+/// existed, since nothing ever called `AppServices.dispose()` -- an
+/// in-progress write can leave the file in a state SQLite itself calls
+/// corrupt on the next read, `search_trigrams`' own FTS5 tables the first
+/// to show it since they are the most structurally complex thing in the
+/// schema. `windowManager.setPreventClose(true)` in main() is what makes the
+/// window wait for this instead of closing out from under it.
 class _ShutdownLogger extends WindowListener {
   _ShutdownLogger(this.services);
 
   final AppServices services;
 
   @override
-  void onWindowClose() {
+  Future<void> onWindowClose() async {
+    try {
+      await services.dispose();
+    } catch (error, stack) {
+      AppLog.instance.error(
+        'shutdown cleanup failed',
+        error: error,
+        stack: stack,
+      );
+    }
     AppLog.instance.sessionEnd('window closed');
+    await windowManager.destroy();
   }
 }
 

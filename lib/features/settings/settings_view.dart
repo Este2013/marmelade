@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../app/providers.dart';
 import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
+import '../../data/db/sqlite_diagnostics.dart';
 import '../../data/indexer/library_indexer.dart';
 import '../../widgets/time_text.dart';
 import 'appearance_section.dart';
@@ -483,11 +484,49 @@ class _SearchIndexTileState extends ConsumerState<_SearchIndexTile> {
   Future<void> _rebuild() async {
     setState(() => _rebuilding = true);
     try {
+      // SearchIndexer.rebuildAll already recovers on its own from a
+      // corrupted index -- recreating the tables and rebuilding again --
+      // so reaching this catch means that retry also failed.
       await ref.read(searchIndexerProvider).rebuildAll();
       ref.invalidate(searchIndexCountsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Search index rebuilt')),
+      );
+    } catch (error, stack) {
+      AppLog.instance.error(
+        'search index rebuild failed',
+        tag: 'search',
+        error: error,
+        stack: stack,
+        fields: describeDatabaseError(error),
+      );
+      if (!mounted) return;
+      final corrupt = isDatabaseCorruption(error);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            corrupt
+                ? 'The search index could not be repaired'
+                : 'Rebuild failed',
+          ),
+          content: Text(
+            corrupt
+                ? 'The search index is corrupted on disk, and recreating it '
+                    'from scratch just now did not fix it. Your library '
+                    'itself is untouched -- this is only the search index. '
+                    'Closing and reopening marmelade may help; check the '
+                    'log if it keeps happening.'
+                : '$error',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
       );
     } finally {
       if (mounted) setState(() => _rebuilding = false);

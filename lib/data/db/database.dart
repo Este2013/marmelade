@@ -200,6 +200,22 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
     }
   }
 
+  /// Drops and recreates both FTS5 search tables, discarding their on-disk
+  /// structure rather than just their rows.
+  ///
+  /// `_createSearchIndexes` uses `IF NOT EXISTS`, so it never repairs a
+  /// table that already exists but is corrupt -- an emptied `DELETE FROM`
+  /// does nothing for that either, since the rows are not the part that is
+  /// broken. This is the one operation that actually resets the structure;
+  /// see [SearchIndexer.rebuildAll] for where it is used, and
+  /// `sqlite_diagnostics.dart` for how corruption is told apart from an
+  /// ordinary query failure.
+  Future<void> resetSearchIndexes() async {
+    await customStatement('DROP TABLE IF EXISTS $ftsTokenTable');
+    await customStatement('DROP TABLE IF EXISTS $ftsTrigramTable');
+    await _createSearchIndexes();
+  }
+
   /// Creates the artwork-resolution views.
   ///
   /// These encode the fallback chain in one place so every grid, list and

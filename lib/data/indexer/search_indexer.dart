@@ -1,4 +1,6 @@
+import '../../core/logging/app_log.dart';
 import '../db/database.dart';
+import '../db/sqlite_diagnostics.dart';
 
 /// Keeps the two full-text indexes in step with the catalog.
 ///
@@ -23,7 +25,17 @@ class SearchIndexer {
   /// Written as bulk `INSERT ... SELECT` statements, so a full rebuild of a
   /// large library is a handful of queries rather than one per row. Cheap
   /// enough to run after a scan instead of tracking fine-grained deltas.
-  Future<void> rebuildAll() async {
+  ///
+  /// If the FTS5 tables' own on-disk structure has been corrupted -- an
+  /// unclean shutdown mid-write is the usual cause -- clearing and
+  /// reinserting their rows cannot fix that, since the rows were never the
+  /// broken part. This recreates the tables from scratch and retries once
+  /// before giving up, so an otherwise-healthy library recovers on its own
+  /// the next time anything calls this (a manual rebuild, or the one every
+  /// scan ends with) instead of failing the same way forever.
+  Future<void> rebuildAll() => _recoveringFromCorruption(_rebuildAllOnce);
+
+  Future<void> _rebuildAllOnce() async {
     await db.transaction(() async {
       await db.customStatement('DELETE FROM $ftsTokenTable');
       if (db.trigramSearchAvailable) {
@@ -39,7 +51,10 @@ class SearchIndexer {
   }
 
   /// Re-indexes a single entity after an edit.
-  Future<void> reindexEntity(SearchEntity entity, int id) async {
+  Future<void> reindexEntity(SearchEntity entity, int id) =>
+      _recoveringFromCorruption(() => _reindexEntityOnce(entity, id));
+
+  Future<void> _reindexEntityOnce(SearchEntity entity, int id) async {
     await db.transaction(() async {
       await _remove(entity, id);
       switch (entity) {
@@ -59,7 +74,37 @@ class SearchIndexer {
 
   /// Drops an entity from both indexes.
   Future<void> removeEntity(SearchEntity entity, int id) =>
-      db.transaction(() => _remove(entity, id));
+      _recoveringFromCorruption(() => db.transaction(() => _remove(entity, id)));
+
+  /// Runs [action]; if it fails with `SQLITE_CORRUPT`, recreates both FTS5
+  /// tables and falls back to a full rebuild rather than retrying [action]
+  /// itself.
+  ///
+  /// A reset empties both tables completely, so retrying a targeted write
+  /// like [reindexEntity] afterwards would leave the index with just that
+  /// one entity in it -- worse than corrupt, since it would look healthy.
+  /// Only a full rebuild puts the catalog back in a state anything can trust.
+  Future<void> _recoveringFromCorruption(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error, stack) {
+      if (!isDatabaseCorruption(error)) rethrow;
+
+      AppLog.instance.error(
+        'search index corrupted, recreating its tables from scratch',
+        tag: 'search',
+        error: error,
+        stack: stack,
+        fields: describeDatabaseError(error),
+      );
+      await db.resetSearchIndexes();
+      await _rebuildAllOnce();
+      AppLog.instance.info(
+        'search index recovered after corruption',
+        tag: 'search',
+      );
+    }
+  }
 
   Future<void> _remove(SearchEntity entity, int id) async {
     await db.customStatement(
