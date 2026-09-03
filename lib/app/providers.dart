@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart' show Color, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/logging/app_log.dart';
 import '../data/db/database.dart';
@@ -22,6 +23,11 @@ import '../data/repositories/search_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/smart_playlist_resolver.dart';
 import '../data/repositories/tag_repository.dart';
+import '../data/transfer/library_exporter.dart';
+import '../data/transfer/library_importer.dart';
+import '../data/transfer/library_sync.dart';
+import '../data/transfer/transfer_bundle.dart';
+import '../data/transfer/transfer_report.dart';
 import '../domain/models/library_views.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
@@ -375,6 +381,54 @@ class ViewSetting<T> extends Notifier<T> {
   void set(T value) => state = value;
   void toggle() {
     if (state is bool) state = !(state as bool) as T;
+  }
+}
+
+/// A setting that lives in the database, read once on build.
+///
+/// The same shape as [UpdateChannelSetting], generalised because the transfer
+/// feature needs several: optimistic local state first so a toggle does not
+/// wait on a write, and the stored value loaded in a microtask rather than
+/// making every reader handle a loading state for something that is
+/// effectively always available.
+class StoredFlag extends Notifier<bool> {
+  StoredFlag(this.key, {this.initial = false});
+
+  final String key;
+  final bool initial;
+
+  @override
+  bool build() {
+    Future.microtask(() async {
+      state = await ref.read(settingsRepositoryProvider).get(key, initial);
+    });
+    return initial;
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    await ref.read(settingsRepositoryProvider).set(key, value);
+  }
+}
+
+/// A stored string setting; empty means unset.
+class StoredString extends Notifier<String> {
+  StoredString(this.key, {this.initial = ''});
+
+  final String key;
+  final String initial;
+
+  @override
+  String build() {
+    Future.microtask(() async {
+      state = await ref.read(settingsRepositoryProvider).get(key, initial);
+    });
+    return initial;
+  }
+
+  Future<void> set(String value) async {
+    state = value;
+    await ref.read(settingsRepositoryProvider).set(key, value);
   }
 }
 
@@ -782,6 +836,160 @@ final libraryFoldersProvider = StreamProvider<List<LibraryFolder>>((ref) {
         ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
       .watch();
 });
+
+// ------------------------------------------------------------------ transfer
+
+final libraryExporterProvider = Provider<LibraryExporter>(
+  (ref) => LibraryExporter(
+    db: ref.watch(databaseProvider),
+    artStore: ref.watch(artStoreProvider),
+  ),
+);
+
+final libraryImporterProvider = Provider<LibraryImporter>(
+  (ref) => LibraryImporter(
+    db: ref.watch(databaseProvider),
+    artStore: ref.watch(artStoreProvider),
+    searchIndexer: ref.watch(searchIndexerProvider),
+  ),
+);
+
+final librarySyncProvider = Provider<LibrarySync>(
+  (ref) => LibrarySync(
+    exporter: ref.watch(libraryExporterProvider),
+    importer: ref.watch(libraryImporterProvider),
+    settings: ref.watch(settingsRepositoryProvider),
+  ),
+);
+
+/// This installation's identity in a shared folder, created on first read.
+final machineIdentityProvider = FutureProvider<TransferOrigin>((ref) async {
+  final version = await ref.watch(appVersionProvider.future);
+  return ref.watch(librarySyncProvider).identity(appVersion: version);
+});
+
+/// The folder this library is shared through, or empty for none.
+final syncFolderProvider =
+    NotifierProvider<StoredString, String>(() => StoredString(SettingKeys.syncFolder));
+
+/// Whether artwork travels with a bundle. On: it is a few megabytes, and a
+/// picture chosen by hand is exactly the sort of work worth carrying.
+final syncArtworkProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.syncIncludeArtwork, initial: true),
+);
+
+/// Whether the audio files travel too. Off: that turns a bundle of megabytes
+/// into one the size of the music, and a shared folder is often metered.
+final syncAudioProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.syncIncludeAudio, initial: false),
+);
+
+/// When this computer last shared, for the settings page.
+///
+/// Read back from storage rather than held in a notifier because
+/// [LibrarySync] writes it itself, deep inside a job -- and the one thing
+/// worse than no timestamp is one that says the share worked when it did
+/// not.
+final lastSharedAtProvider = FutureProvider<String>((ref) async {
+  ref.watch(transferProgressProvider);
+  return ref.watch(settingsRepositoryProvider).get(SettingKeys.lastSyncAt, '');
+});
+
+/// The other computers sharing this library's folder.
+final syncPeersProvider = FutureProvider<List<SyncPeer>>((ref) async {
+  final path = ref.watch(syncFolderProvider);
+  if (path.isEmpty) return const [];
+  // Re-read after every transfer, so the list is not stale the moment it
+  // matters most.
+  ref.watch(transferProgressProvider);
+  final origin = await ref.watch(machineIdentityProvider.future);
+  return ref.watch(librarySyncProvider).peers(Directory(path), origin: origin);
+});
+
+/// Progress of a running export, import or share, or null when idle.
+final transferProgressProvider =
+    NotifierProvider<TransferJobController, TransferProgress?>(
+  TransferJobController.new,
+);
+
+/// Runs the transfer jobs, one at a time.
+///
+/// Shaped like [IndexJobController]: null state means idle, a bool guards
+/// re-entry, and progress arrives through the same callback the data layer
+/// already reports on. Two of these running at once would have both writing
+/// the same rows.
+class TransferJobController extends Notifier<TransferProgress?> {
+  @override
+  TransferProgress? build() => null;
+
+  var _running = false;
+  bool get isRunning => _running;
+
+  /// Writes a bundle into [path].
+  Future<TransferExportReport?> exportTo(String path) => _guard(() async {
+        final origin = await ref.read(machineIdentityProvider.future);
+        return ref.read(libraryExporterProvider).exportTo(
+              Directory(path),
+              origin: origin,
+              options: _exportOptions,
+              onProgress: (progress) => state = progress,
+            );
+      });
+
+  /// Reads the bundle in [path]. With [preview] nothing is written.
+  Future<TransferReport?> importFrom(
+    String path, {
+    required TransferImportOptions options,
+    bool preview = false,
+  }) =>
+      _guard(() async {
+        final directory = Directory(path);
+        final file = File(p.join(directory.path, transferBundleFileName));
+        state = const TransferProgress(phase: TransferPhase.readingBundle);
+        final bundle = TransferBundle.decode(await file.readAsString());
+        return ref.read(libraryImporterProvider).import(
+              bundle,
+              bundleDirectory: directory,
+              options: options,
+              preview: preview,
+              onProgress: (progress) => state = progress,
+            );
+      });
+
+  /// Publishes to the shared folder and folds in every other machine.
+  Future<SyncOutcome?> shareNow({
+    TransferImportOptions options = const TransferImportOptions(),
+  }) =>
+      _guard(() async {
+        final path = ref.read(syncFolderProvider);
+        if (path.isEmpty) return null;
+        final origin = await ref.read(machineIdentityProvider.future);
+        return ref.read(librarySyncProvider).syncNow(
+              folder: Directory(path),
+              origin: origin,
+              export: _exportOptions,
+              import: options,
+              onProgress: (progress) => state = progress,
+            );
+      });
+
+  TransferExportOptions get _exportOptions => TransferExportOptions(
+        includeArtwork: ref.read(syncArtworkProvider),
+        includeAudio: ref.read(syncAudioProvider),
+      );
+
+  Future<T?> _guard<T>(Future<T?> Function() body) async {
+    if (_running) return null;
+    _running = true;
+    state = const TransferProgress(phase: TransferPhase.readingLibrary);
+    try {
+      return await body();
+    } finally {
+      _running = false;
+      state = null;
+    }
+  }
+}
 
 // ------------------------------------------------------------------ indexing
 

@@ -698,7 +698,15 @@ void main() {
     expect(find.text('Music folders'), findsWidgets);
     expect(find.text('Add folder'), findsOneWidget);
     expect(find.text('No folders yet'), findsOneWidget);
-    // Anything waiting on the user is surfaced rather than hidden.
+
+    // Anything waiting on the user is surfaced rather than hidden -- but the
+    // page is a lazy list, so it has to be reached rather than looked for.
+    await tester.dragUntilVisible(
+      find.textContaining('to review'),
+      find.text('Add folder'),
+      const Offset(0, -200),
+    );
+    await settle(tester);
     expect(find.textContaining('to review'), findsOneWidget);
 
     // Further down the page, and the list is lazy, so it has to be reached

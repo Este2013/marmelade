@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
@@ -9,6 +10,7 @@ import 'package:marmelade/data/transfer/library_importer.dart';
 import 'package:marmelade/data/transfer/library_sync.dart';
 import 'package:marmelade/data/transfer/transfer_bundle.dart';
 import 'package:marmelade/data/transfer/transfer_report.dart';
+import 'package:marmelade/services/art/art_store.dart';
 import 'package:path/path.dart' as p;
 
 /// Moving hand-entered data between two computers.
@@ -869,6 +871,137 @@ void main() {
     });
   });
 
+  group('artwork', () {
+    late Directory scratch;
+
+    /// A one-pixel PNG, so `ImageProbe` recognises real bytes rather than
+    /// this having to fake the store.
+    final onePixelPng = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAF'
+      'AAH/q842iQAAAABJRU5ErkJggg==',
+    );
+
+    setUp(() async {
+      scratch = await Directory.systemTemp.createTemp('marmelade-art');
+    });
+
+    tearDown(() async {
+      if (await scratch.exists()) await scratch.delete(recursive: true);
+    });
+
+    test('a picture chosen by hand travels with the bundle', () async {
+      // Artwork is the one thing that cannot be carried as a reference: the
+      // store is content-addressed, so the digest is the identity and the
+      // bytes have to arrive for the row to mean anything.
+      final workStore =
+          await ArtStore.open(Directory(p.join(scratch.path, 'work-art')));
+      final homeStore =
+          await ArtStore.open(Directory(p.join(scratch.path, 'home-art')));
+      final bundleDir = Directory(p.join(scratch.path, 'bundle'));
+
+      final stored = await workStore.putBytes(onePixelPng);
+      final imageId = await work.image(stored!);
+      final albumId = await work.album('Album');
+      await work.setAlbumImage(albumId, imageId);
+      await home.album('Album');
+
+      await LibraryExporter(db: work.db, artStore: workStore).exportTo(
+        bundleDir,
+        origin: work.origin,
+      );
+
+      // The bytes are in the bundle, named by their digest.
+      final copied = Directory(p.join(bundleDir.path, 'artwork'));
+      expect(await copied.exists(), isTrue);
+      expect(await copied.list().length, 1);
+
+      final bundle = TransferBundle.decode(
+        await File(p.join(bundleDir.path, 'library.json')).readAsString(),
+      );
+      final report = await LibraryImporter(db: home.db, artStore: homeStore)
+          .import(bundle, bundleDirectory: bundleDir);
+
+      expect(report.imagesAdded, 1);
+      final homeImage = await home.albumImageDigest('Album');
+      expect(homeImage, stored.sha256);
+      // And the file is really in this machine's store, not just referenced.
+      expect(await homeStore.exists(stored.storedPath), isTrue);
+    });
+
+    test('an image already here is recognised rather than stored twice',
+        () async {
+      final workStore =
+          await ArtStore.open(Directory(p.join(scratch.path, 'work-art')));
+      final homeStore =
+          await ArtStore.open(Directory(p.join(scratch.path, 'home-art')));
+      final bundleDir = Directory(p.join(scratch.path, 'bundle'));
+
+      final stored = await workStore.putBytes(onePixelPng);
+      final imageId = await work.image(stored!);
+      final albumId = await work.album('Album');
+      await work.setAlbumImage(albumId, imageId);
+
+      // Home has the same picture already -- the digest is the same, because
+      // the digest is the bytes.
+      final hereToo = await homeStore.putBytes(onePixelPng);
+      await home.image(hereToo!);
+      await home.album('Album');
+
+      await LibraryExporter(db: work.db, artStore: workStore)
+          .exportTo(bundleDir, origin: work.origin);
+      final report = await LibraryImporter(db: home.db, artStore: homeStore)
+          .import(
+        TransferBundle.decode(
+          await File(p.join(bundleDir.path, 'library.json')).readAsString(),
+        ),
+        bundleDirectory: bundleDir,
+      );
+
+      expect(report.imagesAdded, 0, reason: 'the row was already here');
+      expect(await home.imageCount(), 1);
+      expect(await home.albumImageDigest('Album'), stored.sha256);
+    });
+
+    test('a bundle with no artwork folder still imports its metadata',
+        () async {
+      // Metadata-only is the common case: it is what a sync folder on a
+      // metered connection should carry.
+      final workStore =
+          await ArtStore.open(Directory(p.join(scratch.path, 'work-art')));
+      final bundleDir = Directory(p.join(scratch.path, 'bundle'));
+
+      final stored = await workStore.putBytes(onePixelPng);
+      final imageId = await work.image(stored!);
+      final albumId = await work.album('Album', year: 2021);
+      await work.setAlbumImage(albumId, imageId);
+      await work.setAlbumFavourite(albumId);
+
+      await LibraryExporter(db: work.db, artStore: workStore).exportTo(
+        bundleDir,
+        origin: work.origin,
+        options: const TransferExportOptions(includeArtwork: false),
+      );
+      expect(
+        await Directory(p.join(bundleDir.path, 'artwork')).exists(),
+        isFalse,
+      );
+
+      await home.album('Album', year: 2021);
+      final report = await LibraryImporter(db: home.db).import(
+        TransferBundle.decode(
+          await File(p.join(bundleDir.path, 'library.json')).readAsString(),
+        ),
+        bundleDirectory: bundleDir,
+      );
+
+      // The album's own data arrived; the picture did not, and nothing
+      // points at a file this machine does not have.
+      expect((await home.albumRow('Album'))!.read<int>('is_favorite'), 1);
+      expect(report.imagesAdded, 0);
+      expect(await home.albumImageDigest('Album'), isNull);
+    });
+  });
+
   group('previewing', () {
     test('reports what would change without writing anything', () async {
       // The same code path as a real import, rolled back -- so the preview
@@ -1152,6 +1285,21 @@ class _Machine {
             requiresSpaces: const Value(true),
           ));
 
+  Future<int> image(StoredImage stored) =>
+      db.into(db.images).insert(ImagesCompanion.insert(
+            sha256: stored.sha256,
+            kind: ImageKind.userProvided,
+            mimeType: stored.mimeType,
+            byteSize: stored.byteSize,
+            storedPath: stored.storedPath,
+            width: Value(stored.width),
+            height: Value(stored.height),
+          ));
+
+  Future<void> setAlbumImage(int albumId, int imageId) =>
+      (db.update(db.albums)..where((t) => t.id.equals(albumId)))
+          .write(AlbumsCompanion(imageId: Value(imageId)));
+
   // ----------------------------------------------------------------- reading
 
   Future<QueryRow> trackRow(String title) => db
@@ -1308,6 +1456,23 @@ class _Machine {
     }
     return names;
   }
+
+  /// The digest of the picture an album points at, which is the only
+  /// machine-independent thing about an image row.
+  Future<String?> albumImageDigest(String title) async {
+    final row = await db
+        .customSelect(
+          'SELECT i.sha256 AS sha256 FROM albums a '
+          'JOIN images i ON i.id = a.image_id WHERE a.title = ?1',
+          variables: [Variable(title)],
+        )
+        .getSingleOrNull();
+    return row?.read<String>('sha256');
+  }
+
+  Future<int> imageCount() async =>
+      (await db.customSelect('SELECT COUNT(*) AS n FROM images').getSingle())
+          .read<int>('n');
 
   Future<bool> hasSeparator(String token) async {
     final row = await db

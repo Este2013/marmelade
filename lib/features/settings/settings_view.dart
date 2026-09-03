@@ -12,6 +12,7 @@ import '../../data/db/sqlite_diagnostics.dart';
 import '../../data/indexer/library_indexer.dart';
 import '../../widgets/time_text.dart';
 import 'appearance_section.dart';
+import 'transfer_section.dart';
 import 'updates_tile.dart';
 
 /// Where the project lives, shown in settings and used by the updater.
@@ -29,6 +30,8 @@ class SettingsView extends ConsumerWidget {
         const AppearanceSection(),
         const SizedBox(height: 28),
         const _LibrarySection(),
+        const SizedBox(height: 28),
+        const TransferSection(),
         const SizedBox(height: 28),
         const _StatisticsSection(),
         const SizedBox(height: 28),
