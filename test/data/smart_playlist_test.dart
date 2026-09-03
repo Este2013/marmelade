@@ -496,5 +496,79 @@ void main() {
           .getSingle();
       expect(row.read<String>('kind'), 'smart');
     });
+
+    Future<String> kindOf(int id) async {
+      final row = await db
+          .customSelect(
+            'SELECT kind FROM playlists WHERE id = ?1',
+            variables: [Variable(id)],
+          )
+          .getSingle();
+      return row.read<String>('kind');
+    }
+
+    test('converting to smart keeps its tracks until a query is given',
+        () async {
+      final id = await playlists.create('Was manual');
+      final trackId = await track('Song');
+      await playlists.addTracks(id!, [trackId]);
+
+      await playlists.convertToSmart(id);
+      expect(await kindOf(id), 'smart');
+      // No query yet, so it still shows its own rows -- nothing vanished the
+      // moment it converted.
+      expect(await playlists.resolveContents(id), [trackId]);
+
+      await playlists.saveQuery(id, query: 'artist:nobody');
+      expect(await playlists.resolveContents(id), isEmpty);
+    });
+
+    test('converting to smart does nothing to an already-smart playlist',
+        () async {
+      final id = await smart('artist:camellia');
+      await playlists.convertToSmart(id);
+      expect(await kindOf(id), 'smart');
+    });
+
+    test('freezing a smart playlist keeps what it currently matches',
+        () async {
+      final camellia = await artist('Camellia');
+      final kept = await track('Ghost', credits: [camellia]);
+
+      final id = await smart('artist:camellia');
+      expect(await playlists.resolveContents(id), [kept]);
+
+      await playlists.freeze(id);
+      expect(await kindOf(id), 'manual');
+
+      // A track added to the library afterwards, that the old query would
+      // have matched, does not appear: the playlist stopped following it.
+      await track('Later', credits: [camellia]);
+      expect(await playlists.resolveContents(id), [kept]);
+    });
+
+    test('freezing keeps a hybrid playlist\'s manual additions too', () async {
+      final camellia = await artist('Camellia');
+      final matched = await track('Ghost', credits: [camellia]);
+      final byHand = await track('Something else');
+
+      final id = await playlists.create('Both', kind: PlaylistKind.hybrid);
+      await playlists.saveQuery(id!, query: 'artist:camellia');
+      await playlists.addTracks(id, [byHand]);
+
+      await playlists.freeze(id);
+      expect(await kindOf(id), 'manual');
+      expect((await playlists.resolveContents(id)).toSet(), {matched, byHand});
+    });
+
+    test('freezing does nothing to an already-manual playlist', () async {
+      final id = await playlists.create('Manual');
+      final trackId = await track('Song');
+      await playlists.addTracks(id!, [trackId]);
+
+      await playlists.freeze(id);
+      expect(await kindOf(id), 'manual');
+      expect(await playlists.resolveContents(id), [trackId]);
+    });
   });
 }

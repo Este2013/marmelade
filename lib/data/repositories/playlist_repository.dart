@@ -522,6 +522,83 @@ class PlaylistRepository {
     );
   }
 
+  /// Turns a manual playlist into a smart one, with no query yet.
+  ///
+  /// Its existing rows are left exactly as they are. A smart playlist with no
+  /// query falls back to its own rows the same way a manual one does (see
+  /// [resolveContents]), so nothing in it disappears the moment it converts --
+  /// only once a query is actually saved does the query take over. [freeze]
+  /// is the reverse.
+  Future<void> convertToSmart(int playlistId) async {
+    final row = await db
+        .customSelect(
+          'SELECT kind FROM playlists WHERE id = ?1',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlists},
+        )
+        .getSingleOrNull();
+    if (row == null || row.read<String>('kind') != PlaylistKind.manual.name) {
+      return;
+    }
+    await (db.update(db.playlists)..where((t) => t.id.equals(playlistId)))
+        .write(
+      PlaylistsCompanion(
+        kind: const Value(PlaylistKind.smart),
+        updatedAt: Value(DateTime.now().toUtc()),
+      ),
+    );
+  }
+
+  /// Turns a smart or hybrid playlist into a manual one, replacing its rows
+  /// with whatever the query currently resolves to.
+  ///
+  /// "Freezing" is the point: a smart playlist changes as the library does,
+  /// and this is how someone keeps what it happens to contain right now --
+  /// an included playlist, an exclusion, the query itself are all replaced by
+  /// the plain list of tracks they added up to. [convertToSmart] is the
+  /// reverse, though it cannot recover what was frozen away.
+  Future<void> freeze(int playlistId) async {
+    final row = await db
+        .customSelect(
+          'SELECT kind FROM playlists WHERE id = ?1',
+          variables: [Variable(playlistId)],
+          readsFrom: {db.playlists},
+        )
+        .getSingleOrNull();
+    if (row == null) return;
+    final kind = row.read<String>('kind');
+    if (kind != PlaylistKind.smart.name && kind != PlaylistKind.hybrid.name) {
+      return;
+    }
+
+    final trackIds = await resolveContents(playlistId);
+
+    await db.transaction(() async {
+      await (db.delete(db.playlistItems)
+            ..where((t) => t.playlistId.equals(playlistId)))
+          .go();
+      for (var i = 0; i < trackIds.length; i++) {
+        await db.into(db.playlistItems).insert(
+              PlaylistItemsCompanion.insert(
+                playlistId: playlistId,
+                trackId: Value(trackIds[i]),
+                position: i * _positionGap,
+              ),
+            );
+      }
+      await (db.update(db.playlists)..where((t) => t.id.equals(playlistId)))
+          .write(
+        PlaylistsCompanion(
+          kind: const Value(PlaylistKind.manual),
+          query: const Value(null),
+          querySort: const Value(null),
+          queryLimit: const Value(null),
+          updatedAt: Value(DateTime.now().toUtc()),
+        ),
+      );
+    });
+  }
+
   /// Keeps a track out of a queried playlist without touching its query.
   Future<void> exclude(int playlistId, int trackId) async {
     await db.into(db.playlistItems).insert(

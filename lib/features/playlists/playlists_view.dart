@@ -270,6 +270,10 @@ class _PlaylistTile extends ConsumerWidget {
                         await _rename(context, ref);
                       case 'top':
                         await repository.reparent(playlist.id, null);
+                      case 'toSmart':
+                        await repository.convertToSmart(playlist.id);
+                      case 'freeze':
+                        await _confirmFreeze(context, ref);
                       case 'delete':
                         await _confirmDelete(context, ref);
                     }
@@ -287,6 +291,17 @@ class _PlaylistTile extends ConsumerWidget {
                       const PopupMenuItem(
                         value: 'top',
                         child: Text('Move to the top level'),
+                      ),
+                    const PopupMenuDivider(),
+                    if (playlist.kind == 'manual')
+                      const PopupMenuItem(
+                        value: 'toSmart',
+                        child: Text('Convert to smart playlist'),
+                      ),
+                    if (playlist.isSmart)
+                      const PopupMenuItem(
+                        value: 'freeze',
+                        child: Text('Convert to manual playlist'),
                       ),
                     const PopupMenuDivider(),
                     const PopupMenuItem(
@@ -381,6 +396,32 @@ class _PlaylistTile extends ConsumerWidget {
     );
     if (confirmed != true) return;
     await ref.read(playlistRepositoryProvider).delete(playlist.id);
+  }
+
+  Future<void> _confirmFreeze(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Convert ${playlist.name} to a manual playlist?'),
+        content: const Text(
+          'Its query is replaced by the plain list of tracks it currently '
+          'matches. It stops following the library, and the query cannot be '
+          'recovered afterwards.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Convert'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(playlistRepositoryProvider).freeze(playlist.id);
   }
 }
 
