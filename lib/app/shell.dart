@@ -83,10 +83,34 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   late final Animation<double> _barCurve = CurvedAnimation(parent: _bar, curve: Curves.easeOutCubic);
 
+  /// Hardware media keys (Fn+play/pause, next, previous).
+  ///
+  /// Registered as global hotkeys on the Windows side (see
+  /// flutter_window.cpp), not read here from Flutter's own keyboard events,
+  /// so they work no matter which window has focus -- the same as a
+  /// dedicated hardware player's buttons would.
+  static const _mediaKeysChannel = MethodChannel('marmelade/media_keys');
+
+  void _bindMediaKeys() {
+    if (!Platform.isWindows) return;
+    _mediaKeysChannel.setMethodCallHandler((call) async {
+      final controller = ref.read(playerProvider.notifier);
+      switch (call.method) {
+        case 'playPause':
+          await controller.togglePlayPause();
+        case 'next':
+          await controller.next();
+        case 'previous':
+          await controller.previous();
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     Screenshotter.scheduleIfRequested();
+    _bindMediaKeys();
     // The query outlives the field itself, so coming back shows what was
     // typed.
     _searchController.text = ref.read(searchQueryProvider);
@@ -195,6 +219,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   @override
   void dispose() {
+    _mediaKeysChannel.setMethodCallHandler(null);
     _shade.dispose();
     _bar.dispose();
     _searchController.dispose();

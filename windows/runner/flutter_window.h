@@ -3,6 +3,8 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 #include <memory>
 
@@ -28,6 +30,13 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Carries hardware media key presses to Dart. Registered as global hotkeys
+  // (see OnCreate) rather than read off WM_APPCOMMAND, so a key works no
+  // matter which window has focus -- the same way a dedicated hardware
+  // player would.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      media_keys_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
