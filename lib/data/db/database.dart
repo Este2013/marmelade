@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/logging/app_log.dart';
 import '../../domain/credits/separator.dart';
 import 'enums.dart';
 import 'tables/catalog.dart';
@@ -165,12 +166,56 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
           await customStatement('PRAGMA temp_store = MEMORY');
 
           if (details.wasCreated) return;
+          await _repairCorruptIndexesIfNeeded();
           // Virtual tables and views live outside the schema drift manages,
           // so make sure they exist on every open.
           await _createSearchIndexes();
           await _createViews();
         },
       );
+
+  /// Repairs ordinary b-tree index corruption found at startup.
+  ///
+  /// `PRAGMA quick_check` walks every b-tree in the file -- what caught this
+  /// on a database an unclean shutdown left with a torn write (see
+  /// `sqlite_diagnostics.dart` for how a live query later tells that class of
+  /// corruption apart from an ordinary failure). `REINDEX` rebuilds every
+  /// index from its table's actual rows, repairing exactly the "wrong number
+  /// of entries" and "missing from an index" damage quick_check reports,
+  /// without touching the rows themselves. It knows nothing about FTS5's own
+  /// shadow tables, though -- SearchIndexer.rebuildAll has that half
+  /// covered, recreating them outright the next time anything writes to the
+  /// search index.
+  Future<void> _repairCorruptIndexesIfNeeded() async {
+    Future<List<String>> check() async {
+      final rows = await customSelect('PRAGMA quick_check').get();
+      return rows
+          .map((r) => r.data.values.first as String)
+          .where((message) => message != 'ok')
+          .toList();
+    }
+
+    final problems = await check();
+    if (problems.isEmpty) return;
+
+    AppLog.instance.error(
+      'database integrity problems found at startup, repairing',
+      tag: 'database',
+      fields: {'count': problems.length, 'first': problems.first},
+    );
+    await customStatement('REINDEX');
+
+    final remaining = await check();
+    if (remaining.isEmpty) {
+      AppLog.instance.warn('database repaired via REINDEX', tag: 'database');
+    } else {
+      AppLog.instance.error(
+        'database still reports problems after REINDEX',
+        tag: 'database',
+        fields: {'count': remaining.length, 'first': remaining.first},
+      );
+    }
+  }
 
   Future<void> _createSearchIndexes() async {
     await customStatement('''

@@ -1,8 +1,23 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+
+/// Whether asserts are enabled -- true in debug and profile builds, false in
+/// release. The standard Dart idiom for it: an assert's body only runs when
+/// asserts are, so this only ever flips to true from inside one.
+///
+/// Deliberately not `package:flutter/foundation.dart`'s `kDebugMode`: that
+/// import drags in `dart:ui`, which plain `dart run` cannot resolve, and this
+/// file is used from the indexer's command-line tools as well as the app --
+/// see the doc comment on `MarmeladeDatabase.open`.
+bool _computeAssertsEnabled() {
+  var enabled = false;
+  assert(enabled = true);
+  return enabled;
+}
+
+final bool _assertsEnabled = _computeAssertsEnabled();
 
 /// Severity of a log record.
 enum LogLevel {
@@ -66,6 +81,11 @@ class AppLog {
     required Directory directory,
     LogLevel minLevel = LogLevel.debug,
     int keepFiles = 5,
+    // Flutter's own kDebugMode/kProfileMode name this more precisely than
+    // _assertsEnabled can from here (see its own doc comment), so the app
+    // passes it in; a command-line tool has no such build mode and just
+    // leaves it at the default.
+    String mode = 'cli',
   }) async {
     if (_instance?._handle != null) return _instance!;
 
@@ -82,8 +102,10 @@ class AppLog {
       target = File(p.join(directory.path, 'marmelade-$stamp.log'));
       handle = target.openSync(mode: FileMode.writeOnlyAppend);
     } catch (e) {
-      // Losing the log must not stop the app from starting.
-      debugPrint('marmelade: could not open a log file: $e');
+      // Losing the log must not stop the app from starting. print, not a
+      // logging call, is the point: there is no log to write this to yet.
+      // ignore: avoid_print
+      print('marmelade: could not open a log file: $e');
       handle = null;
       target = null;
     }
@@ -95,7 +117,7 @@ class AppLog {
       'pid': pid,
       'dart': Platform.version.split(' ').first,
       'os': Platform.operatingSystemVersion,
-      'mode': kDebugMode ? 'debug' : (kProfileMode ? 'profile' : 'release'),
+      'mode': mode,
       'log': target?.path,
     });
     return log;
@@ -188,8 +210,11 @@ class AppLog {
     final line = buffer.toString();
     _remember(line);
 
-    // In debug builds the console is still the fastest place to read.
-    if (kDebugMode) debugPrint(line);
+    // In debug and profile builds the console is still the fastest place to
+    // read. `dart run`, which is how the command-line tools normally run,
+    // has asserts on by default too, so this covers them as well.
+    // ignore: avoid_print
+    if (_assertsEnabled) print(line);
 
     final handle = _handle;
     if (handle == null) return;
@@ -256,41 +281,4 @@ class AppLog {
     return '${two(now.hour)}:${two(now.minute)}:${two(now.second)}'
         '.${three(now.millisecond)}';
   }
-}
-
-/// Routes every uncaught error in the app into [AppLog].
-///
-/// Covers the four separate places Flutter can surface one, because an error
-/// that reaches none of them is exactly the kind that produces a silent exit.
-void installErrorHandlers() {
-  final log = AppLog.instance;
-
-  FlutterError.onError = (details) {
-    log.error(
-      'flutter error',
-      tag: details.library,
-      error: details.exception,
-      stack: details.stack,
-      fields: {'context': details.context?.toStringDeep().split('\n').first},
-    );
-    // Keep the red screen and console output in debug.
-    FlutterError.presentError(details);
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    log.error('uncaught async error', error: error, stack: stack);
-    // Handled: an unhandled error here terminates the isolate.
-    return true;
-  };
-
-  // Errors thrown while building or painting a widget that the framework
-  // cannot attribute to a specific widget.
-  FlutterError.demangleStackTrace = (stack) => stack;
-}
-
-/// Runs [body] with uncaught synchronous and asynchronous errors logged.
-Future<void> runGuardedWithLogging(Future<void> Function() body) async {
-  await runZonedGuarded(body, (error, stack) {
-    AppLog.instance.error('uncaught zone error', error: error, stack: stack);
-  });
 }

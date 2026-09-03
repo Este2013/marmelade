@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -12,6 +13,7 @@ import 'app/storage_paths.dart';
 import 'app/theme/app_theme.dart';
 import 'core/debug/screenshotter.dart';
 import 'core/logging/app_log.dart';
+import 'core/logging/error_handlers.dart';
 
 /// How much decoded image data to keep.
 ///
@@ -43,7 +45,10 @@ Future<void> main() async {
     // Logging comes up before anything that can fail, so a crash during
     // startup still leaves a trace on disk.
     final logDirectory = await StoragePaths.logsDirectory();
-    final log = await AppLog.initialize(directory: logDirectory);
+    final log = await AppLog.initialize(
+      directory: logDirectory,
+      mode: kDebugMode ? 'debug' : (kProfileMode ? 'profile' : 'release'),
+    );
     installErrorHandlers();
 
     final imageCache = PaintingBinding.instance.imageCache;

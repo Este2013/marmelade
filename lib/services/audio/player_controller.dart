@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
+import '../../data/db/sqlite_diagnostics.dart';
 import '../../data/repositories/library_repository.dart';
 import '../../data/repositories/queue_repository.dart';
 import '../../domain/models/library_views.dart';
@@ -446,6 +448,13 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   ///
   /// A play only counts once enough of the track was heard; anything shorter is
   /// a skip. Otherwise flicking through a library would inflate every count.
+  ///
+  /// Every caller here awaits this inline as part of skipping to the next
+  /// track, going back, or stopping -- so an exception thrown out of it does
+  /// not just fail to record a play, it stops that transport action from
+  /// finishing too. Play history is not worth breaking playback over, corrupt
+  /// database or not, so failures are logged and swallowed rather than left
+  /// to propagate.
   Future<void> _recordFinishedPlay({bool completed = false}) async {
     final track = state.current;
     final startedAt = _startedAt;
@@ -459,21 +468,31 @@ class PlayerController extends Notifier<PlayerSnapshot> {
         : const Duration(seconds: 30);
     final counts = completed || heard >= threshold;
 
-    await db.into(db.playHistory).insert(PlayHistoryCompanion.insert(
-          trackId: track.trackId,
-          startedAt: startedAt,
-          endedAt: Value(DateTime.now().toUtc()),
-          msPlayed: Value(heard.inMilliseconds),
-          completed: Value(counts),
-        ));
+    try {
+      await db.into(db.playHistory).insert(PlayHistoryCompanion.insert(
+            trackId: track.trackId,
+            startedAt: startedAt,
+            endedAt: Value(DateTime.now().toUtc()),
+            msPlayed: Value(heard.inMilliseconds),
+            completed: Value(counts),
+          ));
 
-    await db.customStatement(
-      counts
-          ? 'UPDATE tracks SET play_count = play_count + 1, last_played_at = ? '
-              'WHERE id = ?'
-          : 'UPDATE tracks SET skip_count = skip_count + 1, last_played_at = ? '
-              'WHERE id = ?',
-      [DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000, track.trackId],
-    );
+      await db.customStatement(
+        counts
+            ? 'UPDATE tracks SET play_count = play_count + 1, last_played_at = ? '
+                'WHERE id = ?'
+            : 'UPDATE tracks SET skip_count = skip_count + 1, last_played_at = ? '
+                'WHERE id = ?',
+        [DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000, track.trackId],
+      );
+    } catch (error, stack) {
+      AppLog.instance.error(
+        'could not record play history',
+        tag: 'player',
+        error: error,
+        stack: stack,
+        fields: describeDatabaseError(error),
+      );
+    }
   }
 }
