@@ -34,22 +34,27 @@ class _TagLineState extends ConsumerState<TagLine> {
   var _hovering = false;
   var _busy = false;
 
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _add() async {
     if (_busy) return;
     final picked = await askForTag(context, ref, title: 'Add a tag');
     if (picked == null || !mounted) return;
 
-    setState(() => _busy = true);
-    try {
-      await ref.read(tagRepositoryProvider).attachByName(
-            widget.target,
-            widget.id,
-            picked.name,
-            categoryId: picked.categoryId,
-          );
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    await _run(() => ref.read(tagRepositoryProvider).attachByName(
+          widget.target,
+          widget.id,
+          picked.name,
+          categoryId: picked.categoryId,
+        ));
   }
 
   @override
@@ -61,10 +66,10 @@ class _TagLineState extends ConsumerState<TagLine> {
             .value ??
         const <AttachedTag>[];
 
-    // With nothing on the line there is nothing to hover, so the chip has to
-    // be there already -- quietly, since an untagged album should not look
-    // like it is asking for something.
-    final showAdd = _hovering || tags.isEmpty;
+    // Faded even with nothing on the line: an untagged album should not look
+    // like it is asking for something, and the pointer already has to be on
+    // the line to see any of the other chips' hover state either.
+    final showAdd = _hovering;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
@@ -80,6 +85,13 @@ class _TagLineState extends ConsumerState<TagLine> {
               onOpen: widget.onOpenTag == null
                   ? null
                   : () => widget.onOpenTag!(tag.id),
+              onRemove: tag.isInherited || _busy
+                  ? null
+                  : () => _run(
+                        () => ref
+                            .read(tagRepositoryProvider)
+                            .detach(widget.target, widget.id, tag.id),
+                      ),
             ),
           // Faded rather than removed. Adding and removing an interactive
           // widget on every hover churns the Windows accessibility tree, and a
@@ -110,10 +122,11 @@ class _TagLineState extends ConsumerState<TagLine> {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.tag, this.onOpen});
+  const _Chip({required this.tag, this.onOpen, this.onRemove});
 
   final AttachedTag tag;
   final VoidCallback? onOpen;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -130,13 +143,23 @@ class _Chip extends StatelessWidget {
       side: BorderSide(color: visuals.color.withValues(alpha: 0.45)),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onDeleted: onRemove,
+      deleteIconColor: visuals.color,
     );
 
     return Tooltip(
       message: [
         if (tag.categoryName != null) tag.categoryName!,
-        if (onOpen != null) 'Click to see everything tagged this',
-      ].join(' · '),
+        if (tag.isInherited)
+          switch (tag.origin) {
+            TagOrigin.album => 'From this track\'s album. Remove it there.',
+            TagOrigin.playlist =>
+              'From a playlist this track is in. Remove it there.',
+            TagOrigin.own => '',
+          }
+        else if (onOpen != null)
+          'Click to see everything tagged this',
+      ].where((s) => s.isNotEmpty).join(' · '),
       child: onOpen == null
           ? chip
           : InkWell(

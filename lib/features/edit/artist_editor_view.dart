@@ -4,14 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart';
 import '../../data/repositories/edit_repository.dart';
-import '../../data/repositories/tag_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import 'edit_widgets.dart';
 import 'editor_save_state.dart';
 import 'picture_section.dart';
-import 'tag_section.dart';
 
 /// Everything about one artist that a person can change.
 ///
@@ -306,7 +304,6 @@ class _EditorState extends ConsumerState<_Editor> {
                   _aliases(edit),
                   if (edit.isGroup || edit.members.isNotEmpty) _members(edit),
                   _partOf(edit),
-                  TagSection(target: TagTarget.artist, id: edit.id),
                   _structure(edit),
                 ],
               ),

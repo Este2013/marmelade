@@ -92,14 +92,21 @@ void main() {
     expect(addOpacity(tester), 1);
   });
 
-  testWidgets('with no tags the add chip is there to be found',
+  testWidgets('with no tags the add chip still stays hidden until hovered',
       (tester) async {
-    // Nothing to hover on an empty line, so hiding it would hide the only way
-    // to put the first tag on.
+    // An untagged album should not look like it is asking for something --
+    // even the empty case waits for the pointer, the same as a tagged one.
     await pump(tester, tags: const []);
+    expect(addOpacity(tester), 0);
+    expect(find.text('Add a tag'), findsOneWidget);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(find.text('Add a tag')));
+    await tester.pumpAndSettle();
 
     expect(addOpacity(tester), 1);
-    expect(find.text('Add a tag'), findsOneWidget);
   });
 
   testWidgets('the chip is in the tree even while invisible', (tester) async {

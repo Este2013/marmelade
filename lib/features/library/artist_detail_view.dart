@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/edit_repository.dart' show LinkRow;
+import '../../data/repositories/tag_repository.dart' show TagTarget;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
@@ -12,6 +13,7 @@ import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
 import '../edit/artist_links_dialog.dart';
 import '../edit/link_menu_button.dart';
+import '../tags/tag_line.dart';
 
 /// One artist: their portrait, their releases, and everything they appear on.
 ///
@@ -19,13 +21,16 @@ import '../edit/link_menu_button.dart';
 /// than a string on the track, a guest appearance shows up here without the UI
 /// doing anything special.
 class ArtistDetailView extends ConsumerWidget {
-  const ArtistDetailView({super.key, required this.artistId, required this.onOpenAlbum, required this.onOpenArtist, this.onEditArtist, this.onEditTrack, this.topInset = 0});
+  const ArtistDetailView({super.key, required this.artistId, required this.onOpenAlbum, required this.onOpenArtist, this.onEditArtist, this.onEditTrack, this.onOpenTag, this.topInset = 0});
 
   final int artistId;
   final void Function(int albumId) onOpenAlbum;
   final void Function(int artistId) onOpenArtist;
   final void Function(int artistId)? onEditArtist;
   final void Function(int trackId)? onEditTrack;
+
+  /// Opens a tag's page, when there is somewhere to open it.
+  final void Function(int tagId)? onOpenTag;
 
   /// Space to leave clear at the top for the window's caption strip.
   ///
@@ -65,6 +70,7 @@ class ArtistDetailView extends ConsumerWidget {
               tracks: items,
               onOpenAlbum: onOpenAlbum,
               onEdit: onEditArtist == null ? null : () => onEditArtist!(artistId),
+              onOpenTag: onOpenTag,
               topInset: topInset,
             ),
           ),
@@ -97,7 +103,7 @@ class ArtistDetailChrome extends StatelessWidget {
 }
 
 class _ArtistHeader extends ConsumerWidget {
-  const _ArtistHeader({this.onEdit, required this.artist, required this.albums, required this.tracks, required this.onOpenAlbum, this.topInset = 0});
+  const _ArtistHeader({this.onEdit, required this.artist, required this.albums, required this.tracks, required this.onOpenAlbum, this.onOpenTag, this.topInset = 0});
 
   final ArtistCard? artist;
   final List<AlbumCard> albums;
@@ -110,6 +116,7 @@ class _ArtistHeader extends ConsumerWidget {
   final VoidCallback? onEdit;
 
   final void Function(int albumId) onOpenAlbum;
+  final void Function(int tagId)? onOpenTag;
   final double topInset;
 
   @override
@@ -156,6 +163,14 @@ class _ArtistHeader extends ConsumerWidget {
                       [pluralize(tracks.length, 'track'), pluralize(albums.length, 'release'), if ((artist?.aliasCount ?? 0) > 0) pluralize(artist!.aliasCount, 'alias', 'aliases')].join('  ·  '),
                       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
+                    if (artist != null) ...[
+                      const SizedBox(height: 14),
+                      TagLine(
+                        target: TagTarget.artist,
+                        id: artist!.id,
+                        onOpenTag: onOpenTag,
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Row(
                       spacing: 8,

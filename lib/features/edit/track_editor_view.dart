@@ -4,13 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart';
 import '../../data/repositories/edit_repository.dart';
-import '../../data/repositories/tag_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import 'edit_widgets.dart';
 import 'editor_save_state.dart';
 import 'lyrics_section.dart';
-import 'tag_section.dart';
 import 'picture_section.dart';
 
 /// Everything about one track that a person can change, credits included.
@@ -366,7 +364,6 @@ class _EditorState extends ConsumerState<_Editor> {
                     onRemove: (id) =>
                         ref.read(editRepositoryProvider).removeTrackAlias(id),
                   ),
-                  TagSection(target: TagTarget.track, id: edit.id),
                   _creditsSection(),
                   LyricsSection(trackId: edit.id),
                 ],
