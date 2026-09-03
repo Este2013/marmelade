@@ -30,7 +30,6 @@ class NowPlayingView extends ConsumerWidget {
     this.topInset = 0,
     this.onOpenArtist,
     this.onOpenAlbum,
-    this.onEditTrack,
   });
 
   /// Space to leave clear at the top for the window's caption strip.
@@ -41,9 +40,6 @@ class NowPlayingView extends ConsumerWidget {
 
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
-
-  /// Opens the track editor, which is where lyrics get written.
-  final void Function(int trackId)? onEditTrack;
 
   /// Below this width the artwork and the side pane are shown one at a time.
   ///
@@ -79,9 +75,7 @@ class NowPlayingView extends ConsumerWidget {
           // minimum window leaves none of them readable, and the toggles keep
           // meaning the same thing at every width because of it.
           final sideVisible = queueVisible || lyricsVisible;
-          final side = lyricsVisible
-              ? LyricsPane(onEditTrack: onEditTrack)
-              : const _QueuePane();
+          final side = lyricsVisible ? const LyricsPane() : const _QueuePane();
 
           return Column(
             children: [

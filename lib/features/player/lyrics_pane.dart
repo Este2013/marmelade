@@ -7,6 +7,7 @@ import '../../app/providers.dart';
 import '../../data/repositories/lyrics_repository.dart';
 import '../../domain/lyrics/lyrics_document.dart';
 import '../../widgets/empty_state.dart';
+import '../lyrics/lyrics_editor_dialog.dart';
 
 /// Extensions a dropped or picked file must have to be worth trying as
 /// lyrics.
@@ -20,10 +21,7 @@ const _lyricsExtensions = ['md', 'lrc', 'txt'];
 /// still scrolls, and pretending to know where the singer is would be worse
 /// than admitting the file does not say.
 class LyricsPane extends ConsumerStatefulWidget {
-  const LyricsPane({super.key, this.onEditTrack});
-
-  /// Opens the track editor, which is where lyrics are written.
-  final void Function(int trackId)? onEditTrack;
+  const LyricsPane({super.key});
 
   @override
   ConsumerState<LyricsPane> createState() => _LyricsPaneState();
@@ -93,10 +91,7 @@ class _LyricsPaneState extends ConsumerState<LyricsPane> {
     }
 
     if (stored == null || stored.isEmpty) {
-      return _NoLyrics(
-        trackId: track.trackId,
-        onEditTrack: widget.onEditTrack,
-      );
+      return _NoLyrics(trackId: track.trackId);
     }
 
     // A translation on its own is a valid way to read; a translation beside the
@@ -171,6 +166,13 @@ class _Toolbar extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(24, 12, 12, 4),
       child: Row(
         children: [
+          IconButton(
+            tooltip: 'Edit lyrics',
+            onPressed: () =>
+                showLyricsEditorDialog(context, trackId: entry.trackId),
+            icon: const Icon(Icons.edit_outlined, size: 18),
+          ),
+          const SizedBox(width: 4),
           if (lyrics.all.length > 1)
             SizedBox(
               height: 34,
@@ -358,10 +360,9 @@ class _Paragraph extends StatelessWidget {
 
 /// What to do when a track has no lyrics yet.
 class _NoLyrics extends ConsumerStatefulWidget {
-  const _NoLyrics({required this.trackId, this.onEditTrack});
+  const _NoLyrics({required this.trackId});
 
   final int trackId;
-  final void Function(int trackId)? onEditTrack;
 
   @override
   ConsumerState<_NoLyrics> createState() => _NoLyricsState();
@@ -480,12 +481,12 @@ class _NoLyricsState extends ConsumerState<_NoLyrics> {
                 icon: const Icon(Icons.attach_file, size: 18),
                 label: Text(_linking ? 'Linking...' : 'Link a file'),
               ),
-              if (widget.onEditTrack != null)
-                FilledButton.icon(
-                  onPressed: () => widget.onEditTrack!(widget.trackId),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Write them'),
-                ),
+              FilledButton.icon(
+                onPressed: () =>
+                    showLyricsEditorDialog(context, trackId: widget.trackId),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Write them'),
+              ),
             ],
           ),
         ),

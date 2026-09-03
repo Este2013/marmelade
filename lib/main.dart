@@ -156,24 +156,31 @@ class MarmeladeApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final preference = ref.watch(themeSettingsProvider);
 
-    // The Windows accent colour, which the settings may or may not be asking
-    // for. Read either way: switching the source back should not need a
-    // restart, and the builder is what supplies it.
-    return DynamicColorBuilder(
-      builder: (lightDynamic, darkDynamic) {
-        final systemAccent = darkDynamic?.primary ?? lightDynamic?.primary;
-        final seed = preference.seed(systemAccent);
-        return MaterialApp(
-          title: 'marmelade',
-          debugShowCheckedModeBanner: false,
-          themeMode: preference.mode,
-          theme: buildTheme(seed: seed, brightness: Brightness.light),
-          darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
-          // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
-          // tree, to test whether a fault is the accessibility bridge's.
-          home: Screenshotter.boundary(child: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1' ? const ExcludeSemantics(child: AppShell()) : const AppShell()),
-        );
-      },
+    // The boundary wraps the whole MaterialApp, not just `home`: a dialog or
+    // snackbar lives in the Navigator's Overlay, a sibling of the home
+    // route's own content rather than a descendant of it, so a boundary
+    // placed only around `home` never sees one -- the capture comes back
+    // showing whatever was behind it instead.
+    return Screenshotter.boundary(
+      // The Windows accent colour, which the settings may or may not be
+      // asking for. Read either way: switching the source back should not
+      // need a restart, and the builder is what supplies it.
+      child: DynamicColorBuilder(
+        builder: (lightDynamic, darkDynamic) {
+          final systemAccent = darkDynamic?.primary ?? lightDynamic?.primary;
+          final seed = preference.seed(systemAccent);
+          return MaterialApp(
+            title: 'marmelade',
+            debugShowCheckedModeBanner: false,
+            themeMode: preference.mode,
+            theme: buildTheme(seed: seed, brightness: Brightness.light),
+            darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
+            // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
+            // tree, to test whether a fault is the accessibility bridge's.
+            home: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1' ? const ExcludeSemantics(child: AppShell()) : const AppShell(),
+          );
+        },
+      ),
     );
   }
 }
