@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../data/db/enums.dart' show PlaylistKind;
+import '../../data/db/enums.dart' show PlaylistKind, QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../domain/search/smart_query.dart';
 import 'smart_query_field.dart';
@@ -254,6 +254,11 @@ class _PlaylistTile extends ConsumerWidget {
                           size: 18, color: scheme.primary),
                     ),
                   ),
+                IconButton(
+                  tooltip: 'Play',
+                  onPressed: () => _play(ref),
+                  icon: const Icon(Icons.play_arrow),
+                ),
                 PopupMenuButton<String>(
                   tooltip: 'More',
                   icon: const Icon(Icons.more_vert),
@@ -316,6 +321,24 @@ class _PlaylistTile extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Resolves the playlist's contents and plays them, following nested
+  /// playlists the same way opening the playlist itself does.
+  ///
+  /// A count on the card is not enough to tell in advance whether there is
+  /// anything to play -- a smart playlist's own row never carries one (see
+  /// [_summary]) -- so this always resolves first and simply does nothing if
+  /// that comes back empty, the same guard the album grid's play button uses.
+  Future<void> _play(WidgetRef ref) async {
+    final trackIds =
+        await ref.read(playlistRepositoryProvider).resolveContents(playlist.id);
+    if (trackIds.isEmpty) return;
+    await ref.read(playerProvider.notifier).playAll(
+          trackIds,
+          source: QueueSource.playlist,
+          sourceRefId: playlist.id,
+        );
   }
 
   static String _summary(PlaylistCard playlist) {
