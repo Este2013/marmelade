@@ -153,6 +153,10 @@ class _ArtistHeader extends ConsumerWidget {
                 fallbackIcon: (artist?.isGroup ?? false) ? Icons.groups_outlined : Icons.person_outline,
                 heroTag: artist == null ? null : 'artist-art-${artist!.id}',
                 editable: artist != null,
+                // Their own pages usually show a photo of them, so the
+                // picker can offer to fetch one instead of sending someone
+                // off to find a file and save it first.
+                pickFromLinks: links,
               ),
               const SizedBox(width: 28),
               Expanded(

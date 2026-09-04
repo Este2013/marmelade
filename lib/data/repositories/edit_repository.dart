@@ -1011,6 +1011,60 @@ class EditRepository {
   Future<bool> setPlaylistPicture(int playlistId, File file) =>
       _setPicture(_playlistPicture, playlistId, file);
 
+  /// Stores bytes that never were a file on this disk -- fetched from one of
+  /// an artist's own links, say -- and points [artistId] at them.
+  ///
+  /// [source] goes into the image's `source_description`, so a picture's
+  /// provenance survives: "chosen by hand" and "taken from this Bandcamp
+  /// page" are different facts, and only one of them can be fetched again.
+  Future<bool> setArtistPictureFromBytes(
+    int artistId,
+    Uint8List bytes, {
+    required String source,
+  }) =>
+      _storePicture(
+        _artistPicture,
+        artistId,
+        () => artStore.putBytes(bytes),
+        source,
+      );
+
+  Future<bool> setAlbumPictureFromBytes(
+    int albumId,
+    Uint8List bytes, {
+    required String source,
+  }) =>
+      _storePicture(
+        _albumPicture,
+        albumId,
+        () => artStore.putBytes(bytes),
+        source,
+      );
+
+  Future<bool> setTrackPictureFromBytes(
+    int trackId,
+    Uint8List bytes, {
+    required String source,
+  }) =>
+      _storePicture(
+        _trackPicture,
+        trackId,
+        () => artStore.putBytes(bytes),
+        source,
+      );
+
+  Future<bool> setPlaylistPictureFromBytes(
+    int playlistId,
+    Uint8List bytes, {
+    required String source,
+  }) =>
+      _storePicture(
+        _playlistPicture,
+        playlistId,
+        () => artStore.putBytes(bytes),
+        source,
+      );
+
   Future<void> clearPlaylistPicture(int playlistId) =>
       _clearPicture(_playlistPicture, playlistId);
 
@@ -1033,8 +1087,27 @@ class EditRepository {
     (String, ImageRole, SearchEntity) target,
     int id,
     File file,
+  ) =>
+      _storePicture(
+        target,
+        id,
+        () => artStore.putFile(file),
+        'chosen by hand: ${file.path}',
+      );
+
+  /// The half both picture setters share: store the bytes however they
+  /// arrived, then point the row at what came back.
+  ///
+  /// [put] rather than a file or a byte list, because a file on disk and a
+  /// download differ only in how the store is fed, and everything after that
+  /// -- the image row, the verified flag, the reindex -- is the same work.
+  Future<bool> _storePicture(
+    (String, ImageRole, SearchEntity) target,
+    int id,
+    Future<StoredImage?> Function() put,
+    String source,
   ) async {
-    final stored = await artStore.putFile(file);
+    final stored = await put();
     if (stored == null) return false;
 
     final (table, role, entity) = target;
@@ -1047,7 +1120,7 @@ class EditRepository {
       height: stored.height,
       kind: ImageKind.userProvided,
       role: role,
-      sourceDescription: 'chosen by hand: ${file.path}',
+      sourceDescription: source,
     );
 
     // Written as a statement because the column differs per table and drift's

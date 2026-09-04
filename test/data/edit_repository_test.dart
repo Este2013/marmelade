@@ -477,6 +477,59 @@ void main() {
       expect((await repository.watchArtist(id).first)!.imagePath, isNull);
     });
 
+    test('bytes that were never a file are stored the same way', () async {
+      // What a fetch from one of the artist's own links hands over: there is
+      // no file on this disk to point at, only the bytes that came back.
+      final id = await artist('LukHash');
+      final bytes = writePng('fetched.png').readAsBytesSync();
+
+      expect(
+        await repository.setArtistPictureFromBytes(
+          id,
+          bytes,
+          source: 'from https://lukhash.test/ (https://cdn.test/p.png)',
+        ),
+        isTrue,
+      );
+
+      final edit = (await repository.watchArtist(id).first)!;
+      expect(edit.imagePath, isNotNull);
+      expect(edit.isVerified, isTrue);
+      expect(await artStoreHas(edit.imagePath!), isTrue);
+    });
+
+    test('a fetched picture records where it came from', () async {
+      // "Chosen by hand" and "taken from this page" are different facts, and
+      // only one of them can be fetched again.
+      final id = await artist('LukHash');
+      await repository.setArtistPictureFromBytes(
+        id,
+        writePng('fetched2.png').readAsBytesSync(),
+        source: 'from https://lukhash.test/ (https://cdn.test/p.png)',
+      );
+
+      final image = await db
+          .customSelect('SELECT source_description FROM images')
+          .getSingle();
+      expect(
+        image.read<String>('source_description'),
+        allOf(contains('lukhash.test'), contains('cdn.test/p.png')),
+      );
+    });
+
+    test('bytes that are not an image are refused', () async {
+      final id = await artist('Someone');
+      expect(
+        await repository.setArtistPictureFromBytes(
+          id,
+          Uint8List.fromList('nope'.codeUnits),
+          source: 'from somewhere',
+        ),
+        isFalse,
+      );
+      expect((await repository.watchArtist(id).first)!.imagePath, isNull);
+    });
+
     test('clearing detaches the picture but keeps the file', () async {
       final id = await artist('LukHash');
       await repository.setArtistPicture(id, writePng('b.png'));

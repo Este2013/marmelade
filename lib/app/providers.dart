@@ -32,6 +32,7 @@ import '../domain/models/library_views.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
+import '../services/art/link_artwork_service.dart';
 import '../core/changelog/changelog.dart';
 import '../services/updates/changelog_service.dart';
 import '../services/updates/update_service.dart';
@@ -259,6 +260,16 @@ final playerProvider =
     NotifierProvider<PlayerController, PlayerSnapshot>(() => throw StateError(
           'playerProvider must be overridden in main()',
         ));
+
+/// Reads the picture a linked page shows for itself.
+///
+/// Kept as a provider so a test can hand the picker a fake instead of
+/// reaching the network, and so the one HTTP client is shared.
+final linkArtworkServiceProvider = Provider<LinkArtworkService>((ref) {
+  final service = LinkArtworkService();
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 /// Resolves an artwork path from the store into a file.
 ///

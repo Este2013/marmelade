@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
 import '../core/logging/app_log.dart';
+import '../data/repositories/edit_repository.dart' show LinkRow;
+import '../features/edit/link_visuals.dart';
+import '../services/art/link_artwork_service.dart';
 import 'artwork.dart';
 
 /// What a picture belongs to.
@@ -30,6 +33,7 @@ class ExpandableArtwork extends ConsumerStatefulWidget {
     this.heroTag,
     this.editable = true,
     this.pickFromCovers = const [],
+    this.pickFromLinks = const [],
   });
 
   final String? storedPath;
@@ -55,6 +59,12 @@ class ExpandableArtwork extends ConsumerStatefulWidget {
   /// carry.
   final List<String> pickFromCovers;
 
+  /// Pages that might already show a picture of this thing -- an artist's own
+  /// links. Same idea as [pickFromCovers] one step further out: the library
+  /// knows where this artist lives on the internet, so the photo is usually a
+  /// fetch away rather than something to go and find and save first.
+  final List<LinkRow> pickFromLinks;
+
   @override
   ConsumerState<ExpandableArtwork> createState() => _ExpandableArtworkState();
 }
@@ -63,17 +73,21 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
   var _hovering = false;
   var _busy = false;
 
-  /// Opens the picker: a grid of covers already in the playlist plus a way to
-  /// browse for a file, or straight to the file browser when there is nothing
-  /// to pick from -- everything that is not a playlist, and an empty one.
+  /// Opens the picker: whatever is already on hand -- covers from a
+  /// playlist's own tracks, pages an artist links to -- plus a way to browse
+  /// for a file. Straight to the file browser when there is nothing on hand,
+  /// since a dialog with one button in it is a dialog for nothing.
   Future<void> _openPicker() async {
-    if (widget.pickFromCovers.isEmpty) {
+    if (widget.pickFromCovers.isEmpty && widget.pickFromLinks.isEmpty) {
       await _change();
       return;
     }
     final choice = await showDialog<_CoverChoice>(
       context: context,
-      builder: (context) => _CoverPickerDialog(covers: widget.pickFromCovers),
+      builder: (context) => _CoverPickerDialog(
+        covers: widget.pickFromCovers,
+        links: widget.pickFromLinks,
+      ),
     );
     if (choice == null) return;
     switch (choice) {
@@ -81,6 +95,73 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
         await _change();
       case _ExistingChoice(:final storedPath):
         await _pickExisting(storedPath);
+      case _LinkChoice(:final link):
+        await _pickFromLink(link);
+    }
+  }
+
+  /// Fetches whatever picture [link]'s page shows for itself.
+  ///
+  /// Reports its own failures on screen rather than silently doing nothing:
+  /// this reaches the network, so "the site refused" and "there is no picture
+  /// there" are ordinary outcomes and the person needs to know which, to
+  /// decide whether to try another link or go and find a file.
+  Future<void> _pickFromLink(LinkRow link) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final result =
+          await ref.read(linkArtworkServiceProvider).fetch(link.url);
+      if (!mounted) return;
+
+      switch (result) {
+        case LinkArtworkMissing(:final reason):
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(reason)));
+        case LinkArtworkFound(:final bytes, :final page):
+          final repository = ref.read(editRepositoryProvider);
+          final source = result.describe();
+          final ok = switch (widget.owner) {
+            PictureOwner.artist => await repository.setArtistPictureFromBytes(
+                widget.id, bytes, source: source),
+            PictureOwner.album => await repository.setAlbumPictureFromBytes(
+                widget.id, bytes, source: source),
+            PictureOwner.track => await repository.setTrackPictureFromBytes(
+                widget.id, bytes, source: source),
+            PictureOwner.playlist =>
+              await repository.setPlaylistPictureFromBytes(
+                  widget.id, bytes, source: source),
+          };
+          AppLog.instance.info('picture set from a link', fields: {
+            ..._where,
+            'page': '$page',
+            'accepted': ok,
+          });
+          if (!mounted) return;
+          if (!ok) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'What ${page.host} offered could not be read as an image.',
+                ),
+              ),
+            );
+          }
+      }
+    } catch (error, stack) {
+      AppLog.instance.error(
+        'picture from a link failed',
+        error: error,
+        stack: stack,
+        fields: {..._where, 'url': link.url},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('That picture could not be set.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -421,15 +502,25 @@ class _BrowseChoice extends _CoverChoice {
   const _BrowseChoice();
 }
 
-/// A grid of covers already in the playlist, with a way to browse for a
-/// file instead.
+class _LinkChoice extends _CoverChoice {
+  const _LinkChoice(this.link);
+  final LinkRow link;
+}
+
+/// What is already on hand -- covers from the playlist's own tracks, pages
+/// the artist links to -- with a way to browse for a file instead.
 class _CoverPickerDialog extends StatelessWidget {
-  const _CoverPickerDialog({required this.covers});
+  const _CoverPickerDialog({this.covers = const [], this.links = const []});
 
   final List<String> covers;
+  final List<LinkRow> links;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
     return AlertDialog(
       title: const Text('Choose a picture'),
       content: SizedBox(
@@ -439,29 +530,63 @@ class _CoverPickerDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'From a cover already in this playlist, or browse for a file.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+              switch ((covers.isNotEmpty, links.isNotEmpty)) {
+                (true, true) =>
+                  'From a cover already here, from one of the links, or '
+                      'browse for a file.',
+                (false, true) =>
+                  'Try one of this artist\'s own pages, or browse for a file.',
+                _ => 'From a cover already in this playlist, or browse for a '
+                    'file.',
+              },
+              style: muted,
             ),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 280),
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final cover in covers)
-                      _CoverTile(
-                        storedPath: cover,
-                        onTap: () => Navigator.of(context)
-                            .pop(_ExistingChoice(cover)),
-                      ),
-                  ],
+            if (links.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final link in links)
+                    // The site's own badge on the button: which page a photo
+                    // comes from is the whole decision being made here, and
+                    // "Bandcamp" and "YouTube" are not interchangeable.
+                    ActionChip(
+                      avatar: LinkKindIcon(kind: link.kind, size: 18),
+                      label: Text(link.label ?? linkKindLabel(link.kind)),
+                      onPressed: () =>
+                          Navigator.of(context).pop(_LinkChoice(link)),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Fetches whatever picture that page shows for itself.',
+                  style: muted,
                 ),
               ),
-            ),
+            ],
+            if (covers.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 280),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final cover in covers)
+                        _CoverTile(
+                          storedPath: cover,
+                          onTap: () => Navigator.of(context)
+                              .pop(_ExistingChoice(cover)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
