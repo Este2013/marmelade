@@ -97,12 +97,11 @@ class ReleaseNotes {
 
 /// Newest first.
 const changelog = <ReleaseNotes>[
-  // No date yet: this version is still being worked on. The release workflow
-  // refuses to build a tag whose entry is undated, which is what stops a
-  // release going out with nothing written down about it.
   ReleaseNotes(
     version: '0.2.0',
-    headline: 'Lists you can work through, and metadata you can fix in place.',
+    date: '2026-09-04',
+    headline: 'Lists you can work through, metadata you can fix in place, and '
+        'a library that can move between computers.',
     changes: [
       Change.added(
         'A filter box in Albums, Songs and Artists that narrows the list as '
@@ -150,6 +149,76 @@ const changelog = <ReleaseNotes>[
         'Playlists can be sorted and grouped, and arranged by hand. An '
         'arrangement is remembered, applies to tracks added later, and '
         'survives a change to a smart playlist query.',
+      ),
+      Change.added(
+        'A library can be exported and imported on another computer, so tags, '
+        'aliases, links, playlists and lyrics travel with the files instead '
+        'of being typed twice. Both sides may have moved on in the meantime: '
+        'an import merges rather than overwrites, and shows what it would '
+        'change before it changes anything.',
+      ),
+      Change.added(
+        'Two machines can keep up with each other through one shared folder, '
+        'with no server involved -- each writes only its own corner of it, so '
+        'there is nothing to collide over. Sending the audio files themselves '
+        'is off unless asked for.',
+      ),
+      Change.added(
+        'The query language behind smart playlists now works in Search and in '
+        'the Albums, Songs and Artists filter boxes: contains by default, '
+        'exact with =, regular expressions in r"...", is: for favourites and '
+        'singles, not: to invert a clause, and OR between them.',
+      ),
+      Change.added(
+        'Suggestions appear on one line under the field rather than pushing '
+        'it open, and the arrow keys and Enter pick one.',
+      ),
+      Change.added(
+        'A playlist can be turned into a smart playlist, and a smart playlist '
+        'frozen back into a fixed list of what it currently holds.',
+      ),
+      Change.added(
+        "An artist's picture can be taken from one of their own links -- the "
+        'same idea as offering a playlist the covers of the tracks in it.',
+      ),
+      Change.added(
+        "A page's own actions sit next to its name: edit, links, and add a "
+        'tag. Its links show as site badges beside its tags, one click from '
+        'the page they point at.',
+      ),
+      Change.added('Every playlist in the list has a play button.'),
+      Change.added(
+        'Lyrics have their own dialog, with a scrubber for lining timings up '
+        'against the song, and can be linked or dragged in from a file.',
+      ),
+      Change.added('The hardware media keys play, pause and skip.'),
+      Change.changed(
+        "Every view's toolbar now lives in the window's title bar instead of "
+        'a second row beneath it, which gives the lists back a row of height '
+        'and leaves one bar where there were two.',
+      ),
+      Change.changed(
+        'Tag editing moved out of the editor forms and onto the pages the '
+        'tags belong to.',
+      ),
+      Change.fixed(
+        'The app could refuse to close. The window sat waiting on cleanup '
+        'that never finished, and killing it left the library file needing '
+        'repair on the next start -- which is how a library got genuinely '
+        'corrupted. Nothing in the shutdown can hold the app open now, and '
+        'the database is always left whole.',
+      ),
+      Change.fixed(
+        'Links saved without an https:// prefix now open, show which site '
+        'they point at, and are recognised by their domain.',
+      ),
+      Change.fixed(
+        "A Bandcamp link that lands on a release no longer takes the record's "
+        "cover as the artist's picture.",
+      ),
+      Change.fixed(
+        'Damage to the search index is noticed and rebuilt on the spot '
+        'instead of leaving search broken until the next scan.',
       ),
     ],
   ),
