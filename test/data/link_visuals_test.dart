@@ -35,6 +35,15 @@ void main() {
       expect(inferLinkKind('https://lukhash.com'), LinkKind.website);
     });
 
+    test('a domain pasted without the scheme is still recognised', () {
+      // How people actually paste a link. Read literally there is no host,
+      // which used to make every bare domain "Other" -- so the one link kind
+      // that mattered least was the one it always guessed.
+      expect(inferLinkKind('pinocchiop.bandcamp.com'), LinkKind.bandcamp);
+      expect(inferLinkKind('www.nicovideo.jp/watch/sm9'), LinkKind.niconico);
+      expect(inferLinkKind('lukhash.com'), LinkKind.website);
+    });
+
     test('text with no host at all falls back to other', () {
       expect(inferLinkKind('not a url'), LinkKind.other);
       expect(inferLinkKind(''), LinkKind.other);

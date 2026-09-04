@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../core/logging/app_log.dart';
+import '../../core/net/web_url.dart';
 
 /// Finds the picture a page shows for itself.
 ///
@@ -64,7 +65,7 @@ class LinkArtworkService {
     String pageUrl, {
     LinkArtworkSubject subject = LinkArtworkSubject.artist,
   }) async {
-    final given = Uri.tryParse(pageUrl.trim());
+    final given = webUrl(pageUrl);
     if (given == null || !given.hasScheme || !given.hasAuthority) {
       return const LinkArtworkMissing('That link is not a web address.');
     }

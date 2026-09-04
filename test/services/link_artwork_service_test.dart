@@ -224,6 +224,20 @@ void main() {
       expect(result, isA<LinkArtworkMissing>());
     });
 
+    test('a link saved without https is still fetched', () async {
+      // Links get pasted without the scheme, and read literally such a URL
+      // has no host -- so this used to answer "that link is not a web
+      // address" for a perfectly good Bandcamp page.
+      final harness = serviceFor(
+        page('<meta property="og:image" content="https://cdn.test/photo.jpg">'),
+      );
+
+      final result = await harness.service.fetch('bandcamp.test/artist');
+
+      expect(result, isA<LinkArtworkFound>());
+      expect(harness.requested.first, 'https://bandcamp.test/artist');
+    });
+
     test('refuses anything that is not a web address, without asking',
         () async {
       final harness = serviceFor(page(''));

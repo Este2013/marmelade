@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/net/web_url.dart';
 import '../../data/repositories/edit_repository.dart' show LinkRow;
 import 'link_visuals.dart';
 
@@ -42,7 +43,8 @@ class LinkIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = link.label ?? linkKindLabel(link.kind);
-    final host = Uri.tryParse(link.url)?.host;
+    final uri = webUrl(link.url);
+    final host = uri?.host;
 
     return Tooltip(
       // The host as well as the label, because "Website" or "Other" says
@@ -55,11 +57,9 @@ class LinkIconButton extends StatelessWidget {
           padding: EdgeInsets.zero,
           iconSize: _glyph,
           // A malformed URL is a row somebody typed by hand, not a crash.
-          onPressed: () {
-            final uri = Uri.tryParse(link.url);
-            if (uri == null) return;
-            launchUrl(uri, mode: LaunchMode.externalApplication);
-          },
+          onPressed: uri == null
+              ? null
+              : () => launchUrl(uri, mode: LaunchMode.externalApplication),
           icon: LinkKindIcon(kind: link.kind, size: _glyph),
         ),
       ),

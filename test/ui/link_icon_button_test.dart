@@ -91,6 +91,31 @@ void main() {
     );
   });
 
+  testWidgets('a link saved without https still knows where it goes',
+      (tester) async {
+    // Nobody types the scheme, and without one `Uri` reads the whole thing as
+    // a path with no host -- so the button opened nothing and the tooltip
+    // named no site. Assuming https is what an address bar does.
+    await pump(
+      tester,
+      const LinkRow(
+        id: 1,
+        url: 'pinocchiop.bandcamp.com/album/x',
+        kind: LinkKind.bandcamp,
+      ),
+    );
+
+    expect(
+      tester.widget<Tooltip>(find.byType(Tooltip)).message,
+      contains('pinocchiop.bandcamp.com'),
+    );
+    expect(
+      tester.widget<IconButton>(find.byType(IconButton)).onPressed,
+      isNotNull,
+      reason: 'the button has somewhere to go',
+    );
+  });
+
   testWidgets('a malformed URL is a row somebody typed, not a crash',
       (tester) async {
     await pump(

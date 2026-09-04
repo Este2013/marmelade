@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/net/web_url.dart';
 import '../../data/db/enums.dart';
 
 /// A name worth showing, rather than the enum's own `camelCase`.
@@ -151,8 +152,7 @@ class LinkKindIcon extends StatelessWidget {
 /// as an error, and either guess is one click away from being corrected by
 /// hand. No request is made -- this is a string match, nothing more.
 LinkKind inferLinkKind(String url) {
-  final uri = Uri.tryParse(url.trim());
-  final host = uri?.host.toLowerCase() ?? '';
+  final host = webUrl(url)?.host.toLowerCase() ?? '';
   if (host.isEmpty) return LinkKind.other;
 
   bool has(String domain) => host == domain || host.endsWith('.$domain');
