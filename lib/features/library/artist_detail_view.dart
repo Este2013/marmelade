@@ -4,15 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/edit_repository.dart' show LinkRow;
-import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../data/repositories/tag_repository.dart' show AttachedTag, TagTarget;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/time_text.dart';
+import '../../widgets/title_with_actions.dart';
 import '../../widgets/track_list.dart';
 import '../edit/artist_links_dialog.dart';
-import '../edit/link_menu_button.dart';
+import '../edit/link_icon_button.dart';
 import '../tags/tag_line.dart';
 
 /// One artist: their portrait, their releases, and everything they appear on.
@@ -80,23 +81,23 @@ class ArtistDetailView extends ConsumerWidget {
   }
 }
 
-/// An artist page's back and edit controls, merged into the window's title
-/// bar rather than sitting as the first row of the page itself.
+/// An artist page's way back, in the window's title bar.
+///
+/// Only Back. Editing the artist and editing their links used to sit here
+/// too, but an action on the artist belongs next to the artist's name, not up
+/// among the window buttons -- see [TitleWithActions]. Back stays because it
+/// is about the page rather than the artist, and because it has to be
+/// reachable after the header has scrolled away.
 class ArtistDetailChrome extends StatelessWidget {
-  const ArtistDetailChrome({super.key, required this.onBack, this.onEdit});
+  const ArtistDetailChrome({super.key, required this.onBack});
 
   final VoidCallback onBack;
-
-  /// Opens the artist editor.
-  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back)),
-        const Spacer(),
-        if (onEdit != null) IconButton(tooltip: 'Edit this artist', onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
       ],
     );
   }
@@ -109,10 +110,9 @@ class _ArtistHeader extends ConsumerWidget {
   final List<AlbumCard> albums;
   final List<TrackRow> tracks;
 
-  /// Opens the artist editor.
-  ///
-  /// Only ever checked for null here, to gate the link menu's editability --
-  /// the button itself now lives in [ArtistDetailChrome].
+  /// Opens the artist editor. Also gates whether the links dialog is offered,
+  /// since both are "edit this artist" and a page that cannot do one has no
+  /// business offering the other.
   final VoidCallback? onEdit;
 
   final void Function(int albumId) onOpenAlbum;
@@ -125,6 +125,13 @@ class _ArtistHeader extends ConsumerWidget {
     final player = ref.read(playerProvider.notifier);
     final trackIds = tracks.map((t) => t.id).toList();
     final links = artist == null ? const <LinkRow>[] : ref.watch(artistLinksProvider(artist!.id)).value ?? const [];
+    // Watched here as well as inside the TagLine, because the header has to
+    // decide whether there is a line to show at all -- and Riverpod hands
+    // both readers the same cached list.
+    final tags = artist == null
+        ? const <AttachedTag>[]
+        : ref.watch(attachedTagsProvider((target: TagTarget.artist, id: artist!.id))).value ?? const [];
+    final canEdit = artist != null && onEdit != null;
 
     return Padding(
       padding: EdgeInsets.only(top: topInset + 20, bottom: 20),
@@ -157,18 +164,61 @@ class _ArtistHeader extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text('GROUP', style: theme.textTheme.labelSmall?.copyWith(letterSpacing: 1.4, color: theme.colorScheme.primary)),
                       ),
-                    Text(artist?.name ?? 'Unknown artist', style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w600)),
+                    TitleWithActions(
+                      title: Text(artist?.name ?? 'Unknown artist', style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w600)),
+                      actions: [
+                        if (canEdit)
+                          IconButton(
+                            tooltip: 'Edit this artist',
+                            onPressed: onEdit,
+                            icon: const Icon(Icons.edit_outlined),
+                            iconSize: 20,
+                          ),
+                        if (canEdit)
+                          IconButton(
+                            // The links themselves are in the tag line now, so
+                            // this button is only ever about changing them.
+                            tooltip: links.isEmpty ? 'Add a link' : 'Edit links',
+                            onPressed: () => showDialog<void>(
+                              context: context,
+                              builder: (context) => ArtistLinksDialog(
+                                artistId: artist!.id,
+                                artistName: artist!.name,
+                              ),
+                            ),
+                            icon: const Icon(Icons.link),
+                            iconSize: 20,
+                          ),
+                        // Only while there is nothing tagged. Once there is,
+                        // the tag line below is visible and carries its own
+                        // add chip.
+                        if (artist != null && tags.isEmpty)
+                          IconButton(
+                            tooltip: 'Add a tag',
+                            onPressed: () => addTagTo(context, ref, TagTarget.artist, artist!.id),
+                            icon: const Icon(Icons.new_label_outlined),
+                            iconSize: 20,
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       [pluralize(tracks.length, 'track'), pluralize(albums.length, 'release'), if ((artist?.aliasCount ?? 0) > 0) pluralize(artist!.aliasCount, 'alias', 'aliases')].join('  ·  '),
                       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
-                    if (artist != null) ...[
+                    // Links first, then tags: where somebody lives on the
+                    // internet and what their music is are the same kind of
+                    // fact about them, and the links are the shorter list.
+                    // Gone entirely when there is neither, so an artist with
+                    // no tags and no links does not carry an empty row.
+                    if (artist != null && (tags.isNotEmpty || links.isNotEmpty)) ...[
                       const SizedBox(height: 14),
                       TagLine(
                         target: TagTarget.artist,
                         id: artist!.id,
                         onOpenTag: onOpenTag,
+                        leading: [for (final link in links) LinkIconButton(link: link)],
+                        offerAdd: tags.isNotEmpty,
                       ),
                     ],
                     const SizedBox(height: 20),
@@ -190,18 +240,6 @@ class _ArtistHeader extends ConsumerWidget {
                                 },
                           icon: const Icon(Icons.shuffle),
                           label: const Text('Shuffle'),
-                        ),
-                        LinkMenuButton(
-                          links: links,
-                          onEditLinks: onEdit == null || artist == null
-                              ? null
-                              : () => showDialog<void>(
-                                    context: context,
-                                    builder: (context) => ArtistLinksDialog(
-                                      artistId: artist!.id,
-                                      artistName: artist!.name,
-                                    ),
-                                  ),
                         ),
                       ],
                     ),

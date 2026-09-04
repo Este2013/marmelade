@@ -10,6 +10,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
+import '../../widgets/title_with_actions.dart';
 import '../../features/playlists/playlist_pickers.dart';
 import '../../widgets/track_list.dart';
 
@@ -20,6 +21,7 @@ class AlbumDetailView extends ConsumerWidget {
     required this.albumId,
     required this.onOpenArtist,
     this.onOpenTag,
+    this.onEditAlbum,
     this.onEditTrack,
     this.topInset = 0,
   });
@@ -29,6 +31,10 @@ class AlbumDetailView extends ConsumerWidget {
 
   /// Opens a tag's page, when there is somewhere to open it.
   final void Function(int tagId)? onOpenTag;
+
+  /// Opens the album editor. Reaches the page rather than the window's
+  /// caption strip now, because the button sits beside the album's title.
+  final void Function(int albumId)? onEditAlbum;
   final void Function(int trackId)? onEditTrack;
 
   /// Space to leave clear at the top for the window's caption strip.
@@ -91,6 +97,9 @@ class AlbumDetailView extends ConsumerWidget {
                   tracks: items,
                   onOpenArtist: onOpenArtist,
                   onOpenTag: onOpenTag,
+                  onEdit: onEditAlbum == null
+                      ? null
+                      : () => onEditAlbum!(albumId),
                   topInset: topInset,
                 ),
               ),
@@ -102,9 +111,15 @@ class AlbumDetailView extends ConsumerWidget {
   }
 }
 
-/// An album page's back, add-to-playlist, edit and sort controls, merged
-/// into the window's title bar rather than sitting as the first row of the
-/// page itself.
+/// An album page's back, add-to-playlist and sort controls, merged into the
+/// window's title bar rather than sitting as the first row of the page
+/// itself.
+///
+/// Editing the album is no longer here: it acts on the album, so it sits
+/// beside the album's title (see [TitleWithActions]). What is left is about
+/// the page -- going back, queueing the whole thing, and how the list below
+/// is ordered -- and all three have to stay reachable after the header has
+/// scrolled away.
 ///
 /// A [ConsumerWidget] rather than taking the album's title as a parameter:
 /// the chrome is built before the page's own data has necessarily loaded
@@ -115,14 +130,10 @@ class AlbumDetailChrome extends ConsumerWidget {
     super.key,
     required this.albumId,
     required this.onBack,
-    this.onEdit,
   });
 
   final int albumId;
   final VoidCallback onBack;
-
-  /// Opens the album editor.
-  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -148,12 +159,6 @@ class AlbumDetailChrome extends ConsumerWidget {
                   ),
           icon: const Icon(Icons.library_add_outlined),
         ),
-        if (onEdit != null)
-          IconButton(
-            tooltip: 'Edit this album',
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined),
-          ),
         // Track order is what an album is normally read in, but a long
         // compilation is easier to search alphabetically and a soundtrack is
         // sometimes easier by length.
@@ -186,6 +191,7 @@ class _AlbumHeader extends ConsumerWidget {
     required this.tracks,
     required this.onOpenArtist,
     this.onOpenTag,
+    this.onEdit,
     this.topInset = 0,
   });
 
@@ -193,6 +199,9 @@ class _AlbumHeader extends ConsumerWidget {
   final List<TrackRow> tracks;
   final void Function(int artistId) onOpenArtist;
   final void Function(int tagId)? onOpenTag;
+
+  /// Opens the album editor.
+  final VoidCallback? onEdit;
   final double topInset;
 
   @override
@@ -200,6 +209,16 @@ class _AlbumHeader extends ConsumerWidget {
     final theme = Theme.of(context);
     final player = ref.read(playerProvider.notifier);
     final trackIds = tracks.map((t) => t.id).toList();
+    // Watched here as well as inside the TagLine, so the header can drop the
+    // whole row when there is nothing on it. Riverpod hands both the same
+    // cached list.
+    final tags = ref
+            .watch(attachedTagsProvider((target: TagTarget.album, id: album.id)))
+            .value ??
+        const <AttachedTag>[];
+    // Synthetic single cards carry a negative id and are not rows anything
+    // can be written to.
+    final canEdit = onEdit != null && album.id > 0;
 
     return Padding(
       padding: EdgeInsets.only(top: topInset + 20, bottom: 24),
@@ -226,10 +245,35 @@ class _AlbumHeader extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      album.title,
-                      style: theme.textTheme.displaySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                    TitleWithActions(
+                      title: Text(
+                        album.title,
+                        style: theme.textTheme.displaySmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      actions: [
+                        if (canEdit)
+                          IconButton(
+                            tooltip: 'Edit this album',
+                            onPressed: onEdit,
+                            icon: const Icon(Icons.edit_outlined),
+                            iconSize: 20,
+                          ),
+                        // Only while there is nothing tagged; once there is,
+                        // the tag line below carries its own add chip.
+                        if (album.id > 0 && tags.isEmpty)
+                          IconButton(
+                            tooltip: 'Add a tag',
+                            onPressed: () => addTagTo(
+                              context,
+                              ref,
+                              TagTarget.album,
+                              album.id,
+                            ),
+                            icon: const Icon(Icons.new_label_outlined),
+                            iconSize: 20,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     // The album artist is a link, not decoration.
@@ -258,13 +302,18 @@ class _AlbumHeader extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    // What this album is, before what you can do with it.
-                    TagLine(
-                      target: TagTarget.album,
-                      id: album.id,
-                      onOpenTag: onOpenTag,
-                    ),
+                    // What this album is, before what you can do with it --
+                    // and nothing at all when it is untagged, since an empty
+                    // row is a line of header spent saying nothing. Adding
+                    // the first one happens beside the title instead.
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      TagLine(
+                        target: TagTarget.album,
+                        id: album.id,
+                        onOpenTag: onOpenTag,
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Row(
                       children: [

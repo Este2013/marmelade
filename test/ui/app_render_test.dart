@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 import 'dart:ui' show ImageByteFormat;
 
 import 'package:drift/drift.dart' show Value;
@@ -28,8 +29,11 @@ import 'package:marmelade/features/library/songs_view.dart' show SongsToolbar;
 import 'package:marmelade/features/player/player_bar.dart';
 import 'package:marmelade/features/playlists/playlists_view.dart'
     show PlaylistsToolbar;
+import 'package:marmelade/features/edit/link_icon_button.dart';
 import 'package:marmelade/features/search/search_view.dart';
+import 'package:marmelade/features/tags/tag_line.dart' show TagLine;
 import 'package:marmelade/features/tags/tags_view.dart' show TagsToolbar;
+import 'package:marmelade/widgets/title_with_actions.dart';
 import 'package:marmelade/data/repositories/tag_repository.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
@@ -467,6 +471,7 @@ void main() {
     Stream<Duration>? positions,
     SearchResults? searchResults,
     List<LinkRow> artistLinks = const [],
+    List<AttachedTag> attachedTags = const [],
   }) {
     return ProviderScope(
       overrides: [
@@ -514,7 +519,7 @@ void main() {
         // watches this now, so it needs the same fake treatment as every other
         // stream in this scope.
         attachedTagsProvider.overrideWith(
-          (ref, key) => Stream.value(const <AttachedTag>[]),
+          (ref, key) => Stream.value(attachedTags),
         ),
         artistLinksProvider.overrideWith(
           (ref, artistId) => Stream.value(artistLinks),
@@ -1499,45 +1504,181 @@ void main() {
     await capture(tester, 'artist');
   });
 
-  testWidgets('an artist with links offers them from an icon',
-      (tester) async {
-    await open(
-      tester,
-      app: buildApp(
-        artistLinks: const [
-          LinkRow(id: 1, url: 'https://pinocchiop.bandcamp.com', kind: LinkKind.bandcamp),
-        ],
-      ),
+  group('an artist page keeps its actions next to the name', () {
+    const bandcamp = LinkRow(
+      id: 1,
+      url: 'https://pinocchiop.bandcamp.com',
+      kind: LinkKind.bandcamp,
     );
-    await tester.tap(railItem('Artists'));
-    await settle(tester);
-    await tester.tap(find.text('PinocchioP').first);
-    await settle(tester);
+    const aTag = AttachedTag(
+      id: 7,
+      name: 'vocaloid',
+      origin: TagOrigin.own,
+    );
 
-    expect(find.byIcon(Icons.link), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.link));
-    await tester.pumpAndSettle();
+    Future<void> openArtist(WidgetTester tester, {Widget? app}) async {
+      await open(tester, app: app ?? buildApp());
+      await tester.tap(railItem('Artists'));
+      await settle(tester);
+      await tester.tap(find.text('PinocchioP').first);
+      await settle(tester);
+    }
 
-    expect(find.text('Bandcamp'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    /// The opacity the hover-revealed action row is drawn at.
+    double actionsOpacity(WidgetTester tester) => tester
+        .widget<AnimatedOpacity>(
+          find.descendant(
+            of: find.byType(TitleWithActions),
+            matching: find.byType(AnimatedOpacity),
+          ),
+        )
+        .opacity;
+
+    testWidgets('edit and links sit by the name, not in the caption strip',
+        (tester) async {
+      await openArtist(tester);
+
+      // Both are on the page, beside the artist's own name.
+      expect(
+        find.descendant(
+          of: find.byType(TitleWithActions),
+          matching: find.byTooltip('Edit this artist'),
+        ),
+        findsOneWidget,
+      );
+      // Nothing left them behind in the strip, which now holds only Back.
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.byTooltip('Edit this artist'),
+        ),
+        findsNothing,
+      );
+      expect(find.byTooltip('Edit this artist'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('those actions stay out of sight until the row is hovered',
+        (tester) async {
+      await openArtist(tester);
+      expect(actionsOpacity(tester), 0);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.byType(TitleWithActions)));
+      await tester.pumpAndSettle();
+
+      expect(actionsOpacity(tester), 1);
+    });
+
+    testWidgets('a link is its own button in the tag line', (tester) async {
+      // One icon per link rather than a menu: a glance says *where* an
+      // artist can be found, and getting there is one click.
+      await openArtist(
+        tester,
+        app: buildApp(artistLinks: const [bandcamp], attachedTags: const [aTag]),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byType(TagLine),
+          matching: find.byType(LinkIconButton),
+        ),
+        findsOneWidget,
+      );
+      // Before the tags, not after them.
+      expect(
+        tester.getCenter(find.byType(LinkIconButton)).dx,
+        lessThan(tester.getCenter(find.text('vocaloid')).dx),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('with no links, the button by the name adds the first one',
+        (tester) async {
+      // Editing is always reachable from the running app, so the way in has
+      // to survive having no links yet.
+      await openArtist(tester);
+
+      expect(find.byType(LinkIconButton), findsNothing);
+      await tester.tap(find.byTooltip('Add a link'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Links'), findsOneWidget);
+    });
+
+    testWidgets('an untagged artist has no tag row, but a way to start one',
+        (tester) async {
+      await openArtist(tester);
+
+      expect(find.byType(TagLine), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TitleWithActions),
+          matching: find.byTooltip('Add a tag'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a tagged artist shows the row and drops the name button',
+        (tester) async {
+      // Exactly one way to add a tag at any moment: the row's own chip once
+      // there is a row.
+      await openArtist(tester, app: buildApp(attachedTags: const [aTag]));
+
+      expect(find.byType(TagLine), findsOneWidget);
+      expect(find.text('vocaloid'), findsOneWidget);
+      expect(find.byTooltip('Add a tag'), findsNothing);
+    });
+
+    testWidgets('rendering, for a look at the whole header', (tester) async {
+      await openArtist(
+        tester,
+        app: buildApp(
+          artistLinks: const [
+            bandcamp,
+            LinkRow(id: 2, url: 'https://pinocchiop.com', kind: LinkKind.website),
+          ],
+          attachedTags: const [aTag],
+        ),
+      );
+
+      // Hovered, since the point of the shot is where the buttons land.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.byType(TitleWithActions)));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      await capture(tester, 'artist-header-actions');
+    });
   });
 
-  testWidgets(
-      'an artist with no links still offers the icon, to add the first one',
-      (tester) async {
-    // Editing is always reachable from the running app, so the only way to
-    // add a first link is for the icon to survive having none yet.
+  testWidgets('an untagged album has no tag row either', (tester) async {
     await open(tester);
-    await tester.tap(railItem('Artists'));
-    await settle(tester);
-    await tester.tap(find.text('PinocchioP').first);
+    await tester.tap(find.text('Comic and Cosmic').first);
     await settle(tester);
 
-    expect(find.byIcon(Icons.link), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.link));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Edit links'), findsOneWidget);
+    expect(find.byType(TagLine), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(TitleWithActions),
+        matching: find.byTooltip('Add a tag'),
+      ),
+      findsOneWidget,
+    );
+    // And editing the album moved to the page, beside its title.
+    expect(
+      find.descendant(
+        of: find.byType(WindowChrome),
+        matching: find.byTooltip('Edit this album'),
+      ),
+      findsNothing,
+    );
+    expect(find.byTooltip('Edit this album'), findsOneWidget);
   });
 
   testWidgets('search groups what it found and leads with the best',

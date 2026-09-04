@@ -31,6 +31,18 @@ String? _asset(LinkKind kind) => switch (kind) {
       _ => 'assets/link_icons/${kind.name}.png',
     };
 
+/// The icon to draw when there is no favicon for a kind.
+///
+/// A plain website gets [Icons.open_in_browser] rather than the generic chain
+/// link: it is the one kind that *is* just "somebody's own page", and the
+/// browser glyph says what clicking it does. The chain stays for
+/// [LinkKind.other], which is the shrug case, and for a favicon that failed
+/// to load, where the kind is known but its mark is not available.
+IconData fallbackLinkIcon(LinkKind kind) => switch (kind) {
+      LinkKind.website => Icons.open_in_browser,
+      _ => Icons.link,
+    };
+
 /// A small icon for a link kind: its favicon where one is stored, a generic
 /// icon otherwise.
 class LinkKindIcon extends StatelessWidget {
@@ -44,7 +56,7 @@ class LinkKindIcon extends StatelessWidget {
     final asset = _asset(kind);
     if (asset == null) {
       return Icon(
-        Icons.link,
+        fallbackLinkIcon(kind),
         size: size,
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
@@ -59,7 +71,7 @@ class LinkKindIcon extends StatelessWidget {
         // added after the asset pull -- fall back rather than show the
         // "broken image" glyph.
         errorBuilder: (context, error, stack) => Icon(
-          Icons.link,
+          fallbackLinkIcon(kind),
           size: size,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
