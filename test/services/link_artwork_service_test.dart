@@ -251,4 +251,147 @@ void main() {
       );
     });
   });
+
+  /// A site with several pages, so a link can land on the wrong one.
+  ///
+  /// Anything whose path matches a key in [pages] is served as HTML; anything
+  /// else is served as [imageBytes], which is how a picture gets fetched.
+  ({LinkArtworkService service, List<String> requested}) siteFor(
+    Map<String, String> pages,
+  ) {
+    final requested = <String>[];
+    final client = MockClient((request) async {
+      requested.add(request.url.toString());
+      final html = pages[request.url.path];
+      if (html != null) {
+        return http.Response(html, 200, headers: {
+          'content-type': 'text/html; charset=utf-8',
+        });
+      }
+      if (request.url.host == 'f4.bcbits.com') {
+        return http.Response.bytes(imageBytes, 200, headers: {
+          'content-type': 'image/jpeg',
+        });
+      }
+      return http.Response('gone', 404);
+    });
+    return (service: LinkArtworkService(client: client), requested: requested);
+  }
+
+  /// Bandcamp's landing page is whatever the artist chose, which is sometimes
+  /// a record. Then the page's own picture is a sleeve, and using it puts an
+  /// album cover on the artist -- the reported bug, seen on one artist and
+  /// not the next purely because of that setting.
+  group('a link that lands on a release', () {
+    final album = page(
+      '<meta property="og:type" content="album">'
+      '<meta property="og:image" content="https://f4.bcbits.com/cover.jpg">',
+    );
+    final discography = page(
+      '<meta property="og:type" content="band">'
+      '<meta property="og:image" content="https://f4.bcbits.com/photo.jpg">',
+    );
+
+    test('asks the artist page instead, and says where it ended up', () async {
+      final harness = siteFor({
+        '/album/resonant-whispers': album,
+        '/music': discography,
+      });
+
+      final result = await harness.service
+          .fetch('https://elliothsu.bandcamp.com/album/resonant-whispers');
+
+      final found = result as LinkArtworkFound;
+      expect(found.from.toString(), 'https://f4.bcbits.com/photo.jpg');
+      expect(found.page.path, '/music');
+      // The provenance has to name the page the picture actually came from,
+      // not the link that was clicked.
+      expect(found.describe(), contains('/music'));
+      expect(harness.requested, [
+        'https://elliothsu.bandcamp.com/album/resonant-whispers',
+        'https://elliothsu.bandcamp.com/music',
+        'https://f4.bcbits.com/photo.jpg',
+      ]);
+    });
+
+    test('takes a page that says it is the artist at its word', () async {
+      // The other half of the bug report: this one always worked, and has to
+      // keep working without a second request.
+      final harness = siteFor({'/': discography, '/music': album});
+
+      final result = await harness.service.fetch('https://dmdokuro.bandcamp.com/');
+
+      expect(
+        (result as LinkArtworkFound).from.toString(),
+        'https://f4.bcbits.com/photo.jpg',
+      );
+      expect(harness.requested, [
+        'https://dmdokuro.bandcamp.com/',
+        'https://f4.bcbits.com/photo.jpg',
+      ]);
+    });
+
+    test('keeps the sleeve when a release is what was wanted', () async {
+      final harness = siteFor({
+        '/album/resonant-whispers': album,
+        '/music': discography,
+      });
+
+      final result = await harness.service.fetch(
+        'https://elliothsu.bandcamp.com/album/resonant-whispers',
+        subject: LinkArtworkSubject.release,
+      );
+
+      expect(
+        (result as LinkArtworkFound).from.toString(),
+        'https://f4.bcbits.com/cover.jpg',
+      );
+      expect(harness.requested.where((url) => url.endsWith('/music')), isEmpty);
+    });
+
+    test('settles for the sleeve when the artist page cannot be reached',
+        () async {
+      // Something of theirs beats a button that appeared to do nothing, and
+      // the picture is still one tap from being replaced.
+      final harness = siteFor({'/album/x': album});
+
+      final result = await harness.service.fetch('https://elliothsu.bandcamp.com/album/x');
+
+      expect(
+        (result as LinkArtworkFound).from.toString(),
+        'https://f4.bcbits.com/cover.jpg',
+      );
+      expect(harness.requested, contains('https://elliothsu.bandcamp.com/music'));
+    });
+
+    test('does not guess a second page on a site it does not know', () async {
+      // Everywhere else, an artist's page and a release's page are unrelated
+      // paths. Inventing `/music` there would just be a wasted request.
+      final harness = siteFor({'/release/x': album, '/music': discography});
+
+      final result = await harness.service.fetch('https://label.test/release/x');
+
+      expect(
+        (result as LinkArtworkFound).from.toString(),
+        'https://f4.bcbits.com/cover.jpg',
+      );
+      expect(harness.requested, [
+        'https://label.test/release/x',
+        'https://f4.bcbits.com/cover.jpg',
+      ]);
+    });
+
+    test('will not chase its own tail from the artist page', () async {
+      // A discography that somehow declares itself a release must not send
+      // the fetch back to the page it is already on.
+      final harness = siteFor({'/music': album});
+
+      await harness.service.fetch('https://elliothsu.bandcamp.com/music');
+
+      expect(
+        harness.requested.where((url) => url.endsWith('/music')).length,
+        1,
+      );
+    });
+  });
 }

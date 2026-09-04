@@ -19,6 +19,11 @@ import '../../core/logging/app_log.dart';
 /// represents this page, which is exactly the question being asked, and it
 /// means one small request and one image instead of a crawl.
 ///
+/// Those tags also say what the page *is*, which matters more than it sounds:
+/// a link labelled with an artist's name can land on one of their releases,
+/// and then the picture on offer is a record sleeve. When that happens and a
+/// portrait was wanted, this looks for the artist's own page instead.
+///
 /// Best effort by design. A site can refuse an unknown client, serve a
 /// generic card, or declare no image at all, and none of those is an error
 /// worth more than a sentence on screen -- browsing for a file is still right
@@ -52,22 +57,55 @@ class LinkArtworkService {
   };
 
   /// Tries to fetch the picture [pageUrl] advertises.
-  Future<LinkArtwork> fetch(String pageUrl) async {
-    final page = Uri.tryParse(pageUrl.trim());
-    if (page == null || !page.hasScheme || !page.hasAuthority) {
+  ///
+  /// [subject] says what the picture is *for*, which decides what to do when
+  /// a link lands somewhere unexpected -- see [_artistPageFor].
+  Future<LinkArtwork> fetch(
+    String pageUrl, {
+    LinkArtworkSubject subject = LinkArtworkSubject.artist,
+  }) async {
+    final given = Uri.tryParse(pageUrl.trim());
+    if (given == null || !given.hasScheme || !given.hasAuthority) {
       return const LinkArtworkMissing('That link is not a web address.');
     }
-    if (page.scheme != 'http' && page.scheme != 'https') {
-      return LinkArtworkMissing('Only web links can be read (not ${page.scheme}).');
+    if (given.scheme != 'http' && given.scheme != 'https') {
+      return LinkArtworkMissing('Only web links can be read (not ${given.scheme}).');
     }
 
+    var page = given;
     try {
-      final html = await _read(page, maxBytes: _maxPageBytes, headers: _headers);
-      if (html == null) {
+      final first = await _look(page);
+      if (first == null) {
         return LinkArtworkMissing('${page.host} did not answer.');
       }
+      var found = first;
 
-      final declared = _findImageUrl(String.fromCharCodes(html));
+      // Asked for a portrait and handed a sleeve. Bandcamp lets an artist set
+      // a featured release as their landing page, so `artist.bandcamp.com`
+      // can redirect to `/album/...` -- and that page's picture is the
+      // record's cover, which is why the same button gave a photo for one
+      // artist and an album cover for the next. The page says which it is, so
+      // when it says "album" there is a better page to ask.
+      if (subject == LinkArtworkSubject.artist && _isRelease(found.type)) {
+        final elsewhere = _artistPageFor(page);
+        if (elsewhere != null && elsewhere != page) {
+          final better = await _look(elsewhere);
+          if (better != null && better.image != null) {
+            AppLog.instance.info(
+              'a link led to a release, so its artist page was asked instead',
+              tag: 'artwork',
+              fields: {'was': '$page', 'asked': '$elsewhere'},
+            );
+            page = elsewhere;
+            found = better;
+          }
+          // A hop that fails leaves the release's own picture in place: it is
+          // still a picture of something this artist made, and having it
+          // appear beats a button that did nothing.
+        }
+      }
+
+      final declared = found.image;
       if (declared == null) {
         return LinkArtworkMissing('${page.host} does not offer a picture.');
       }
@@ -135,14 +173,59 @@ class LinkArtworkService {
     return bytes;
   }
 
-  /// The image a page declares for itself, in the order worth trusting.
+  /// Asks one page what it shows for itself: the picture it declares, and
+  /// what it says it *is*. Null when the page did not answer at all.
+  Future<({String? image, String? type})?> _look(Uri page) async {
+    final body = await _read(page, maxBytes: _maxPageBytes, headers: _headers);
+    if (body == null) return null;
+
+    final html = String.fromCharCodes(body);
+    final metas = _metaTags(html);
+    return (image: _findImageUrl(metas, html), type: metas['og:type']?.toLowerCase());
+  }
+
+  /// Whether a page says it is a record rather than the person who made it.
+  ///
+  /// `album` and `song` are Bandcamp's own spelling; the `music.` ones are
+  /// what the Open Graph vocabulary actually defines and what other sites
+  /// send. A playlist counts too -- its picture is not a portrait either.
+  static bool _isRelease(String? ogType) => const {
+        'album',
+        'song',
+        'music.album',
+        'music.song',
+        'music.playlist',
+      }.contains(ogType);
+
+  /// Where a site keeps an artist's own page, for when a link turns out to
+  /// point at one of their releases instead.
+  ///
+  /// Only Bandcamp, and only because Bandcamp is where this happens by
+  /// default: an artist can set a release as their landing page, so the URL
+  /// people copy as "their Bandcamp" quietly redirects to an album. `/music`
+  /// is the discography and always describes the artist. Elsewhere, artists
+  /// and releases live at paths that cannot be derived from one another, so
+  /// this answers nothing rather than guessing wrong.
+  static Uri? _artistPageFor(Uri page) {
+    final host = page.host.toLowerCase();
+    if (host != 'bandcamp.com' && !host.endsWith('.bandcamp.com')) return null;
+    if (page.path == '/music') return null;
+    return Uri(
+      scheme: page.scheme,
+      host: page.host,
+      port: page.hasPort ? page.port : null,
+      path: '/music',
+    );
+  }
+
+  /// Every `<meta>` a page carries, by `property` or `name`.
   ///
   /// Hand-matched rather than parsed with an HTML library: the app has no
-  /// parser dependency, and pulling one in to read three meta tags out of a
+  /// parser dependency, and pulling one in to read a few meta tags out of a
   /// `<head>` is a poor trade. Attributes are read per-tag rather than with
   /// one big pattern, because their order varies by site and a single regex
   /// that assumed `property` before `content` silently missed half of them.
-  static String? _findImageUrl(String html) {
+  static Map<String, String> _metaTags(String html) {
     final metas = <String, String>{};
     for (final match in RegExp(r'<meta\s[^>]*>', caseSensitive: false)
         .allMatches(html)) {
@@ -152,7 +235,11 @@ class LinkArtworkService {
       if (key == null || content == null || content.isEmpty) continue;
       metas.putIfAbsent(key.toLowerCase(), () => content);
     }
+    return metas;
+  }
 
+  /// The image a page declares for itself, in the order worth trusting.
+  static String? _findImageUrl(Map<String, String> metas, String html) {
     for (final key in const [
       'og:image:secure_url',
       'og:image:url',
@@ -201,6 +288,13 @@ class LinkArtworkService {
 
   void dispose() => _client.close();
 }
+
+/// What the picture is being fetched for.
+///
+/// It changes what to do with a page that turns out to be about something
+/// else: a sleeve is the wrong answer for an artist and the right one for a
+/// release.
+enum LinkArtworkSubject { artist, release }
 
 /// What came back from trying a link.
 sealed class LinkArtwork {

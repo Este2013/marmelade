@@ -110,8 +110,15 @@ class _ExpandableArtworkState extends ConsumerState<ExpandableArtwork> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final result =
-          await ref.read(linkArtworkServiceProvider).fetch(link.url);
+      final result = await ref.read(linkArtworkServiceProvider).fetch(
+            link.url,
+            // An artist's link can land on one of their releases, where the
+            // picture on offer is a sleeve; anywhere else, a sleeve is
+            // exactly what is being asked for.
+            subject: widget.owner == PictureOwner.artist
+                ? LinkArtworkSubject.artist
+                : LinkArtworkSubject.release,
+          );
       if (!mounted) return;
 
       switch (result) {

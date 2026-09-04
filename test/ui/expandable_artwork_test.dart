@@ -45,6 +45,7 @@ void main() {
     List<String> pickFromCovers = const [],
     List<LinkRow> pickFromLinks = const [],
     LinkArtworkService? linkArtwork,
+    PictureOwner owner = PictureOwner.album,
   }) async {
     await tester.binding.setSurfaceSize(const Size(900, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -63,7 +64,7 @@ void main() {
               child: ExpandableArtwork(
                 storedPath: storedPath,
                 size: 180,
-                owner: PictureOwner.album,
+                owner: owner,
                 id: 7,
                 title: 'AD:HOUSE Winter 4',
                 editable: editable,
@@ -332,7 +333,39 @@ void main() {
       }
 
       expect(fetched.asked, ['https://artist.bandcamp.com']);
+      // An album asking for a picture wants the record's own, sleeve and all.
+      expect(fetched.subjects, [LinkArtworkSubject.release]);
       expect(find.text('Choose a picture'), findsNothing);
+    });
+
+    testWidgets('an artist asks for a portrait, not whatever the page shows',
+        (tester) async {
+      // The distinction the fetch needs to do its job: an artist's Bandcamp
+      // link can redirect to one of their releases, and taking that page's
+      // picture puts an album cover on the artist. Only the caller knows a
+      // portrait was the point.
+      final fetched = _FakeLinkArtwork(
+        LinkArtworkFound(
+          bytes: Uint8List.fromList(_onePixelPng),
+          from: Uri.parse('https://f4.bcbits.com/img/photo.jpg'),
+          page: Uri.parse('https://artist.bandcamp.com/music'),
+        ),
+      );
+      await pump(
+        tester,
+        owner: PictureOwner.artist,
+        pickFromLinks: const [bandcamp],
+        linkArtwork: fetched,
+      );
+
+      await tester.tap(find.byTooltip('Change the picture'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bandcamp'));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      expect(fetched.subjects, [LinkArtworkSubject.artist]);
     });
 
     testWidgets('a page with nothing to offer says so and changes nothing',
@@ -388,10 +421,15 @@ class _FakeLinkArtwork extends LinkArtworkService {
 
   final LinkArtwork result;
   final asked = <String>[];
+  final subjects = <LinkArtworkSubject>[];
 
   @override
-  Future<LinkArtwork> fetch(String pageUrl) async {
+  Future<LinkArtwork> fetch(
+    String pageUrl, {
+    LinkArtworkSubject subject = LinkArtworkSubject.artist,
+  }) async {
     asked.add(pageUrl);
+    subjects.add(subject);
     return result;
   }
 }
