@@ -43,12 +43,35 @@ IconData fallbackLinkIcon(LinkKind kind) => switch (kind) {
       _ => Icons.link,
     };
 
+/// The colour to paint behind a kind's favicon, where its own mark does not
+/// fill the square.
+///
+/// Most of these logos are a full-bleed tile -- Bandcamp, Spotify, Booth --
+/// and read as badges beside each other with nothing added. Four do not:
+/// their marks sit on transparency, so among filled squares they look like
+/// gaps, and the dark ones all but vanish against a dark theme (Niconico's
+/// television is `#252525`, VGMdb's glyph `#D40000`). Painting each site's
+/// own background behind it makes them squares like the rest, which is what
+/// the sites themselves do in an app icon.
+///
+/// The exact colours matter, and these are sampled from the assets: YouTube's
+/// mark is `#FF0033`, not pure red, and painting `#FF0000` behind it leaves a
+/// two-tone square with a visible pill in the middle of it.
+Color? _badge(LinkKind kind) => switch (kind) {
+      LinkKind.youtube => const Color(0xFFFF0033),
+      LinkKind.niconico || LinkKind.bluesky || LinkKind.vgmdb => Colors.white,
+      _ => null,
+    };
+
 /// A small icon for a link kind: its favicon where one is stored, a generic
 /// icon otherwise.
 class LinkKindIcon extends StatelessWidget {
-  const LinkKindIcon({super.key, required this.kind, this.size = 18});
+  const LinkKindIcon({super.key, required this.kind, this.size = 22});
 
   final LinkKind kind;
+
+  /// Side of the square. Big enough by default to be legible at a glance in
+  /// a row of tag chips, which is where most of these are read.
   final double size;
 
   @override
@@ -62,18 +85,23 @@ class LinkKindIcon extends StatelessWidget {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(3),
-      child: Image.asset(
-        asset,
-        width: size,
-        height: size,
-        // A favicon fetched once and bundled can still be missing for a kind
-        // added after the asset pull -- fall back rather than show the
-        // "broken image" glyph.
-        errorBuilder: (context, error, stack) => Icon(
-          fallbackLinkIcon(kind),
-          size: size,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+      // Proportional, so the corners stay in step whatever size is asked
+      // for rather than looking sharp at 22 and round at 14.
+      borderRadius: BorderRadius.circular(size * 0.22),
+      child: ColoredBox(
+        color: _badge(kind) ?? Colors.transparent,
+        child: Image.asset(
+          asset,
+          width: size,
+          height: size,
+          // A favicon fetched once and bundled can still be missing for a
+          // kind added after the asset pull -- fall back rather than show
+          // the "broken image" glyph.
+          errorBuilder: (context, error, stack) => Icon(
+            fallbackLinkIcon(kind),
+            size: size,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

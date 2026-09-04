@@ -8,10 +8,11 @@ import 'tag_visuals.dart';
 
 /// Asks for a tag and puts it on something.
 ///
-/// Public because two places offer it now: the chip at the end of a
-/// [TagLine], and -- on a page whose line is hidden while it has no tags --
-/// an icon button up beside the name. Both should ask the same question and
-/// write the same row.
+/// Public because two places offer it: the chip at the end of a [TagLine],
+/// and an icon button up beside the page's name -- which has to be there
+/// whether or not the line is showing, since the line is hidden entirely
+/// while nothing is tagged. Both ask the same question and write the same
+/// row.
 Future<void> addTagTo(
   BuildContext context,
   WidgetRef ref,
@@ -41,7 +42,6 @@ class TagLine extends ConsumerStatefulWidget {
     required this.id,
     this.onOpenTag,
     this.leading = const [],
-    this.offerAdd = true,
   });
 
   final TagTarget target;
@@ -57,14 +57,6 @@ class TagLine extends ConsumerStatefulWidget {
   /// reader -- small badges saying what this is and where it lives -- and a
   /// separate row for two icons would cost a line of the header for nothing.
   final List<Widget> leading;
-
-  /// Whether this line offers the "Add a tag" chip.
-  ///
-  /// False on a page that offers the same action beside its name because the
-  /// line is hidden while it has nothing on it (see the artist and album
-  /// headers). Two ways to add the same tag, six pixels apart, is worse than
-  /// either alone.
-  final bool offerAdd;
 
   @override
   ConsumerState<TagLine> createState() => _TagLineState();
@@ -130,26 +122,24 @@ class _TagLineState extends ConsumerState<TagLine> {
           // widget on every hover churns the Windows accessibility tree, and a
           // chip that is always reachable is better for a screen reader than
           // one that needs a pointer to exist.
-          if (widget.offerAdd)
-            AnimatedOpacity(
-              opacity: showAdd ? 1 : 0,
-              duration: const Duration(milliseconds: 140),
-              alwaysIncludeSemantics: true,
-              child: ActionChip(
-                onPressed: _busy ? null : _add,
-                avatar:
-                    Icon(Icons.add, size: 16, color: scheme.onSurfaceVariant),
-                label: Text(
-                  tags.isEmpty ? 'Add a tag' : 'Add',
-                  style: theme.textTheme.bodySmall,
-                ),
-                visualDensity: VisualDensity.compact,
-                side: BorderSide(
-                  color: scheme.outlineVariant.withValues(alpha: 0.8),
-                ),
-                backgroundColor: Colors.transparent,
+          AnimatedOpacity(
+            opacity: showAdd ? 1 : 0,
+            duration: const Duration(milliseconds: 140),
+            alwaysIncludeSemantics: true,
+            child: ActionChip(
+              onPressed: _busy ? null : _add,
+              avatar: Icon(Icons.add, size: 16, color: scheme.onSurfaceVariant),
+              label: Text(
+                tags.isEmpty ? 'Add a tag' : 'Add',
+                style: theme.textTheme.bodySmall,
               ),
+              visualDensity: VisualDensity.compact,
+              side: BorderSide(
+                color: scheme.outlineVariant.withValues(alpha: 0.8),
+              ),
+              backgroundColor: Colors.transparent,
             ),
+          ),
         ],
       ),
     );

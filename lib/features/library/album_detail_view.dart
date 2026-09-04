@@ -259,9 +259,10 @@ class _AlbumHeader extends ConsumerWidget {
                             icon: const Icon(Icons.edit_outlined),
                             iconSize: 20,
                           ),
-                        // Only while there is nothing tagged; once there is,
-                        // the tag line below carries its own add chip.
-                        if (album.id > 0 && tags.isEmpty)
+                        // Here whether or not anything is tagged, so this row
+                        // does not rearrange itself as tags come and go. The
+                        // line below keeps its own add chip once it shows.
+                        if (album.id > 0)
                           IconButton(
                             tooltip: 'Add a tag',
                             onPressed: () => addTagTo(

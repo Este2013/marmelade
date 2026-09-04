@@ -115,7 +115,7 @@ class _PresetRowState extends ConsumerState<_PresetRow> {
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.all(6),
-                  child: LinkKindIcon(kind: kind, size: 20),
+                  child: LinkKindIcon(kind: kind),
                 ),
               ),
             ),

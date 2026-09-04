@@ -189,10 +189,12 @@ class _ArtistHeader extends ConsumerWidget {
                             icon: const Icon(Icons.link),
                             iconSize: 20,
                           ),
-                        // Only while there is nothing tagged. Once there is,
-                        // the tag line below is visible and carries its own
-                        // add chip.
-                        if (artist != null && tags.isEmpty)
+                        // Here whether or not anything is tagged. The line
+                        // below has its own add chip once it is showing, so
+                        // there are two ways in when there are tags -- which
+                        // is worth it to keep this row's contents from moving
+                        // about as tags come and go.
+                        if (artist != null)
                           IconButton(
                             tooltip: 'Add a tag',
                             onPressed: () => addTagTo(context, ref, TagTarget.artist, artist!.id),
@@ -218,7 +220,6 @@ class _ArtistHeader extends ConsumerWidget {
                         id: artist!.id,
                         onOpenTag: onOpenTag,
                         leading: [for (final link in links) LinkIconButton(link: link)],
-                        offerAdd: tags.isNotEmpty,
                       ),
                     ],
                     const SizedBox(height: 20),

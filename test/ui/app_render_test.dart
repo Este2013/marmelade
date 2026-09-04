@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/app/shell.dart';
 import 'package:marmelade/app/window_chrome.dart';
@@ -432,6 +433,25 @@ void main() {
 
   /// Where to write rendered screenshots, if the caller wants them kept.
   final shotDir = Platform.environment['MARMELADE_UI_SHOTS'];
+
+  setUpAll(() {
+    // The shell asks for the app version on its first frame (to decide
+    // whether to show "what is new"), and `PackageInfo.fromPlatform` waits on
+    // a platform channel no widget test answers. That leaves a
+    // `FutureProvider` pending forever, which is invisible in an ordinary run
+    // and fatal in a screenshot run: `capture` uses `runAsync`, and the
+    // binding then tears the scope down with the future still in flight --
+    // "provider was disposed during loading state". Answering the channel
+    // once here fixes the cause rather than the symptom, and lets every
+    // version-dependent path (the changelog, the updates tile) actually run.
+    PackageInfo.setMockInitialValues(
+      appName: 'marmelade',
+      packageName: 'dev.este2013.marmelade',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
+  });
 
   setUp(() async {
     // A database is still needed for the few widgets that write directly - the
@@ -1622,15 +1642,36 @@ void main() {
       );
     });
 
-    testWidgets('a tagged artist shows the row and drops the name button',
+    testWidgets('a tagged artist shows the row and keeps the name button',
         (tester) async {
-      // Exactly one way to add a tag at any moment: the row's own chip once
-      // there is a row.
+      // Two ways in, on purpose: the button by the name stays put so this row
+      // does not rearrange itself as tags come and go.
       await openArtist(tester, app: buildApp(attachedTags: const [aTag]));
 
       expect(find.byType(TagLine), findsOneWidget);
       expect(find.text('vocaloid'), findsOneWidget);
-      expect(find.byTooltip('Add a tag'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TitleWithActions),
+          matching: find.byTooltip('Add a tag'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a link and a tag on the same line are the same height',
+        (tester) async {
+      // They sit side by side, so a badge two pixels short of the chip beside
+      // it reads as a mistake.
+      await openArtist(
+        tester,
+        app: buildApp(artistLinks: const [bandcamp], attachedTags: const [aTag]),
+      );
+
+      expect(
+        tester.getSize(find.byType(LinkIconButton)).height,
+        tester.getSize(find.byType(Chip)).height,
+      );
     });
 
     testWidgets('rendering, for a look at the whole header', (tester) async {
