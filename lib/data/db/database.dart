@@ -295,6 +295,20 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
     await _createSearchIndexes();
   }
 
+  /// Folds the write-ahead log back into the database file.
+  ///
+  /// Closing the last connection does this too, so under normal shutdown
+  /// this is redundant -- and that is the point. If the close is what hangs,
+  /// the fold-back has already happened, and the file left behind is a whole
+  /// database rather than one whose last few megabytes of writes live only
+  /// in a sidecar. That state is how this library got a page claimed by two
+  /// b-trees at once, which no amount of REINDEX can undo.
+  ///
+  /// TRUNCATE rather than PASSIVE: it waits for readers and empties the log
+  /// afterwards, so the sidecar does not keep growing across runs.
+  Future<void> checkpoint() =>
+      customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+
   /// Creates the artwork-resolution views.
   ///
   /// These encode the fallback chain in one place so every grid, list and

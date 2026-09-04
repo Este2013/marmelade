@@ -141,16 +141,34 @@ class _ShutdownLogger extends WindowListener {
   @override
   Future<void> onWindowClose() async {
     try {
+      // Bounded step by step inside, so no single close can strand the
+      // others -- see AppServices.dispose.
       await services.dispose();
-    } catch (error, stack) {
-      AppLog.instance.error(
-        'shutdown cleanup failed',
-        error: error,
-        stack: stack,
-      );
+      AppLog.instance.sessionEnd('window closed');
+    } finally {
+      await _leave();
     }
-    AppLog.instance.sessionEnd('window closed');
-    await windowManager.destroy();
+  }
+
+  /// Ends the process, whatever else is still going on.
+  ///
+  /// `destroy()` is enough in the ordinary case. When a native thread
+  /// outlives it -- the audio device's, in practice, and it exists from
+  /// startup whether or not anything was played -- the window goes away and
+  /// the process stays, running with no window left to close it from. That is
+  /// what "I cannot close the app" is: not a window refusing to shut, but a
+  /// process nobody can see any more.
+  ///
+  /// Exiting explicitly is the only thing that reliably ends it. Safe by
+  /// here: the database is closed and its log folded back, and every log line
+  /// is flushed as it is written rather than buffered.
+  Future<void> _leave() async {
+    try {
+      await windowManager.destroy().timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Nothing left to report it to.
+    }
+    exit(0);
   }
 }
 

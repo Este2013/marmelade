@@ -1074,6 +1074,40 @@ class IndexJobController extends Notifier<IndexProgress?> {
 /// Constructed before the first frame so no screen has to render a loading
 /// state for something that is always available, and so the audio engine is a
 /// single shared instance.
+/// How long any one shutdown step gets before it is abandoned.
+///
+/// Long enough for a real close under load -- a checkpoint of a large log is
+/// not instant -- and short enough that three of them in a row still feel
+/// like closing a window rather than waiting on one.
+const shutdownStepTimeout = Duration(seconds: 4);
+
+/// Runs one shutdown step, and gives up rather than hanging the app.
+///
+/// Reports which step it was, since "the app would not close" is otherwise
+/// unattributable: the failure leaves no window, no dialog and, before this,
+/// no line in the log either.
+Future<void> closeQuietly(
+  String what,
+  Future<void> Function() step, {
+  Duration within = shutdownStepTimeout,
+}) async {
+  try {
+    await step().timeout(within);
+  } on TimeoutException {
+    AppLog.instance.error(
+      'closing $what did not finish in ${within.inMilliseconds}ms, moving on',
+      tag: 'shutdown',
+    );
+  } catch (error, stack) {
+    AppLog.instance.error(
+      'closing $what failed',
+      tag: 'shutdown',
+      error: error,
+      stack: stack,
+    );
+  }
+}
+
 class AppServices {
   AppServices({
     required this.db,
@@ -1124,9 +1158,22 @@ class AppServices {
     return AppServices(db: db, artStore: artStore, engine: engine);
   }
 
+  /// Closes everything down, and cannot be prevented from finishing.
+  ///
+  /// Every step is bounded and independent, because the last one is the one
+  /// that matters: this used to be two plain awaits, so an audio device that
+  /// never finished deinitialising meant `db.close()` was never reached at
+  /// all. The window then stayed open forever -- the app "would not close"
+  /// -- and the only way out was to kill it, leaving the write-ahead log
+  /// unfolded. That is the exact corruption this shutdown path exists to
+  /// prevent, arrived at by way of the shutdown path itself.
+  ///
+  /// So nothing here is allowed to hold the app open. A step that hangs or
+  /// throws is logged and abandoned, and the next one still runs.
   Future<void> dispose() async {
-    await engine.shutdown();
-    await db.close();
+    await closeQuietly('the audio engine', engine.shutdown);
+    await closeQuietly('the write-ahead log', db.checkpoint);
+    await closeQuietly('the database', db.close);
   }
 
   /// Builds the player the app runs on.
