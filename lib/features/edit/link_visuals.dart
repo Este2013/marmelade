@@ -63,6 +63,30 @@ Color? _badge(LinkKind kind) => switch (kind) {
       _ => null,
     };
 
+/// What fraction of the square a logo is drawn at.
+///
+/// Only the kinds that get a [_badge] need this: a full-bleed tile like
+/// Bandcamp's *is* the square and must keep filling it. The others were
+/// authored to sit on transparency with no margin of their own -- measured
+/// from the assets, Niconico inks 98% of its width and height, Bluesky 96%
+/// across, VGMdb 94% down -- so dropped straight onto a backdrop they touch
+/// its edges, and the badge reads as a sticker with the wrapper still on.
+///
+/// YouTube goes the other way, above 1. Its art is a wide pill holding a
+/// play triangle that is only 24% by 27% of the file, so at the same scale
+/// as the rest its mark carries about a third of their visual weight and
+/// looks lost in the square. Enlarging the art enlarges the triangle; the
+/// pill it sits in then runs off the edges, which costs nothing because the
+/// pill is the same red as the backdrop it is standing on, so the square
+/// stays a flat red square either way. Clipped by the [ClipRRect] below.
+double _logoScale(LinkKind kind) => switch (kind) {
+      LinkKind.niconico => 0.78,
+      LinkKind.bluesky => 0.80,
+      LinkKind.vgmdb => 0.82,
+      LinkKind.youtube => 1.45,
+      _ => 1,
+    };
+
 /// A small icon for a link kind: its favicon where one is stored, a generic
 /// icon otherwise.
 class LinkKindIcon extends StatelessWidget {
@@ -84,23 +108,35 @@ class LinkKindIcon extends StatelessWidget {
         color: Theme.of(context).colorScheme.onSurfaceVariant,
       );
     }
+    final scale = _logoScale(kind);
+
     return ClipRRect(
       // Proportional, so the corners stay in step whatever size is asked
       // for rather than looking sharp at 22 and round at 14.
       borderRadius: BorderRadius.circular(size * 0.22),
       child: ColoredBox(
         color: _badge(kind) ?? Colors.transparent,
-        child: Image.asset(
-          asset,
+        child: SizedBox(
           width: size,
           height: size,
-          // A favicon fetched once and bundled can still be missing for a
-          // kind added after the asset pull -- fall back rather than show
-          // the "broken image" glyph.
-          errorBuilder: (context, error, stack) => Icon(
-            fallbackLinkIcon(kind),
-            size: size,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // Not a Center: a scale above 1 has to be allowed to exceed the
+          // square, which Center's constraints would quietly clamp instead.
+          child: OverflowBox(
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: Image.asset(
+              asset,
+              width: size * scale,
+              height: size * scale,
+              // A favicon fetched once and bundled can still be missing for
+              // a kind added after the asset pull -- fall back rather than
+              // show the "broken image" glyph.
+              errorBuilder: (context, error, stack) => Icon(
+                fallbackLinkIcon(kind),
+                size: size,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ),
       ),

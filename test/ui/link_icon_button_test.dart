@@ -103,11 +103,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a link button is exactly as tall as the chip beside it',
+  testWidgets('a badge shares the chip row rhythm but sits under its height',
       (tester) async {
-    // The number in LinkIconButton is a compact Chip's measured height. This
-    // is what keeps it honest: change the chip's density or label style and
-    // this fails rather than the row quietly going ragged.
+    // Two separate things, and both matter. The *button* is a compact Chip's
+    // measured height, so the row keeps one rhythm and every badge has the
+    // same tap target -- asserted against a real chip rather than trusting
+    // the constant, since chip density or label style would move it. The
+    // *favicon* inside is deliberately smaller, because a filled square
+    // reads as bigger than an outlined chip of the same height: drawn at the
+    // full 30 the badges loomed over the tags beside them.
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -141,10 +145,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      tester.getSize(find.byType(LinkIconButton)).height,
-      tester.getSize(find.byType(Chip)).height,
-    );
+    final chip = tester.getSize(find.byType(Chip)).height;
+    expect(tester.getSize(find.byType(LinkIconButton)).height, chip);
+
+    final glyph = tester.getSize(find.byType(LinkKindIcon)).height;
+    expect(glyph, lessThan(chip), reason: 'a filled square reads as bigger');
+    expect(glyph, greaterThan(18), reason: 'and it was too small to read at 18');
   });
 
   testWidgets('a logo that does not fill its square gets one', (tester) async {
@@ -204,15 +210,30 @@ void main() {
         theme: ThemeData.dark(),
         home: Scaffold(
           body: Center(
-            child: Wrap(
-              spacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final kind in LinkKind.values)
-                  LinkIconButton(
-                    link: LinkRow(id: 1, url: 'https://x.test', kind: kind),
+            child: Builder(
+              builder: (context) => Wrap(
+                spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final kind in LinkKind.values)
+                    LinkIconButton(
+                      link: LinkRow(id: 1, url: 'https://x.test', kind: kind),
+                    ),
+                  // A real chip on the end, because the size that matters is
+                  // the one next to a tag -- which is what this row is.
+                  Chip(
+                    label: Text(
+                      'a tag',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    avatar: const Icon(Icons.label, size: 14),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onDeleted: () {},
+                    deleteIcon: const Icon(Icons.close, size: 14),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

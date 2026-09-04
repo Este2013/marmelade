@@ -17,10 +17,11 @@ import 'link_visuals.dart';
 /// button: the row is chip-height, and a stack of standard buttons would set
 /// the line's height from the one thing on it that is not a chip.
 ///
-/// [size] is a compact [Chip]'s measured height, so a link and a tag on the
-/// same line are the same height. `link_icon_button_test.dart` asserts that
-/// against a real chip rather than trusting this number, because a change to
-/// the chip's density or label style would move it.
+/// [size] is a compact [Chip]'s measured height, so the row keeps one rhythm
+/// and every badge has the same tap target.
+/// `link_icon_button_test.dart` asserts that against a real chip rather than
+/// trusting this number, because a change to the chip's density or label
+/// style would move it.
 class LinkIconButton extends StatelessWidget {
   const LinkIconButton({super.key, required this.link, this.size = 30});
 
@@ -29,13 +30,14 @@ class LinkIconButton extends StatelessWidget {
   /// Side of the square tap target.
   final double size;
 
-  /// The favicon inside it, all but filling the box.
+  /// The favicon drawn inside it, deliberately short of the box.
   ///
-  /// Nearly the whole square on purpose: the favicon *is* the mark here,
-  /// where a chip's own outline is what gives a tag its height. Insetting it
-  /// the way an icon button normally would left the badges visibly shorter
-  /// than the chips they sit beside.
-  double get _glyph => size - 2;
+  /// A filled square and an outlined chip of the same height do not look the
+  /// same height: the solid one reads as bigger, and drawing these at the
+  /// chip's full 30 made them loom over the tags they sit among. Four fifths
+  /// lands them just under a chip, which is where they stop competing --
+  /// still half again the size they were before anyone could see them.
+  double get _glyph => size * 0.8;
 
   @override
   Widget build(BuildContext context) {
