@@ -15,6 +15,7 @@ import '../data/indexer/library_indexer.dart';
 import '../data/indexer/search_indexer.dart';
 import '../data/repositories/edit_repository.dart';
 import '../data/repositories/library_repository.dart';
+import '../data/repositories/missing_files_repository.dart';
 import '../data/repositories/lyrics_repository.dart';
 import '../data/repositories/queue_repository.dart';
 import '../data/repositories/playlist_repository.dart';
@@ -457,12 +458,17 @@ final showSinglesProvider =
 final albumsProvider = StreamProvider<List<AlbumCard>>((ref) {
   final sort = ref.watch(albumSortProvider);
   final includeSingles = ref.watch(showSinglesProvider);
+  final hideMissing = ref.watch(hideMissingProvider);
   return _unlessIndexing(
     ref,
-    () => ref.watch(libraryRepositoryProvider).watchAlbums(
-          sort: sort,
-          includeSingles: includeSingles,
-        ),
+    () => ref
+        .watch(libraryRepositoryProvider)
+        .watchAlbums(sort: sort, includeSingles: includeSingles)
+        // An album only disappears when every track on it has gone. One
+        // missing song is a gap in a record, not a record that is not there.
+        .map((albums) => hideMissing
+            ? [for (final album in albums) if (!album.isMissing) album]
+            : albums),
   );
 });
 
@@ -749,9 +755,18 @@ final trackSortProvider =
 
 final allTracksProvider = StreamProvider<List<TrackRow>>((ref) {
   final sort = ref.watch(trackSortProvider);
+  final hideMissing = ref.watch(hideMissingProvider);
   return _unlessIndexing(
     ref,
-    () => ref.watch(libraryRepositoryProvider).watchTracks(sort: sort),
+    // Filtered here rather than in SQL: every list query would otherwise need
+    // the same clause threading through it, and a song whose file is gone is
+    // already marked as such by the row itself.
+    () => ref
+        .watch(libraryRepositoryProvider)
+        .watchTracks(sort: sort)
+        .map((tracks) => hideMissing
+            ? [for (final track in tracks) if (!track.isMissing) track]
+            : tracks),
   );
 });
 
@@ -848,6 +863,23 @@ final libraryFoldersProvider = StreamProvider<List<LibraryFolder>>((ref) {
         ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
       .watch();
 });
+
+// ------------------------------------------------------------- missing files
+
+final missingFilesRepositoryProvider = Provider<MissingFilesRepository>(
+  (ref) => MissingFilesRepository(ref.watch(databaseProvider)),
+);
+
+/// How much of the library has lost its files, watched so a warning can come
+/// and go on its own as drives are plugged in and out.
+final missingSummaryProvider = StreamProvider<MissingSummary>(
+  (ref) => ref.watch(missingFilesRepositoryProvider).watch(),
+);
+
+/// Whether to keep what cannot be played out of the lists.
+final hideMissingProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.hideMissing),
+);
 
 // ------------------------------------------------------------------ transfer
 

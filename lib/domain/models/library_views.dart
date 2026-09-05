@@ -21,6 +21,7 @@ class AlbumCard {
     this.isVariousArtists = false,
     this.isFavorite = false,
     this.totalDurationMs = 0,
+    this.isMissing = false,
   });
 
   final int id;
@@ -31,6 +32,10 @@ class AlbumCard {
 
   /// Null for a various-artists release, so the UI knows not to offer a link.
   final int? artistId;
+
+  /// True when every track on it has lost its files -- an album that is
+  /// entirely gone, rather than one with a gap in it.
+  final bool isMissing;
 
   final int trackCount;
 

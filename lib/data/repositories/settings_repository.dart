@@ -114,6 +114,11 @@ abstract final class SettingKeys {
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';
   static const skippedVersion = 'updates.skippedVersion';
+  /// Keep songs whose files have gone out of the lists, rather than showing
+  /// something that cannot be played. Off, because a missing file is usually
+  /// an unplugged drive and hiding it silently would be its own confusion.
+  static const hideMissing = 'library.hideMissing';
+
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
 

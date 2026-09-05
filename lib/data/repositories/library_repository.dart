@@ -69,6 +69,10 @@ class LibraryRepository {
         ar.name AS artist_name,
         ai.stored_path AS image_path,
         (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id) AS track_count,
+        (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id
+          AND EXISTS (SELECT 1 FROM media_files mf
+                       WHERE mf.track_id = t.id AND mf.status = 'present'))
+          AS present_track_count,
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM tracks t
           WHERE t.album_id = al.id) AS total_ms
       FROM albums al
@@ -77,7 +81,7 @@ class LibraryRepository {
       $filter
       ORDER BY $order
       ''',
-      readsFrom: {db.albums, db.artists, db.tracks, db.images},
+      readsFrom: {db.albums, db.artists, db.tracks, db.images, db.mediaFiles},
     ).watch().asyncMap((rows) async {
       final albums = [
         for (final row in rows)
@@ -95,6 +99,8 @@ class LibraryRepository {
             isVariousArtists: row.read<int>('is_various_artists') == 1,
             isFavorite: row.read<int>('is_favorite') == 1,
             totalDurationMs: row.read<int>('total_ms'),
+            isMissing: row.read<int>('track_count') > 0 &&
+                row.read<int>('present_track_count') == 0,
           ),
       ];
       if (!includeSingles) return albums;
@@ -438,6 +444,10 @@ class LibraryRepository {
         ar.id AS artist_id, ar.name AS artist_name,
         ai.stored_path AS image_path,
         (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id) AS track_count,
+        (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id
+          AND EXISTS (SELECT 1 FROM media_files mf
+                       WHERE mf.track_id = t.id AND mf.status = 'present'))
+          AS present_track_count,
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM tracks t
           WHERE t.album_id = al.id) AS total_ms
       FROM albums al
@@ -450,7 +460,7 @@ class LibraryRepository {
       ORDER BY al.release_year DESC, al.sort_title
       ''',
       variables: [Variable(artistId), Variable(artistId)],
-      readsFrom: {db.albums, db.artists, db.tracks, db.trackCredits, db.images},
+      readsFrom: {db.albums, db.artists, db.tracks, db.trackCredits, db.images, db.mediaFiles},
     ).watch().map((rows) => [
           for (final row in rows)
             AlbumCard(
@@ -465,6 +475,8 @@ class LibraryRepository {
               isVariousArtists: row.read<int>('is_various_artists') == 1,
               isFavorite: row.read<int>('is_favorite') == 1,
               totalDurationMs: row.read<int>('total_ms'),
+              isMissing: row.read<int>('track_count') > 0 &&
+                  row.read<int>('present_track_count') == 0,
             ),
         ]);
   }

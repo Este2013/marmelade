@@ -23,6 +23,7 @@ import '../features/tags/tags_view.dart';
 import '../features/player/player_bar.dart';
 import '../features/search/search_view.dart';
 import '../features/settings/changelog_dialog.dart';
+import '../features/settings/missing_files_section.dart';
 import '../features/settings/settings_view.dart';
 import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
@@ -333,6 +334,12 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     target ? _shade.forward() : _shade.reverse();
   }
 
+  /// Put away for this run only. The settings card stays until the files come
+  /// back or are removed, which is what "until it is resolved" means -- a
+  /// warning that can be dismissed forever is one nobody ever acts on, and one
+  /// that cannot be dismissed at all is one people learn to ignore.
+  var _missingDismissed = false;
+
   void _select(LibrarySection section) {
     // Navigating anywhere closes the shade: it covers the very content being
     // navigated to, so leaving it up would look like nothing happened.
@@ -546,6 +553,19 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                               // this is only about keeping ordinary content
                               // from scrolling underneath the window buttons.
                               if (!_contentBleeds) const SizedBox(height: WindowChrome.height),
+                              // Only when something is actually missing, and
+                              // not on the settings page, which says the same
+                              // thing at more length.
+                              if (!_missingDismissed &&
+                                  _section != LibrarySection.settings)
+                                _MissingBanner(
+                                  onReview: () {
+                                    setState(() => _missingDismissed = true);
+                                    _select(LibrarySection.settings);
+                                  },
+                                  onDismiss: () =>
+                                      setState(() => _missingDismissed = true),
+                                ),
                               Expanded(child: _sections()),
                             ],
                           ),
@@ -943,6 +963,55 @@ class _RailFootButton extends StatelessWidget {
           height: 32,
           decoration: ShapeDecoration(shape: const StadiumBorder(), color: selected ? scheme.secondaryContainer : Colors.transparent),
           child: Center(child: Icon(selected ? section.selectedIcon : section.icon, size: 20, color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant)),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// The strip that appears when the library has lost track of files.
+///
+/// Shown on launch rather than only in settings: a song that will not play is
+/// discovered by trying to play it, which is the worst moment to find out, and
+/// the usual cause -- a drive that is not plugged in -- is one the person can
+/// fix in seconds if only they are told.
+class _MissingBanner extends ConsumerWidget {
+  const _MissingBanner({required this.onReview, required this.onDismiss});
+
+  final VoidCallback onReview;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summary = ref.watch(missingSummaryProvider).value;
+    if (summary == null || !summary.any) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+        child: Row(
+          children: [
+            Icon(Icons.link_off, size: 18, color: scheme.onErrorContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                describeMissing(summary),
+                style: TextStyle(color: scheme.onErrorContainer),
+              ),
+            ),
+            TextButton(
+              onPressed: onReview,
+              child: const Text('What to do'),
+            ),
+            IconButton(
+              onPressed: onDismiss,
+              tooltip: 'Not now',
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
         ),
       ),
     );

@@ -12,6 +12,7 @@ import '../../data/indexer/library_indexer.dart';
 import '../library/add_music_folder.dart';
 import '../../widgets/time_text.dart';
 import 'appearance_section.dart';
+import 'missing_files_section.dart';
 import 'transfer_section.dart';
 import 'updates_tile.dart';
 
@@ -27,6 +28,10 @@ class SettingsView extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       children: [
+        // First, and only when there is something to say: a library that has
+        // lost files is the one thing here a person needs to act on rather
+        // than merely configure.
+        const MissingFilesSection(),
         const AppearanceSection(),
         const SizedBox(height: 28),
         const _LibrarySection(),

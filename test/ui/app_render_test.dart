@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:marmelade/app/providers.dart';
+import 'package:marmelade/data/repositories/missing_files_repository.dart';
 import 'package:marmelade/app/shell.dart';
 import 'package:marmelade/app/window_chrome.dart';
 import 'package:marmelade/app/theme/app_theme.dart';
@@ -492,10 +493,19 @@ void main() {
     SearchResults? searchResults,
     List<LinkRow> artistLinks = const [],
     List<AttachedTag> attachedTags = const [],
+    MissingSummary missing = MissingSummary.none,
   }) {
     return ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
+        // Faked like the database and the player are, and for a sharper
+        // reason: this one is a live drift query, and drift schedules a
+        // zero-duration cleanup timer when a query stream is cancelled. The
+        // scope is torn down at the end of a widget test, so that timer is
+        // posted after the tree is gone and the binding fails the test with
+        // "a Timer is still pending". The real app never sees it -- the scope
+        // outlives everything and the timer fires during ordinary use.
+        missingSummaryProvider.overrideWith((ref) => Stream.value(missing)),
         artStoreProvider.overrideWithValue(ArtStore(artRoot)),
         playbackEngineProvider.overrideWithValue(_SilentEngine()),
         playerProvider.overrideWith(
@@ -2083,6 +2093,49 @@ void main() {
       expect(find.text('Open'), findsOneWidget);
       expect(find.text('Add to the queue'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('files that have gone missing', () {
+    testWidgets('says so on launch, without being asked', (tester) async {
+      // The alternative is finding out by clicking a song and hearing
+      // nothing, which is both the worst moment to learn it and the moment
+      // the usual cause -- a drive not plugged in -- is least obvious.
+      await open(
+        tester,
+        app: buildApp(
+          missing: const MissingSummary(tracks: 7, albums: 1, files: 7),
+        ),
+      );
+
+      expect(find.textContaining('7 songs are missing their files'),
+          findsOneWidget);
+      expect(find.text('What to do'), findsOneWidget);
+    });
+
+    testWidgets('stays quiet when everything is where it should be',
+        (tester) async {
+      await open(tester);
+
+      expect(find.textContaining('missing their files'), findsNothing);
+      expect(find.text('What to do'), findsNothing);
+    });
+
+    testWidgets('can be put away for now', (tester) async {
+      // Dismissible, because it is not urgent and a warning that cannot be
+      // put away is one people learn to look past. Settings keeps it until
+      // it is actually resolved.
+      await open(
+        tester,
+        app: buildApp(
+          missing: const MissingSummary(tracks: 2, albums: 0, files: 2),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Not now'));
+      await settle(tester);
+
+      expect(find.textContaining('missing their files'), findsNothing);
     });
   });
 
