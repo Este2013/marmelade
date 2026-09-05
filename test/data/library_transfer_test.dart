@@ -1051,6 +1051,89 @@ void main() {
       );
     });
   });
+
+  /// Importing into a library that has nothing in it yet.
+  ///
+  /// The case every first import on a new machine is, and the one that was
+  /// broken: with nothing to match against, every entry is created, so the
+  /// run starts meeting rows it made itself moments earlier. That path threw
+  /// "Null check operator used on a null value" and took the whole import
+  /// down before a single row landed.
+  group('importing into an empty library', () {
+    test('two artists sharing a name stay two, and nothing throws', () async {
+      // A library really can hold both: SQLite counts NULL disambiguations as
+      // distinct, so duplicates by name are legal and do occur.
+      final work = await _Machine.open('Work PC');
+      addTearDown(work.db.close);
+      await work.artist('Yojiro Noda');
+      await work.artist('Yojiro Noda');
+
+      final laptop = await _Machine.open('Laptop');
+      addTearDown(laptop.db.close);
+
+      await laptop.importFrom(work);
+
+      expect(await laptop.artistCount('Yojiro Noda'), 2);
+    });
+
+    test('two albums of the same name from different years stay two',
+        () async {
+      // The quieter half of the same bug: these are different records, and
+      // folding them together loses one of them silently -- no error, just a
+      // library with an album missing.
+      final work = await _Machine.open('Work PC');
+      addTearDown(work.db.close);
+      await work.album('Euphoria', year: 2013);
+      await work.album('Euphoria', year: 2021);
+
+      final laptop = await _Machine.open('Laptop');
+      addTearDown(laptop.db.close);
+
+      await laptop.importFrom(work);
+
+      expect(await laptop.albumCount('Euphoria'), 2);
+    });
+
+    test('a whole library arrives, previewed and then for real', () async {
+      final work = await _Machine.open('Work PC');
+      addTearDown(work.db.close);
+      final artistId = await work.artist('Laur');
+      final albumId = await work.album('Sound Chimera', year: 2020, artistId: artistId);
+      await work.track('Viyella Tears', albumId: albumId);
+
+      final laptop = await _Machine.open('Laptop');
+      addTearDown(laptop.db.close);
+
+      final preview = await laptop.import(await work.export(), preview: true);
+      expect(preview.artistsCreated, 1);
+      expect(await laptop.artistCount('Laur'), 0, reason: 'a preview writes nothing');
+
+      final applied = await laptop.importFrom(work);
+      expect(applied.artistsCreated, 1);
+      expect(await laptop.artistCount('Laur'), 1);
+      expect(await laptop.albumCount('Sound Chimera'), 1);
+    });
+
+    test('importing the same bundle twice changes nothing the second time',
+        () async {
+      // Matching now looks only at rows that existed before the run, so the
+      // guard against duplicates on a re-import is the snapshot itself.
+      final work = await _Machine.open('Work PC');
+      addTearDown(work.db.close);
+      await work.artist('Xomu');
+      await work.album('Nightfall', year: 2019);
+
+      final laptop = await _Machine.open('Laptop');
+      addTearDown(laptop.db.close);
+
+      await laptop.importFrom(work);
+      await laptop.importFrom(work);
+
+      expect(await laptop.artistCount('Xomu'), 1);
+      expect(await laptop.albumCount('Nightfall'), 1);
+    });
+  });
+
 }
 
 /// One computer's library, with the fixtures and read-backs a transfer test

@@ -363,7 +363,7 @@ class _ImportRun {
 
       if (match != null) {
         _tags[tag.id] = match;
-        final row = local[match]!;
+        final row = await _existing(local, db.tags, match);
         final update = TagsCompanion(
           categoryId: _fill(row.readNullable<int>('category_id'), categoryId),
           description:
@@ -389,8 +389,12 @@ class _ImportRun {
               imageId: Value(options.importArtwork ? _images[tag.imageId] : null),
             ));
         _tags[tag.id] = id;
-        byCategoryAndKey['${categoryId ?? ''}|${tag.nameKey}'] = id;
-        byKey.putIfAbsent(tag.nameKey, () => []).add(id);
+        // Deliberately not offered as a match candidate to the entries
+        // still to come. Every entry in a bundle is its own row in the
+        // library it came from, so each one gets its own row here; letting
+        // this new row answer a later lookup is how "Euphoria (2013)" and
+        // "Euphoria (2021)" arrived as one album. Matching sees only what
+        // existed before the import started.
         report.tagsCreated += 1;
       }
 
@@ -418,6 +422,38 @@ class _ImportRun {
       await (db.update(db.tags)..where((t) => t.id.equals(id)))
           .write(TagsCompanion(parentTagId: Value(parent)));
     }
+  }
+
+  /// The row for [id] in [table], including one this run created a moment ago.
+  ///
+  /// Each section snapshots its table *before* writing anything, and then
+  /// matches bundle entries against that snapshot -- plus the rows it creates
+  /// as it goes, deliberately: two bundle artists that resolve to the same
+  /// local artist must not become two. So a match can name a row the snapshot
+  /// has never seen. Reading it back is the difference between merging into
+  /// it and a null check taking the whole import down, which is exactly what
+  /// happened on a library with nothing in it yet: every artist was created,
+  /// so the first two sharing a name met a row the snapshot could not have
+  /// held.
+  ///
+  /// Cached back into the snapshot, since a run that matches its own output
+  /// once tends to do it again.
+  Future<QueryRow> _existing(
+    Map<int, QueryRow> local,
+    TableInfo<dynamic, dynamic> table,
+    int id,
+  ) async {
+    final known = local[id];
+    if (known != null) return known;
+
+    final row = await db
+        .customSelect(
+          'SELECT * FROM ${table.actualTableName} WHERE id = ?1',
+          variables: [Variable(id)],
+          readsFrom: {table},
+        )
+        .getSingle();
+    return local[id] = row;
   }
 
   // ------------------------------------------------------------------ artists
@@ -454,7 +490,11 @@ class _ImportRun {
 
       if (match != null) {
         _artists[artist.id] = match;
-        await _mergeArtist(match, local[match]!, artist);
+        await _mergeArtist(
+          match,
+          await _existing(local, db.artists, match),
+          artist,
+        );
       } else {
         final id = await db.into(db.artists).insert(ArtistsCompanion.insert(
               name: artist.name,
@@ -471,8 +511,12 @@ class _ImportRun {
               ),
             ));
         _artists[artist.id] = id;
-        exact['${artist.nameKey}|${artist.disambiguation ?? ''}'] = id;
-        byKey.putIfAbsent(artist.nameKey, () => []).add(id);
+        // Deliberately not offered as a match candidate to the entries
+        // still to come. Every entry in a bundle is its own row in the
+        // library it came from, so each one gets its own row here; letting
+        // this new row answer a later lookup is how "Euphoria (2013)" and
+        // "Euphoria (2021)" arrived as one album. Matching sees only what
+        // existed before the import started.
         report.artistsCreated += 1;
       }
 
@@ -627,7 +671,12 @@ class _ImportRun {
 
       if (match != null) {
         _albums[album.id] = match;
-        await _mergeAlbum(match, local[match]!, album, artistId);
+        await _mergeAlbum(
+          match,
+          await _existing(local, db.albums, match),
+          album,
+          artistId,
+        );
       } else {
         final id = await db.into(db.albums).insert(AlbumsCompanion.insert(
               title: album.title,
@@ -651,8 +700,12 @@ class _ImportRun {
               ),
             ));
         _albums[album.id] = id;
-        exact['${album.nameKey}|${artistId ?? ''}|${album.releaseYear ?? ''}'] = id;
-        byKey.putIfAbsent(album.nameKey, () => []).add(id);
+        // Deliberately not offered as a match candidate to the entries
+        // still to come. Every entry in a bundle is its own row in the
+        // library it came from, so each one gets its own row here; letting
+        // this new row answer a later lookup is how "Euphoria (2013)" and
+        // "Euphoria (2021)" arrived as one album. Matching sees only what
+        // existed before the import started.
         report.albumsCreated += 1;
       }
 
@@ -1046,10 +1099,15 @@ class _ImportRun {
                 options.importArtwork ? _images[playlist.imageId] : null,
               ),
             ));
-        byParentAndKey[key] = match;
         report.playlistsCreated += 1;
+        // Deliberately not offered as a match candidate to the entries
+        // still to come. Every entry in a bundle is its own row in the
+        // library it came from, so each one gets its own row here; letting
+        // this new row answer a later lookup is how "Euphoria (2013)" and
+        // "Euphoria (2021)" arrived as one album. Matching sees only what
+        // existed before the import started.
       } else {
-        final row = local[match]!;
+        final row = await _existing(local, db.playlists, match);
         // A query only lands on a playlist that has none. Overwriting one
         // would silently change what a playlist means, and a playlist is
         // something a person built.

@@ -995,6 +995,18 @@ class TransferJobController extends Notifier<TransferProgress?> {
     state = const TransferProgress(phase: TransferPhase.readingLibrary);
     try {
       return await body();
+    } catch (error, stack) {
+      // The dialog shows the message, but a message with no stack behind it
+      // is not something anyone can act on later -- an import that failed
+      // left a red line under a dialog title and a log with nothing in it,
+      // which is how a one-line bug became an evening.
+      AppLog.instance.error(
+        'a transfer failed',
+        tag: 'transfer',
+        error: error,
+        stack: stack,
+      );
+      rethrow;
     } finally {
       _running = false;
       state = null;
