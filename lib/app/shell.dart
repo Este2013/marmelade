@@ -820,8 +820,8 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   Widget _rootFor(LibrarySection section) => switch (section) {
     LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack, onSeeMore: _seeMoreFromSearch),
-    LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId)),
-    LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack),
+    LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId), onOpenSettings: () => _select(LibrarySection.settings)),
+    LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack, onOpenSettings: () => _select(LibrarySection.settings)),
     LibrarySection.artists => ArtistsView(onOpenArtist: _openArtist, onOpenReview: _openCreditReview),
     LibrarySection.tags => TagsView(onOpenTag: _openTag),
     LibrarySection.playlists => PlaylistsView(onOpenPlaylist: _openPlaylist),

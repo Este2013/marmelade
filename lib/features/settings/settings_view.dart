@@ -1,5 +1,4 @@
 import 'package:drift/drift.dart' show Value;
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +9,7 @@ import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
 import '../../data/db/sqlite_diagnostics.dart';
 import '../../data/indexer/library_indexer.dart';
+import '../library/add_music_folder.dart';
 import '../../widgets/time_text.dart';
 import 'appearance_section.dart';
 import 'transfer_section.dart';
@@ -216,7 +216,7 @@ class _LibrarySection extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: progress != null
                     ? null
-                    : () => _addFolder(context, ref),
+                    : () => pickAndAddMusicFolder(context, ref),
                 icon: const Icon(Icons.create_new_folder_outlined),
                 label: const Text('Add folder'),
               ),
@@ -235,18 +235,6 @@ class _LibrarySection extends ConsumerWidget {
     );
   }
 
-  Future<void> _addFolder(BuildContext context, WidgetRef ref) async {
-    final path = await getDirectoryPath(
-      confirmButtonText: 'Add to library',
-    );
-    if (path == null) return;
-
-    final outcome = await ref.read(indexProgressProvider.notifier)
-        .addFolder(path);
-    if (!context.mounted || outcome == null) return;
-
-    _showOutcome(context, [outcome]);
-  }
 
   Future<void> _refresh(
     BuildContext context,
@@ -254,39 +242,9 @@ class _LibrarySection extends ConsumerWidget {
   ) async {
     final outcomes = await jobs.refreshAll();
     if (!context.mounted) return;
-    _showOutcome(context, outcomes);
+    showScanOutcome(context, outcomes);
   }
 
-  /// Reports what a scan did, including what it wants reviewed.
-  static void _showOutcome(BuildContext context, List<IndexOutcome> outcomes) {
-    if (outcomes.isEmpty) return;
-    var added = 0, moved = 0, missing = 0, pending = 0, tracks = 0;
-    for (final outcome in outcomes) {
-      added += outcome.filesAdded;
-      moved += outcome.filesMoved;
-      missing += outcome.filesMissing;
-      pending += outcome.pendingCredits;
-      tracks += outcome.tracksCreated;
-    }
-
-    final parts = <String>[
-      if (tracks > 0) '$tracks new ${tracks == 1 ? 'track' : 'tracks'}',
-      // Moves are worth reporting: it is the app telling the user it noticed
-      // their reorganisation rather than silently duplicating everything.
-      if (moved > 0) '$moved moved',
-      if (missing > 0) '$missing missing',
-      if (pending > 0) '$pending to review',
-    ];
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-        parts.isEmpty
-            ? 'Library is up to date'
-            : 'Scanned $added ${added == 1 ? 'file' : 'files'} · '
-                '${parts.join(' · ')}',
-      ),
-    ));
-  }
 }
 
 class _FolderTile extends ConsumerWidget {

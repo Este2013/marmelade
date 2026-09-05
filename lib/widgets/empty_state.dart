@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../features/library/add_music_folder.dart';
 
 /// A centred message for a view with nothing to show.
 ///
@@ -66,25 +69,45 @@ class EmptyState extends StatelessWidget {
 }
 
 /// The empty state for a library with no music in it yet.
-class LibraryEmptyState extends StatelessWidget {
-  const LibraryEmptyState({super.key, this.onAddFolder});
+///
+/// A fresh install lands here, and until now it landed on a sentence and
+/// nothing to press: the button existed but every caller left its callback
+/// null, so the one screen whose whole job is "get started" offered no way to.
+/// Both ways in are here now -- pick a folder outright, or open settings,
+/// where folders are managed and where a library from another machine can be
+/// imported.
+class LibraryEmptyState extends ConsumerWidget {
+  const LibraryEmptyState({super.key, this.onOpenSettings});
 
-  final VoidCallback? onAddFolder;
+  /// Shown when the shell can navigate; a view rendered outside it (a test,
+  /// a preview) simply does without.
+  final VoidCallback? onOpenSettings;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return EmptyState(
       icon: Icons.library_music_outlined,
       title: 'No music yet',
       message: 'Point marmelade at a folder and it will index everything '
           'inside, working out who played what as it goes.',
-      action: onAddFolder == null
-          ? null
-          : FilledButton.icon(
-              onPressed: onAddFolder,
-              icon: const Icon(Icons.create_new_folder_outlined),
-              label: const Text('Add a music folder'),
+      action: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FilledButton.icon(
+            onPressed: () => pickAndAddMusicFolder(context, ref),
+            icon: const Icon(Icons.create_new_folder_outlined),
+            label: const Text('Choose a music folder'),
+          ),
+          if (onOpenSettings != null) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onOpenSettings,
+              icon: const Icon(Icons.settings_outlined),
+              label: const Text('Open settings'),
             ),
+          ],
+        ],
+      ),
     );
   }
 }

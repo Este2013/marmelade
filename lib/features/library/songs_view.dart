@@ -73,11 +73,16 @@ class SongsView extends ConsumerWidget {
     required this.onOpenArtist,
     required this.onOpenAlbum,
     this.onEditTrack,
+    this.onOpenSettings,
   });
 
   final void Function(int artistId) onOpenArtist;
   final void Function(int albumId) onOpenAlbum;
   final void Function(int trackId)? onEditTrack;
+
+  /// Opens settings, where folders live -- offered on the empty state, since
+  /// a library with nothing in it is the one time that is the next step.
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,7 +102,9 @@ class SongsView extends ConsumerWidget {
               message: '$error',
             ),
             data: (items) {
-              if (items.isEmpty) return const LibraryEmptyState();
+              if (items.isEmpty) {
+                return LibraryEmptyState(onOpenSettings: onOpenSettings);
+              }
               if (shown.isEmpty) {
                 return FilteredEmpty(
                   query: filter,

@@ -80,12 +80,21 @@ final albumsShownProvider =
 
 /// The albums grid. The app's default view.
 class AlbumsView extends ConsumerWidget {
-  const AlbumsView({super.key, required this.onOpenAlbum, this.onOpenTrack});
+  const AlbumsView({
+    super.key,
+    required this.onOpenAlbum,
+    this.onOpenTrack,
+    this.onOpenSettings,
+  });
 
   final void Function(int albumId) onOpenAlbum;
 
   /// Called when a synthetic single card is tapped.
   final void Function(int trackId)? onOpenTrack;
+
+  /// Opens settings, where folders live -- offered on the empty state, since
+  /// a library with nothing in it is the one time that is the next step.
+  final VoidCallback? onOpenSettings;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -106,7 +115,7 @@ class AlbumsView extends ConsumerWidget {
             ),
             data: (items) {
               if (items.isEmpty) {
-                return const LibraryEmptyState();
+                return LibraryEmptyState(onOpenSettings: onOpenSettings);
               }
               if (shown.isEmpty) {
                 return FilteredEmpty(
