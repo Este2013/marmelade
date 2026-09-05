@@ -98,6 +98,32 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.2.1',
+    date: '2026-09-05',
+    headline: 'Importing a library onto a machine that has none.',
+    changes: [
+      Change.fixed(
+        'Importing into a library with nothing in it yet failed outright, '
+        'reporting "Null check operator used on a null value" and bringing '
+        'nothing in -- which is every first import on a new machine.',
+      ),
+      Change.fixed(
+        'An import could fold two records that share a name into one, so an '
+        'album released twice in different years arrived as a single album. '
+        'Everything in a bundle now keeps its own identity.',
+      ),
+      Change.added(
+        'A library with no folders yet offers to choose one, or to open '
+        'settings, rather than explaining what to do and leaving no way to '
+        'do it.',
+      ),
+      Change.fixed(
+        'A transfer that fails now writes what went wrong to the log instead '
+        'of only showing a line on screen.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.2.0',
     date: '2026-09-04',
     headline: 'Lists you can work through, metadata you can fix in place, and '
