@@ -98,6 +98,30 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.2.2',
+    date: '2026-09-05',
+    headline: 'An import that brings the music too.',
+    changes: [
+      Change.added(
+        'An import now copies the music a bundle carries into the library and '
+        'indexes it, so the tags and ratings arriving with it have something '
+        'to land on. Before, the files stayed in the bundle and every track '
+        'they described was reported missing.',
+      ),
+      Change.added(
+        'Importing into a library with no music folder says so and offers to '
+        'add one, instead of bringing in metadata for files that can never '
+        'exist. With several folders it asks which one the music goes in.',
+      ),
+      Change.changed(
+        'A bundle that carries no music now says so in the import dialog. '
+        'Exporting still leaves the music files off by default -- a bundle '
+        'with them is as big as the library -- so this is the difference '
+        'between "nothing happened" and "turn that on before exporting".',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.2.1',
     date: '2026-09-05',
     headline: 'Importing a library onto a machine that has none.',
