@@ -98,6 +98,26 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.2.3',
+    date: '2026-09-05',
+    headline: 'Music that has gone walkabout, and being told about it.',
+    changes: [
+      Change.added(
+        'A library that has lost track of files now says so on launch, and '
+        'keeps saying so in settings until the files come back or are '
+        'removed. Songs whose files are gone can be kept out of the lists '
+        'without deleting anything -- they return by themselves when the '
+        'drive does -- or removed outright, which asks first and says what '
+        'goes with them.',
+      ),
+      Change.changed(
+        'An album only counts as gone when every track on it has gone: one '
+        'missing song is a gap in a record, not a missing record. A song held '
+        'as both a FLAC and an MP3 is fine as long as one of them is here.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.2.2',
     date: '2026-09-05',
     headline: 'An import that brings the music too.',
