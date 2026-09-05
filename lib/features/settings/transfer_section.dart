@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../app/providers.dart';
+import '../../data/transfer/bundle_audio.dart';
 import '../../data/transfer/library_sync.dart';
 import '../../data/transfer/transfer_bundle.dart';
 import '../../data/transfer/transfer_report.dart';
 import '../../widgets/time_text.dart';
+import '../library/add_music_folder.dart';
 
 /// Settings for using marmelade on more than one computer.
 ///
@@ -436,10 +438,34 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
   var _loading = true;
   var _applying = false;
 
+  /// What music the bundle carries, read off the folder rather than the
+  /// metadata: the JSON describes tracks, and whether the files came too is a
+  /// question about the folder next to it.
+  BundleAudioSize? _audio;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _runPreview());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runPreview();
+      _measureAudio();
+    });
+  }
+
+  Future<void> _measureAudio() async {
+    final size = await BundleAudio.inspect(Directory(widget.path));
+    if (!mounted) return;
+
+    // With several folders the picker has to show one, and what it shows has
+    // to be what actually happens -- an unset destination makes the import
+    // decline to guess, which would look like the switch being ignored.
+    final folders = ref.read(libraryFoldersProvider).value ?? const [];
+    setState(() {
+      _audio = size;
+      if (!size.isEmpty && folders.length > 1 && _options.audioDestination == null) {
+        _options = _options.copyWith(audioDestination: folders.first.path);
+      }
+    });
   }
 
   Future<void> _runPreview() async {
@@ -537,6 +563,12 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 _PreviewSummary(report: preview),
               const SizedBox(height: 8),
               const Divider(),
+              _MusicFiles(
+                audio: _audio,
+                options: _options,
+                enabled: !_loading && !_applying,
+                onChanged: _change,
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Let the other computer win'),
@@ -547,14 +579,10 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 value: _options.conflicts == TransferConflictPolicy.preferTheirs,
                 onChanged: _loading || _applying
                     ? null
-                    : (value) => _change(TransferImportOptions(
+                    : (value) => _change(_options.copyWith(
                           conflicts: value
                               ? TransferConflictPolicy.preferTheirs
                               : TransferConflictPolicy.keepMine,
-                          matching: _options.matching,
-                          importPlaylists: _options.importPlaylists,
-                          importArtwork: _options.importArtwork,
-                          importPlayCounts: _options.importPlayCounts,
                         )),
               ),
               SwitchListTile(
@@ -568,14 +596,10 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 value: _options.matching == TransferMatchMode.alsoByTags,
                 onChanged: _loading || _applying
                     ? null
-                    : (value) => _change(TransferImportOptions(
-                          conflicts: _options.conflicts,
+                    : (value) => _change(_options.copyWith(
                           matching: value
                               ? TransferMatchMode.alsoByTags
                               : TransferMatchMode.sameFiles,
-                          importPlaylists: _options.importPlaylists,
-                          importArtwork: _options.importArtwork,
-                          importPlayCounts: _options.importPlayCounts,
                         )),
               ),
               SwitchListTile(
@@ -584,13 +608,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 value: _options.importPlaylists,
                 onChanged: _loading || _applying
                     ? null
-                    : (value) => _change(TransferImportOptions(
-                          conflicts: _options.conflicts,
-                          matching: _options.matching,
-                          importPlaylists: value,
-                          importArtwork: _options.importArtwork,
-                          importPlayCounts: _options.importPlayCounts,
-                        )),
+                    : (value) => _change(_options.copyWith(importPlaylists: value)),
               ),
             ],
           ),
@@ -772,4 +790,151 @@ String _bytes(int bytes) {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+}
+
+
+/// The music a bundle is carrying, and where it should go.
+///
+/// The half of a transfer that used to be left to the person: the importer
+/// matches metadata against files this machine already has, so before this,
+/// music that travelled in the bundle sat there while every track it
+/// described was reported missing. Copying it in is the default -- putting
+/// files in a bundle is already the deliberate step, and being handed them
+/// and left to drag them into place is not a second choice worth offering.
+class _MusicFiles extends ConsumerWidget {
+  const _MusicFiles({
+    required this.audio,
+    required this.options,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  /// Null while it is still being measured.
+  final BundleAudioSize? audio;
+  final TransferImportOptions options;
+  final bool enabled;
+  final void Function(TransferImportOptions) onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final audio = this.audio;
+    if (audio == null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    if (audio.isEmpty) {
+      // Worth saying plainly. "The files did not come over" is otherwise
+      // indistinguishable from a bug, when the cause is a switch left off at
+      // the other end.
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.music_off_outlined,
+                size: 18, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'This bundle carries no music, only what is known about it. '
+                'To bring the songs as well, turn on "Include the music '
+                'files" before exporting.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final folders = ref.watch(libraryFoldersProvider).value ?? const [];
+    final size = _bytes(audio.bytes);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          secondary: const Icon(Icons.library_add_outlined),
+          title: Text('Copy ${audio.files} music '
+              '${audio.files == 1 ? 'file' : 'files'} into the library'),
+          subtitle: Text('$size, and they are indexed straight away so what '
+              'arrives with them has something to attach to.'),
+          value: options.importAudio && folders.isNotEmpty,
+          onChanged: !enabled || folders.isEmpty
+              ? null
+              : (value) => onChanged(options.copyWith(importAudio: value)),
+        ),
+        if (folders.isEmpty)
+          // The case worth catching before the import runs rather than after:
+          // there is nowhere for the music to go, so it would silently stay
+          // in the bundle.
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'There is no music folder here yet, so there is nowhere '
+                    'to put them. Add one and they will be copied in.',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.tonalIcon(
+                    onPressed: enabled
+                        ? () => pickAndAddMusicFolder(context, ref)
+                        : null,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('Choose a music folder'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (folders.length == 1)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+              'Into ${folders.single.path}',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          )
+        else
+          // Several folders and no obvious winner: which one grows by a few
+          // gigabytes is not a guess to make on someone's behalf.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: DropdownButtonFormField<String>(
+              initialValue: options.audioDestination ?? folders.first.path,
+              decoration: const InputDecoration(
+                labelText: 'Put them in',
+                isDense: true,
+              ),
+              items: [
+                for (final folder in folders)
+                  DropdownMenuItem(
+                    value: folder.path,
+                    child: Text(folder.path, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: !enabled
+                  ? null
+                  : (value) => onChanged(
+                        options.copyWith(audioDestination: value),
+                      ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  static String _bytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    return '${(bytes / (1024 * 1024)).round()} MB';
+  }
 }

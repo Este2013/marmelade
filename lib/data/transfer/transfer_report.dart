@@ -94,6 +94,8 @@ class TransferImportOptions {
     this.importPlaylists = true,
     this.importArtwork = true,
     this.importPlayCounts = true,
+    this.importAudio = true,
+    this.audioDestination,
   });
 
   final TransferConflictPolicy conflicts;
@@ -105,6 +107,48 @@ class TransferImportOptions {
   /// only honest option: they are counters, and neither side's history is
   /// wrong.
   final bool importPlayCounts;
+
+  /// Copy the music the bundle carries into the library.
+  ///
+  /// On, unlike the export side, and the asymmetry is deliberate: including
+  /// audio in a bundle costs upload and disk on a shared folder, so it is
+  /// asked for explicitly. Having asked for it, being handed the files and
+  /// then leaving them in the bundle -- for someone to drag into place by
+  /// hand before the metadata has anything to attach to -- is not a
+  /// meaningful choice, it is an unfinished job.
+  final bool importAudio;
+
+  /// One knob changed, the rest carried over.
+  ///
+  /// The dialog used to rebuild this by listing every field at each switch,
+  /// which quietly drops any field added later -- toggling "include
+  /// playlists" would have reset where the music was going.
+  TransferImportOptions copyWith({
+    TransferConflictPolicy? conflicts,
+    TransferMatchMode? matching,
+    bool? importPlaylists,
+    bool? importArtwork,
+    bool? importPlayCounts,
+    bool? importAudio,
+    String? audioDestination,
+  }) =>
+      TransferImportOptions(
+        conflicts: conflicts ?? this.conflicts,
+        matching: matching ?? this.matching,
+        importPlaylists: importPlaylists ?? this.importPlaylists,
+        importArtwork: importArtwork ?? this.importArtwork,
+        importPlayCounts: importPlayCounts ?? this.importPlayCounts,
+        importAudio: importAudio ?? this.importAudio,
+        audioDestination: audioDestination ?? this.audioDestination,
+      );
+
+  /// Which library folder the music lands in.
+  ///
+  /// Null means the only folder there is. A machine with several is asked,
+  /// and a machine with none cannot receive music at all until it has one --
+  /// the import flow says so rather than quietly bringing in metadata for
+  /// files that will never exist.
+  final String? audioDestination;
 }
 
 /// A track in a bundle that this machine does not have.
@@ -170,6 +214,16 @@ class TransferReport {
   /// kept. Surfaced so "nothing happened" is never a silent outcome.
   int conflictsKept = 0;
 
+  /// Music files copied out of the bundle into the library, and files the
+  /// destination already had.
+  ///
+  /// Separate from the metadata counters because they happen before the
+  /// merge and outside its transaction -- a copied file stays copied whether
+  /// or not the rest of the run is rolled back, which is also why a preview
+  /// copies nothing.
+  int audioCopied = 0;
+  int audioAlreadyHere = 0;
+
   /// Tracks the bundle knows about that are not on this machine.
   final List<TransferMissingTrack> missingTracks = [];
 
@@ -202,10 +256,12 @@ class TransferReport {
   /// A one-line summary for a snackbar. Deliberately says the two things a
   /// person wants to know: what landed, and what could not.
   String summarize() {
-    if (changedNothing && missingTracks.isEmpty) {
+    if (changedNothing && missingTracks.isEmpty && audioCopied == 0) {
       return 'Nothing to bring over -- this computer is already up to date.';
     }
     final parts = <String>[
+      // First, because it is the part that took the time and the disk space.
+      if (audioCopied > 0) '$audioCopied music files copied in',
       if (tracksUpdated > 0) '$tracksUpdated tracks updated',
       if (tagLinksAdded > 0) '$tagLinksAdded tags applied',
       if (creditsAdded > 0) '$creditsAdded credits added',

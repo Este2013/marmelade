@@ -16,7 +16,8 @@ optionally files:
 ```
 <bundle>/library.json
 <bundle>/artwork/<sha256>.jpg     when artwork is included (default)
-<bundle>/audio/<relative path>    when audio is included (opt-in, off)
+<bundle>/audio/<relative path>    when audio is included (opt-in on export,
+                                  copied into the library on import)
 ```
 
 Three rules the format obeys:
@@ -63,9 +64,31 @@ Rung 7 is behind "also match by title and album" because it is a guess — it
 exists for a re-download or a FLAC here and an MP3 there.
 
 A track in the bundle that matches nothing here is **reported, not created**.
-A track row with no file behind it shows up in every list and plays nothing;
-the honest answer is "copy the audio across and import again", which is what
-the opt-in audio folder is for.
+A track row with no file behind it shows up in every list and plays nothing.
+
+Which is why the import copies the music in *before* it matches anything.
+When a bundle carries an `audio/` folder, the files are laid down under a
+library folder — keeping the tree they had, never overwriting anything already
+there — and that folder is re-indexed, so by the time the merge runs the
+tracks exist locally and rung 3 matches them on the payload hash. The order
+matters and is not negotiable: copying afterwards would leave every new track
+reported missing until somebody ran the import a second time.
+
+The defaults are deliberately asymmetric. **Export** leaves audio off: it
+turns a bundle of a few megabytes into one the size of the library, and a
+shared folder may be a metered connection. **Import** turns copying on: the
+files being in the bundle at all means somebody already chose to send them,
+and handing them over to be dragged into place by hand is not a second choice
+worth offering.
+
+A preview copies nothing. A file on disk is not something a rolled-back
+transaction can take back, so the preview reports what *would* be copied and
+leaves the folder alone.
+
+Music needs somewhere to go, so an import into a library with no folders at
+all says so and offers to add one rather than quietly bringing in metadata for
+files that will never exist. With several folders it asks which; with one it
+uses it.
 
 ## Why the merge is not last-writer-wins
 

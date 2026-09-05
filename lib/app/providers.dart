@@ -23,6 +23,7 @@ import '../data/repositories/search_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/smart_playlist_resolver.dart';
 import '../data/repositories/tag_repository.dart';
+import '../data/transfer/bundle_audio.dart';
 import '../data/transfer/library_exporter.dart';
 import '../data/transfer/library_importer.dart';
 import '../data/transfer/library_sync.dart';
@@ -958,14 +959,64 @@ class TransferJobController extends Notifier<TransferProgress?> {
         final file = File(p.join(directory.path, transferBundleFileName));
         state = const TransferProgress(phase: TransferPhase.readingBundle);
         final bundle = TransferBundle.decode(await file.readAsString());
-        return ref.read(libraryImporterProvider).import(
+
+        // The music comes first, and outside the merge. Metadata can only
+        // attach to files this machine actually has, so copying afterwards
+        // would leave every new track reported missing until somebody ran
+        // the import a second time. A preview copies nothing: a file on disk
+        // is not something a rolled-back transaction can take back.
+        var installed = const BundleAudioInstalled(
+          copied: 0,
+          alreadyHere: 0,
+          bytes: 0,
+        );
+        if (options.importAudio && !preview) {
+          final destination = await _audioDestination(options.audioDestination);
+          if (destination != null) {
+            installed = await BundleAudio.installInto(
+              directory,
+              Directory(destination.path),
+              onProgress: (progress) => state = progress,
+            );
+            if (installed.copied > 0) {
+              await ref
+                  .read(indexProgressProvider.notifier)
+                  .refreshFolder(destination.id);
+            }
+          }
+        }
+
+        final report = await ref.read(libraryImporterProvider).import(
               bundle,
               bundleDirectory: directory,
               options: options,
               preview: preview,
               onProgress: (progress) => state = progress,
             );
+        return report
+          ..audioCopied = installed.copied
+          ..audioAlreadyHere = installed.alreadyHere;
       });
+
+  /// The library folder a bundle's music should land in.
+  ///
+  /// A named one wins. Failing that, the only folder there is -- which is the
+  /// ordinary case and not worth asking about. With several and no choice
+  /// made, or with none at all, this answers nothing and the music stays in
+  /// the bundle: guessing which of someone's folders should grow by several
+  /// gigabytes is not a guess worth making.
+  Future<LibraryFolder?> _audioDestination(String? wanted) async {
+    final db = ref.read(databaseProvider);
+    final folders = await db.select(db.libraryFolders).get();
+    if (folders.isEmpty) return null;
+    if (wanted != null) {
+      for (final folder in folders) {
+        if (p.equals(folder.path, wanted)) return folder;
+      }
+      return null;
+    }
+    return folders.length == 1 ? folders.single : null;
+  }
 
   /// Publishes to the shared folder and folds in every other machine.
   Future<SyncOutcome?> shareNow({
@@ -1057,6 +1108,27 @@ class IndexJobController extends Notifier<IndexProgress?> {
       // makes the gated list providers resubscribe and pick up the new data.
       // Invalidating them by hand here would be a circular dependency: they
       // watch this notifier.
+      state = null;
+    }
+  }
+
+  /// Rescans one folder that is already in the library.
+  ///
+  /// Used after an import copies music in: the files are on disk but nothing
+  /// in the database knows them yet, and until they are indexed the metadata
+  /// arriving in the same run has nothing to attach to.
+  Future<IndexOutcome?> refreshFolder(int folderId) async {
+    if (_running) return null;
+    _running = true;
+    state = const IndexProgress(phase: IndexPhase.scanning);
+    try {
+      return await ref.read(libraryIndexerProvider).indexFolder(
+            folderId,
+            trigger: ScanTrigger.manual,
+            onProgress: (progress) => state = progress,
+          );
+    } finally {
+      _running = false;
       state = null;
     }
   }
