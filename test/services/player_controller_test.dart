@@ -53,9 +53,17 @@ class _EndingEngine implements PlaybackEngine {
     status = PlaybackStatus.playing;
   }
 
+  /// The file the engine is actually sounding, which is the thing the
+  /// snapshot claims to be describing.
+  String? lastLoadedPath;
+
   @override
   Future<Duration> load(String filePath, {AudioLoadMode? mode}) async {
     voiceFinished = false;
+    // A real load is not instant, and the gap is where two overlapping
+    // commands used to interleave.
+    await Future<void>.delayed(Duration.zero);
+    lastLoadedPath = filePath;
     return const Duration(minutes: 3);
   }
 
@@ -171,6 +179,68 @@ void main() {
         );
     return trackId;
   }
+
+  /// Choosing a song while one is ending.
+  ///
+  /// Reported from real listening: clicking a song in an album that was
+  /// already playing sometimes started a neighbouring one instead, while the
+  /// title on screen was the song that had been clicked. Both halves come
+  /// from the same place -- a track ending and a click landing together, each
+  /// reading and writing the same index across several awaits.
+  group('a click landing as a track ends', () {
+    test('plays what was clicked, not where the advance was going', () async {
+      final one = await playableTrack('One');
+      final two = await playableTrack('Two');
+      final three = await playableTrack('Three');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, two, three]);
+
+      // The track ends, and in the same beat a song further down is clicked.
+      // The advance would go to Two; the person asked for Three.
+      engine.finishTrack();
+      await controller.playAll([one, two, three], startIndex: 2);
+      await pumpEventQueue();
+
+      expect(container.read(playerProvider).current?.trackId, three);
+      expect(container.read(playerProvider).currentIndex, 2);
+      expect(container.read(playerProvider).isPlaying, isTrue);
+    });
+
+    test('what is playing and what is named are the same song', () async {
+      // The tell in the report: the right title over the wrong audio. Two
+      // overlapping loads each set the snapshot after their own await, so the
+      // last to finish named a track the engine was not playing.
+      final one = await playableTrack('One');
+      final two = await playableTrack('Two');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, two]);
+
+      engine.finishTrack();
+      await controller.playAll([one, two], startIndex: 1);
+      await pumpEventQueue();
+
+      final snapshot = container.read(playerProvider);
+      expect(snapshot.current?.trackId, snapshot.queue[snapshot.currentIndex].trackId);
+      // The half that was audible: the file the engine holds has to be the
+      // one the snapshot is naming.
+      expect(engine.lastLoadedPath, snapshot.current?.filePath);
+    });
+
+    test('still advances on its own when nobody interrupts', () async {
+      // The guard must not cost the ordinary case: an album left alone has to
+      // keep playing through.
+      final one = await playableTrack('One');
+      final two = await playableTrack('Two');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, two]);
+
+      engine.finishTrack();
+      await pumpEventQueue();
+
+      expect(container.read(playerProvider).currentIndex, 1);
+      expect(container.read(playerProvider).current?.trackId, two);
+    });
+  });
 
   group('the end of the queue', () {
     test('finishing the last track leaves the player not playing', () async {

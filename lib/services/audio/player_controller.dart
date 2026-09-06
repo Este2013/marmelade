@@ -130,8 +130,37 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   /// When the current track started, for the history row.
   DateTime? _startedAt;
 
-  /// Guards against a completion event arriving while an advance is in flight.
-  var _advancing = false;
+  /// Track changes run one at a time, in the order they were asked for.
+  ///
+  /// Each of them is several awaits long -- a queue write, a database read, a
+  /// file load, a play -- and two overlapping runs interleave those steps
+  /// against one engine and one index. That is how clicking a song in an
+  /// album that was already playing could start a different one: the track
+  /// ending and the click landed together, each read `currentIndex`, and the
+  /// second one moved on from a number the first had already changed.
+  Future<void> _pending = Future<void>.value();
+
+  /// Counts the tracks actually loaded into the engine.
+  ///
+  /// A track finishing is a statement about the track that just ended. If
+  /// anything else gets played between that ending and the advance actually
+  /// running, the advance is answering a question nobody is asking any more,
+  /// and following it would override the choice just made.
+  ///
+  /// Counted at the load rather than at the command, because the completion
+  /// event arrives a microtask late: by the time it is delivered the click
+  /// that should beat it may already be queued, and a counter bumped on entry
+  /// would have been read *after* it and looked untouched.
+  var _playToken = 0;
+
+  /// Runs [action] after whatever is already in flight.
+  Future<void> _queued(Future<void> Function() action) {
+    final next = _pending.then((_) => action());
+    // Swallowed here so one failed load cannot strand every later command
+    // behind a broken future; the caller still sees its own error.
+    _pending = next.catchError((Object _) {});
+    return next;
+  }
 
   /// Completes once the persisted queue has been read back.
   Future<void>? _restored;
@@ -163,6 +192,21 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     int startIndex = 0,
     QueueSource source = QueueSource.user,
     int? sourceRefId,
+  }) =>
+      _queued(() {
+        return _playAll(
+          trackIds,
+          startIndex: startIndex,
+          source: source,
+          sourceRefId: sourceRefId,
+        );
+      });
+
+  Future<void> _playAll(
+    List<int> trackIds, {
+    int startIndex = 0,
+    QueueSource source = QueueSource.user,
+    int? sourceRefId,
   }) async {
     if (trackIds.isEmpty) return;
     await queueRepository.replaceWith(
@@ -172,11 +216,14 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     );
     final queue = await queueRepository.load();
     state = state.copyWith(queue: queue, isShuffled: false, clearError: true);
-    await playAt(startIndex.clamp(0, queue.length - 1));
+    await _playAt(startIndex.clamp(0, queue.length - 1));
   }
 
   /// Plays the queue entry at [index].
-  Future<void> playAt(int index) async {
+  Future<void> playAt(int index) => _queued(() => _playAt(index));
+
+  Future<void> _playAt(int index) async {
+    _playToken++;
     final queue = state.queue;
     if (index < 0 || index >= queue.length) return;
 
@@ -268,7 +315,10 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     );
   }
 
-  Future<void> next({bool userInitiated = true}) async {
+  Future<void> next({bool userInitiated = true}) =>
+      _queued(() => _next(userInitiated: userInitiated));
+
+  Future<void> _next({bool userInitiated = true}) async {
     final index = state.currentIndex;
     if (state.repeat == QueueRepeat.one && !userInitiated) {
       engine.seek(Duration.zero);
@@ -276,11 +326,11 @@ class PlayerController extends Notifier<PlayerSnapshot> {
       return;
     }
     if (index + 1 < state.queue.length) {
-      await playAt(index + 1);
+      await _playAt(index + 1);
       return;
     }
     if (state.repeat == QueueRepeat.all && state.queue.isNotEmpty) {
-      await playAt(0);
+      await _playAt(0);
       return;
     }
     // End of the queue.
@@ -300,13 +350,20 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   ///
   /// Restarting first matches every other player: pressing back a few seconds
   /// in means "start this again", not "skip backwards".
-  Future<void> previous({Duration restartThreshold = const Duration(seconds: 3)}) async {
+  Future<void> previous({
+    Duration restartThreshold = const Duration(seconds: 3),
+  }) =>
+      _queued(() => _previous(restartThreshold: restartThreshold));
+
+  Future<void> _previous({
+    Duration restartThreshold = const Duration(seconds: 3),
+  }) async {
     if (engine.position > restartThreshold) {
       engine.seek(Duration.zero);
       return;
     }
     if (state.currentIndex > 0) {
-      await playAt(state.currentIndex - 1);
+      await _playAt(state.currentIndex - 1);
     } else {
       engine.seek(Duration.zero);
     }
@@ -433,15 +490,15 @@ class PlayerController extends Notifier<PlayerSnapshot> {
 
   // ---------------------------------------------------------------- internal
 
-  Future<void> _onCompleted() async {
-    if (_advancing) return;
-    _advancing = true;
-    try {
+  Future<void> _onCompleted() {
+    // Read now, not inside the queued body: this is the moment the track
+    // actually ended, and anything played after it should win.
+    final token = _playToken;
+    return _queued(() async {
+      if (token != _playToken) return;
       await _recordFinishedPlay(completed: true);
-      await next(userInitiated: false);
-    } finally {
-      _advancing = false;
-    }
+      await _next(userInitiated: false);
+    });
   }
 
   /// Writes a history row and bumps the track's counters.
