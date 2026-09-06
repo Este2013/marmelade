@@ -2,12 +2,14 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/providers.dart';
 import '../../data/repositories/lyrics_repository.dart';
 import '../../domain/lyrics/lyrics_document.dart';
 import '../../widgets/empty_state.dart';
 import '../lyrics/lyrics_editor_dialog.dart';
+import '../lyrics/lyrics_search_links.dart';
 
 /// Extensions a dropped or picked file must have to be worth trying as
 /// lyrics.
@@ -91,7 +93,11 @@ class _LyricsPaneState extends ConsumerState<LyricsPane> {
     }
 
     if (stored == null || stored.isEmpty) {
-      return _NoLyrics(trackId: track.trackId);
+      return _NoLyrics(
+        trackId: track.trackId,
+        title: track.title,
+        artist: track.artistLine,
+      );
     }
 
     // A translation on its own is a valid way to read; a translation beside the
@@ -360,9 +366,17 @@ class _Paragraph extends StatelessWidget {
 
 /// What to do when a track has no lyrics yet.
 class _NoLyrics extends ConsumerStatefulWidget {
-  const _NoLyrics({required this.trackId});
+  const _NoLyrics({
+    required this.trackId,
+    required this.title,
+    required this.artist,
+  });
 
   final int trackId;
+
+  /// What to put in a search box, when the answer is somewhere else.
+  final String title;
+  final String artist;
 
   @override
   ConsumerState<_NoLyrics> createState() => _NoLyricsState();
@@ -481,6 +495,7 @@ class _NoLyricsState extends ConsumerState<_NoLyrics> {
                 icon: const Icon(Icons.attach_file, size: 18),
                 label: Text(_linking ? 'Linking...' : 'Link a file'),
               ),
+              _SearchTheWeb(title: widget.title, artist: widget.artist),
               FilledButton.icon(
                 onPressed: () =>
                     showLyricsEditorDialog(context, trackId: widget.trackId),
@@ -491,6 +506,55 @@ class _NoLyricsState extends ConsumerState<_NoLyrics> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// Somewhere to look when the file has no lyrics beside it.
+///
+/// A menu rather than one button: which site is worth trying depends entirely
+/// on what is playing, and the app has no business guessing. Nothing is
+/// requested until one is chosen, and then by the browser, not by marmelade.
+class _SearchTheWeb extends StatelessWidget {
+  const _SearchTheWeb({required this.title, required this.artist});
+
+  final String title;
+  final String artist;
+
+  @override
+  Widget build(BuildContext context) {
+    return MenuAnchor(
+      builder: (context, controller, child) => OutlinedButton.icon(
+        onPressed: () =>
+            controller.isOpen ? controller.close() : controller.open(),
+        icon: const Icon(Icons.travel_explore_outlined, size: 18),
+        label: const Text('Search the web'),
+      ),
+      menuChildren: [
+        for (final site in lyricsSites)
+          MenuItemButton(
+            onPressed: () => launchUrl(
+              site.urlFor(title: title, artist: artist),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(site.label),
+                  Text(
+                    site.note,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
@@ -162,6 +163,23 @@ class _LyricsEditorDialogState extends ConsumerState<LyricsEditorDialog> {
     _textFocus.requestFocus();
   }
 
+  /// Stamps the line the caret is on, from the keyboard.
+  ///
+  /// The button beside the scrubber does the same thing, but timing a song by
+  /// hand means one press per line for three minutes: reaching for the mouse
+  /// between every one of them is what makes the job miserable, and the
+  /// pointer is nowhere near the words anyway. Ctrl+Enter keeps both hands
+  /// where the typing is, and the caret is already on the next line
+  /// afterwards, so the whole song is the same keystroke over and over.
+  ///
+  /// Only while this very track is the one playing: stamping a position read
+  /// off a different song would write plausible nonsense.
+  void _stampFromKeyboard() {
+    final player = ref.read(playerProvider);
+    if (player.current?.trackId != widget.trackId) return;
+    _insertStamp(ref.read(playbackPositionProvider).value ?? Duration.zero);
+  }
+
   Future<void> _requestClose() async {
     if (!_dirty) {
       Navigator.of(context).pop();
@@ -213,7 +231,12 @@ class _LyricsEditorDialogState extends ConsumerState<LyricsEditorDialog> {
       _language,
     }.toList();
 
-    return PopScope(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true):
+            _stampFromKeyboard,
+      },
+      child: PopScope(
       canPop: !_dirty,
       onPopInvokedWithResult: (didPop, _) {
         // Reuses _requestClose rather than repeating its confirm-then-pop
@@ -377,6 +400,7 @@ class _LyricsEditorDialogState extends ConsumerState<LyricsEditorDialog> {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -472,7 +496,15 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
         ),
         TextButton.icon(
           onPressed: isCurrent ? () => widget.onInsertStamp(position) : null,
-          icon: const Icon(Icons.flag_outlined, size: 16),
+          // The keyboard is the real way to do this -- see
+          // _LyricsEditorDialogState._stampFromKeyboard -- and a tooltip is
+          // where somebody timing their second song will look for it.
+          icon: Tooltip(
+            message: isCurrent
+                ? 'Stamp this line at the current position (Ctrl+Enter)'
+                : 'Play this track to time against it',
+            child: const Icon(Icons.flag_outlined, size: 16),
+          ),
           label: Text(
             formatDuration(position),
             style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
