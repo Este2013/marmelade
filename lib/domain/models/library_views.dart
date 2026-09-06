@@ -22,6 +22,7 @@ class AlbumCard {
     this.isFavorite = false,
     this.totalDurationMs = 0,
     this.isMissing = false,
+    this.artistAliases = const [],
   });
 
   final int id;
@@ -36,6 +37,10 @@ class AlbumCard {
   /// True when every track on it has lost its files -- an album that is
   /// entirely gone, rather than one with a gap in it.
   final bool isMissing;
+
+  /// The album artist's other names, so the filter box finds this release
+  /// under whichever of them somebody types.
+  final List<String> artistAliases;
 
   final int trackCount;
 
@@ -142,7 +147,8 @@ class ArtistCard {
     required this.trackCount,
     required this.albumCount,
     this.imagePath,
-    this.aliasCount = 0,
+    this.aliases = const [],
+    this.tags = const [],
     this.memberCount = 0,
     this.isFavorite = false,
   });
@@ -156,7 +162,19 @@ class ArtistCard {
   final int trackCount;
   final int albumCount;
   final String? imagePath;
-  final int aliasCount;
+  /// Every other name this artist goes by.
+  ///
+  /// Carried in full rather than counted, because the filter box has to match
+  /// them: someone who types the Japanese name of an artist filed under a
+  /// romanised one is not making a mistake, and finding nothing is not an
+  /// answer. The count is still what the card prints.
+  final List<String> aliases;
+
+  /// Tag names on the artist themselves, so the filter can find "chiptune"
+  /// on someone whose songs are not individually tagged.
+  final List<String> tags;
+
+  int get aliasCount => aliases.length;
 
   /// Number of members, for groups.
   final int memberCount;

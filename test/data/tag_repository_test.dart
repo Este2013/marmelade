@@ -246,9 +246,11 @@ void main() {
       expect(attached.first.origin, TagOrigin.own);
     });
 
-    test('an artist tag does not cascade to their tracks', () async {
-      // An artist tag says something about the artist. Pushing it onto every
-      // track they ever guested on would make track tags meaningless.
+    test('an artist tag is not shown on their tracks', () async {
+      // An artist tag says something about the artist. Stamping it onto
+      // every track they ever guested on would make track tags meaningless.
+      // It does still *reach* those tracks, so the tag can be browsed by --
+      // see `artist_tags_and_aliases_test.dart` for the other half.
       final artistId = await artist('Someone');
       final trackId = await track('Song');
       await db.into(db.trackCredits).insert(

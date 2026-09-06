@@ -9,6 +9,10 @@ import '../db/database.dart';
 /// builder, because these are the hot paths: an albums grid must be one query
 /// for the whole grid, not one per card, and the artwork fallback chain has to
 /// resolve inside SQL rather than by walking rows in Dart.
+/// Splits a `group_concat` list joined on the unit separator.
+List<String> _split(String joined) =>
+    joined.isEmpty ? const [] : joined.split('');
+
 class LibraryRepository {
   LibraryRepository(this.db);
 
@@ -73,6 +77,9 @@ class LibraryRepository {
           AND EXISTS (SELECT 1 FROM media_files mf
                        WHERE mf.track_id = t.id AND mf.status = 'present'))
           AS present_track_count,
+        COALESCE((SELECT group_concat(aal.alias, x'1F') FROM artist_aliases aal
+                   WHERE aal.artist_id = al.album_artist_id), '')
+          AS artist_aliases,
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM tracks t
           WHERE t.album_id = al.id) AS total_ms
       FROM albums al
@@ -101,6 +108,7 @@ class LibraryRepository {
             totalDurationMs: row.read<int>('total_ms'),
             isMissing: row.read<int>('track_count') > 0 &&
                 row.read<int>('present_track_count') == 0,
+            artistAliases: _split(row.read<String>('artist_aliases')),
           ),
       ];
       if (!includeSingles) return albums;
@@ -400,8 +408,12 @@ class LibraryRepository {
         (SELECT COUNT(DISTINCT t.album_id) FROM track_credits tc
           JOIN tracks t ON t.id = tc.track_id
          WHERE tc.artist_id = a.id AND t.album_id IS NOT NULL) AS album_count,
-        (SELECT COUNT(*) FROM artist_aliases al WHERE al.artist_id = a.id)
-          AS alias_count,
+        COALESCE((SELECT group_concat(al.alias, x'1F')
+                    FROM artist_aliases al WHERE al.artist_id = a.id), '')
+          AS aliases,
+        COALESCE((SELECT group_concat(g.name, x'1F')
+                    FROM artist_tags at JOIN tags g ON g.id = at.tag_id
+                   WHERE at.artist_id = a.id), '') AS tags,
         (SELECT COUNT(*) FROM artist_memberships m WHERE m.group_id = a.id)
           AS member_count
       FROM artists a
@@ -414,6 +426,8 @@ class LibraryRepository {
         db.trackCredits,
         db.tracks,
         db.artistAliases,
+        db.artistTags,
+        db.tags,
         db.artistMemberships,
         db.images,
       },
@@ -426,7 +440,10 @@ class LibraryRepository {
               trackCount: row.read<int>('track_count'),
               albumCount: row.read<int>('album_count'),
               imagePath: row.read<String?>('image_path'),
-              aliasCount: row.read<int>('alias_count'),
+              // Unit separator, not a comma: names contain commas, and a
+              // filter matching half of one is worse than not matching.
+              aliases: _split(row.read<String>('aliases')),
+              tags: _split(row.read<String>('tags')),
               memberCount: row.read<int>('member_count'),
               isFavorite: row.read<int>('is_favorite') == 1,
             ),
@@ -448,6 +465,9 @@ class LibraryRepository {
           AND EXISTS (SELECT 1 FROM media_files mf
                        WHERE mf.track_id = t.id AND mf.status = 'present'))
           AS present_track_count,
+        COALESCE((SELECT group_concat(aal.alias, x'1F') FROM artist_aliases aal
+                   WHERE aal.artist_id = al.album_artist_id), '')
+          AS artist_aliases,
         (SELECT COALESCE(SUM(t.duration_ms), 0) FROM tracks t
           WHERE t.album_id = al.id) AS total_ms
       FROM albums al
@@ -477,6 +497,7 @@ class LibraryRepository {
               totalDurationMs: row.read<int>('total_ms'),
               isMissing: row.read<int>('track_count') > 0 &&
                   row.read<int>('present_track_count') == 0,
+              artistAliases: _split(row.read<String>('artist_aliases')),
             ),
         ]);
   }

@@ -412,6 +412,15 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
                'playlist' AS source
           FROM v_playlist_tracks vpt
           JOIN playlist_tags pt ON pt.playlist_id = vpt.playlist_id
+        UNION
+        -- A tag on an artist is a statement about their music, so it reaches
+        -- the tracks they are credited on. Any role: a guest verse is still
+        -- theirs. Without this, tagging an artist "chiptune" said nothing
+        -- about a single song they made, which is not what anybody means by
+        -- tagging an artist.
+        SELECT tc.track_id AS track_id, art.tag_id AS tag_id, 'artist' AS source
+          FROM track_credits tc
+          JOIN artist_tags art ON art.artist_id = tc.artist_id
       )
     ''');
   }

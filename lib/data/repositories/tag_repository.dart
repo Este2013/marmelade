@@ -213,6 +213,13 @@ class TagRepository {
   /// For a track this includes what it inherits from its album and from any
   /// playlist it is in, each marked with where it came from. For the other
   /// three it is just their own tags -- nothing cascades *into* an album.
+  ///
+  /// Artist tags are deliberately absent, even though they reach this track
+  /// for the purpose of *finding* it (see `v_track_effective_tags`). The two
+  /// are different questions: "everything by someone tagged chiptune" is a
+  /// useful thing to browse, while stamping every song they ever guested on
+  /// with their personal tags would leave a track's own line saying more
+  /// about its cast than about the recording.
   Stream<List<AttachedTag>> watchTagsOf(TagTarget target, int id) {
     final sql = target == TagTarget.track
         ? '''
@@ -223,7 +230,7 @@ class TagRepository {
         FROM v_track_effective_tags e
         JOIN tags t ON t.id = e.tag_id
         LEFT JOIN tag_categories c ON c.id = t.category_id
-       WHERE e.track_id = ?1
+       WHERE e.track_id = ?1 AND e.source <> 'artist'
        ORDER BY (e.source <> 'track'), c.sort_order, c.name, t.name
       '''
         : '''
@@ -326,10 +333,30 @@ class TagRepository {
             db.playlistTags,
             db.playlistItems,
             db.tracks,
+            // The cascade reaches through credits now, so tagging an artist
+            // moves tracks into this set without touching any of them.
+            db.artistTags,
+            db.trackCredits,
           },
         )
         .watch()
         .map((rows) => [for (final row in rows) row.read<int>('track_id')]);
+  }
+
+  /// The artists carrying a tag directly.
+  ///
+  /// Not cascaded in either direction: an artist wears the tags somebody put
+  /// on them, and nothing else. Tagging one of their songs "live" says
+  /// something about that recording, not about the person.
+  Stream<List<int>> watchArtistIdsWithTag(int tagId) {
+    return db
+        .customSelect(
+          'SELECT artist_id FROM artist_tags WHERE tag_id = ?1',
+          variables: [Variable(tagId)],
+          readsFrom: {db.artistTags},
+        )
+        .watch()
+        .map((rows) => [for (final row in rows) row.read<int>('artist_id')]);
   }
 
   /// The tracks carrying a tag, cascade included.

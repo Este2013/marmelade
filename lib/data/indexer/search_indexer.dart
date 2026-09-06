@@ -174,7 +174,11 @@ class SearchIndexer {
           COALESCE((SELECT group_concat(al.alias, ' ')
                       FROM artist_aliases al WHERE al.artist_id = a.id), '')
             AS aliases,
-          COALESCE(a.disambiguation, '') AS secondary
+          TRIM(COALESCE(a.disambiguation, '') || ' ' ||
+               COALESCE((SELECT group_concat(g.name, ' ')
+                           FROM artist_tags at
+                           JOIN tags g ON g.id = at.tag_id
+                          WHERE at.artist_id = a.id), '')) AS secondary
         FROM artists a $filter
       ''',
       variables: onlyId == null ? const [] : [onlyId],

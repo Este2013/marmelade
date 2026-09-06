@@ -31,7 +31,10 @@ void main() {
     categoryName: 'Genre',
   );
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    List<ArtistCard> artists = const [],
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1100, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -46,6 +49,11 @@ void main() {
           tagTrackListProvider(
             10,
           ).overrideWith((ref) => Stream.value(const <TrackRow>[])),
+          // Faked rather than left live for the same reason the database is:
+          // drift posts a zero-duration cleanup timer when a query stream is
+          // cancelled, and a widget test tears the scope down after the last
+          // pump, so the binding sees a timer pending after the tree is gone.
+          tagArtistsProvider(10).overrideWith((ref) => Stream.value(artists)),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -96,6 +104,33 @@ void main() {
 
     expect(find.text('Delete Hardcore?'), findsOneWidget);
   });
+
+  testWidgets('names the artists wearing the tag, above the songs',
+      (tester) async {
+    // A tag on a person is a statement about them, not about one recording,
+    // so the page that says what this tag means has to say who wears it --
+    // otherwise the only trace is several hundred tracks appearing below for
+    // no visible reason.
+    await pump(tester, artists: const [
+      ArtistCard(
+        id: 4,
+        name: 'Camellia',
+        kind: 'person',
+        trackCount: 12,
+        albumCount: 3,
+      ),
+    ]);
+
+    expect(find.text('1 artist with this tag'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'Camellia'), findsOneWidget);
+  });
+
+  testWidgets('says nothing about artists when none wear it', (tester) async {
+    await pump(tester);
+
+    expect(find.textContaining('with this tag'), findsNothing);
+  });
+
 }
 
 void _noop() {}

@@ -368,7 +368,7 @@ const _artists = [
     kind: 'person',
     trackCount: 3,
     albumCount: 2,
-    aliasCount: 1,
+    aliases: ['ピノキオピー'],
   ),
   ArtistCard(
     id: 2,
@@ -1833,6 +1833,24 @@ void main() {
       expect(find.text('Tokyo Mannequin'), findsNothing);
       // The count follows the filter: "3 songs" above one row is a lie.
       expect(find.text('1 of 3 songs'), findsOneWidget);
+    });
+
+    testWidgets('finds an artist by a name they also go by', (tester) async {
+      // The point of aliases: somebody who types the Japanese name of an
+      // artist filed under a romanised one is not making a mistake, and
+      // finding nothing is not an answer.
+      await open(tester);
+      await tester.tap(railItem('Artists'));
+      await settle(tester);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter artists'),
+        'ピノキオピー',
+      );
+      await settle(tester);
+
+      expect(find.text('PinocchioP'), findsWidgets);
+      expect(find.text('Camellia'), findsNothing);
     });
 
     testWidgets('matches an artist, not only a title', (tester) async {

@@ -73,7 +73,11 @@ final albumsShownProvider =
 
   final shown = [
     for (final album in all)
-      if (matchesQuery(filter, [album.title, album.artistName])) album,
+      if (matchesQuery(
+        filter,
+        [album.title, album.artistName, ...album.artistAliases],
+      ))
+        album,
   ];
   return (all: all, shown: shown);
 });

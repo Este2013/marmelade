@@ -68,7 +68,12 @@ final artistsShownProvider =
 
   final shown = [
     for (final artist in all)
-      if (matchesQuery(filter, [artist.name])) artist,
+      // Every name they go by, and the tags they wear: someone typing the
+      // Japanese name of an artist filed under a romanised one is not making
+      // a mistake, and neither is someone typing "chiptune" to find the
+      // people who make it.
+      if (matchesQuery(filter, [artist.name, ...artist.aliases, ...artist.tags]))
+        artist,
   ];
   return (all: all, shown: shown);
 });

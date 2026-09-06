@@ -849,6 +849,21 @@ final tagTrackListProvider =
       .asyncMap(library.tracksByIds);
 });
 
+/// The artists carrying a tag, for the tag's own page.
+final tagArtistsProvider =
+    StreamProvider.family<List<ArtistCard>, int>((ref, tagId) {
+  final tags = ref.watch(tagRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  return tags.watchArtistIdsWithTag(tagId).asyncExpand(
+        (ids) => ids.isEmpty
+            ? Stream.value(const <ArtistCard>[])
+            // withTracksOnly off: an artist can be tagged before anything of
+            // theirs has been scanned, and hiding them from the page that
+            // says who wears this tag would be its own puzzle.
+            : library.watchArtists(ids: ids, withTracksOnly: false),
+      );
+});
+
 /// Headline library counts, refreshed when the catalog changes.
 final libraryCountsProvider = FutureProvider<LibraryCounts>((ref) async {
   // Depend on the tracks stream so the counts refresh after an index run.

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
+import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
@@ -64,7 +65,11 @@ class TagDetailView extends ConsumerWidget {
           onEditTrack: onEditTrack,
           queueSource: QueueSource.tag,
           queueSourceId: tagId,
-          header: _Header(tag: tag, tracks: items),
+          header: _Header(
+            tag: tag,
+            tracks: items,
+            onOpenArtist: onOpenArtist,
+          ),
         );
       },
     );
@@ -160,10 +165,12 @@ class _Header extends ConsumerWidget {
   const _Header({
     required this.tag,
     required this.tracks,
+    this.onOpenArtist,
   });
 
   final TagCard tag;
   final List<TrackRow> tracks;
+  final void Function(int artistId)? onOpenArtist;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -242,14 +249,68 @@ class _Header extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 20),
+          _TaggedArtists(tagId: tag.id, onOpen: onOpenArtist),
           Text(
-            'Tracks carrying this tag, including through an album or a playlist',
+            'Tracks carrying this tag, including through an album, a playlist '
+            'or someone credited on them',
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 4),
         ],
       ),
+    );
+  }
+}
+
+
+/// The artists wearing this tag, above the songs.
+///
+/// A tag on an artist is a statement about a person, not about a recording,
+/// so it deserves saying in its own right rather than being visible only as
+/// the reason several hundred tracks turned up below. Absent entirely when
+/// nobody wears it, which is most tags.
+class _TaggedArtists extends ConsumerWidget {
+  const _TaggedArtists({required this.tagId, this.onOpen});
+
+  final int tagId;
+  final void Function(int artistId)? onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final artists = ref.watch(tagArtistsProvider(tagId)).value ?? const [];
+    if (artists.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${pluralize(artists.length, 'artist')} with this tag',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final artist in artists)
+              ActionChip(
+                avatar: Artwork(
+                  storedPath: artist.imagePath,
+                  size: 24,
+                  borderRadius: 12,
+                  fallbackSeed: artist.name,
+                  fallbackIcon: Icons.person_outline,
+                ),
+                label: Text(artist.name),
+                onPressed: onOpen == null ? null : () => onOpen!(artist.id),
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+      ],
     );
   }
 }
