@@ -118,16 +118,34 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
-  testWidgets('offers the artwork-turning switch, on by default',
+  testWidgets('hides the artwork-turning switch while it would do nothing',
+      (tester) async {
+    // The default style leaves the seed's hue alone, so there is nothing for
+    // a picture to follow and nothing for this switch to control.
+    await pump(tester);
+
+    expect(find.text('Turn artwork with the palette'), findsNothing);
+  });
+
+  testWidgets('offers it once a style turns the hue, on by default',
       (tester) async {
     // On, because it is what makes a rotated palette read as one idea; a
     // switch, because it is as personal a taste as the palette itself.
     await pump(tester);
+    await tester.tap(find.byType(DropdownMenu<PaletteVariant>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(PaletteVariant.swapped.label).last);
+    await tester.pumpAndSettle();
 
     final tile = tester.widget<SwitchListTile>(
       find.widgetWithText(SwitchListTile, 'Turn artwork with the palette'),
     );
     expect(tile.value, isTrue);
+    // And says how far, since "with the palette" is not a quantity.
+    expect(find.textContaining('180 degrees'), findsOne);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('has no separate switch for tinting the player', (tester) async {
