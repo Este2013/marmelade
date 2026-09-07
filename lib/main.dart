@@ -140,6 +140,20 @@ class _ShutdownLogger extends WindowListener {
 
   @override
   Future<void> onWindowClose() async {
+    // Out of sight before any of the work: pressing the close button and
+    // then watching the window sit there is a hang, whatever the process is
+    // doing behind it. Measured at ten to twenty seconds on this machine,
+    // all of it inside the database close -- and every session it happened
+    // in was a debug build under the debugger, which this project already
+    // knows mishandles drift's second isolate (see AppServices.start). The
+    // file is safe regardless: the log is folded back before the close, so
+    // the worst case is a process that lingers invisibly and then exits.
+    try {
+      await windowManager.hide();
+    } catch (_) {
+      // Nothing to do about a window that will not hide; carry on closing.
+    }
+
     try {
       // Bounded step by step inside, so no single close can strand the
       // others -- see AppServices.dispose.

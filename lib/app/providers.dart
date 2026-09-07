@@ -1250,7 +1250,13 @@ Future<void> closeQuietly(
     AppLog.instance.error(
       'closing $what did not finish in ${within.inMilliseconds}ms, moving on',
       tag: 'shutdown',
-      fields: {'rss': AppLog.formatBytes(AppLog.residentBytes())},
+      fields: {
+        'rss': AppLog.formatBytes(AppLog.residentBytes()),
+        // Recorded because it is the leading suspect and the cheapest thing
+        // to check: every occurrence so far has been a debug build, where
+        // the debugger is known to mishandle the database's second isolate.
+        'debug': kDebugMode,
+      },
     );
   } catch (error, stack) {
     AppLog.instance.error(

@@ -709,7 +709,11 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
         children: [
           IconButton(tooltip: 'Close now playing', onPressed: () => _toggleShade(open: false), icon: const Icon(Icons.keyboard_arrow_down)),
           const SizedBox(width: 4),
-          Expanded(
+          // Flexible, never Expanded: the caption strip's drag area is a
+          // layer *behind* this content, so anything claiming the full width
+          // stops the window being dragged by its own title bar. Every other
+          // view's chrome takes only the width it needs, for the same reason.
+          Flexible(
             child: Text(
               title ?? 'Now playing',
               // Room for one line only: the strip is a caption, and a long

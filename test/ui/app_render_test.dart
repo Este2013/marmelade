@@ -883,6 +883,27 @@ void main() {
       await settle(tester);
     }
 
+    testWidgets('leaves the top edge draggable beside the title',
+        (tester) async {
+      // The regression this replaced: the title was in an Expanded, which
+      // claims the whole strip -- and the drag area is a layer behind the
+      // content, so the window could no longer be moved by its own title
+      // bar while the shade was open.
+      await openShade(tester, size: const Size(1400, 900));
+
+      final title = tester.getRect(find.descendant(
+        of: find.byType(WindowChrome),
+        matching: find.text('Cross Separator'),
+      ));
+      final firstControl =
+          tester.getRect(find.byTooltip('Hide the queue')).left;
+
+      expect(title.width, lessThan(400),
+          reason: 'the title takes the width it needs, not all of it');
+      expect(firstControl - title.right, greaterThan(40),
+          reason: 'bare strip left to grab the window by');
+    });
+
     testWidgets('names the song in the caption, not the page', (tester) async {
       await openShade(tester, size: const Size(1400, 900));
 
