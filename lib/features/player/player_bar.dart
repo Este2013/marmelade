@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import 'adaptive_player_theme.dart';
 import '../../services/audio/player_controller.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/spectrum_bars.dart';
@@ -33,40 +34,11 @@ class PlayerBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
-    final theme = Theme.of(context);
 
-    // Optional, and off unless asked for: a strongly coloured sleeve makes a
-    // strongly coloured bar, which is a matter of taste rather than a
-    // straightforwardly better idea.
-    final artwork = player.current?.imagePath;
-    final tinted = ref.watch(adaptivePlayerColorsProvider) && artwork != null
-        ? ref
-            .watch(artworkSchemeProvider(
-              (path: artwork, brightness: theme.brightness),
-            ))
-            .value
-        : null;
-
-    // Animated, and over the same 320ms the artwork itself cross-fades in:
-    // skipping through a queue otherwise strobes the whole bar a different
-    // colour per track. A null scheme falls back to the app's own, so
-    // turning the setting off or reaching a track with no picture fades
-    // back rather than snapping.
-    //
-    // The tinted theme is this theme with a different scheme, not a theme
-    // built from scratch. A fresh ThemeData carries its own text styles --
-    // plain, `inherit: true` -- while the app's are merged and
-    // `inherit: false`, and TextStyle.lerp refuses to interpolate across
-    // that: the first album change threw "Failed to interpolate TextStyles
-    // with different inherit values" and replaced the whole bar with an
-    // error widget. Sharing one textTheme leaves nothing to disagree about,
-    // and the colours are all that needed to change anyway.
-    return AnimatedTheme(
-      duration: const Duration(milliseconds: 320),
-      data: tinted == null ? theme : theme.copyWith(colorScheme: tinted),
-      child: Builder(
-        builder: (context) => _bar(context, ref, player),
-      ),
+    // Shared with the now-playing view above it, so the bar and the shade it
+    // opens are never two different colours at once.
+    return AdaptivePlayerTheme(
+      child: Builder(builder: (context) => _bar(context, ref, player)),
     );
   }
 

@@ -8,6 +8,8 @@ import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/library_repository.dart';
 import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/domain/models/library_views.dart';
+import 'package:marmelade/features/player/adaptive_player_theme.dart';
+import 'package:marmelade/features/player/now_playing_view.dart';
 import 'package:marmelade/features/player/player_bar.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
 import 'package:marmelade/services/audio/player_controller.dart';
@@ -179,6 +181,54 @@ void main() {
     // zero-duration cleanup timer when a query stream is cancelled, and after
     // the body has finished there is no pump left to run it, so the binding
     // fails the test on a pending timer.
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('carries the same colours into the now-playing view',
+      (tester) async {
+    // The bar and the shade it opens must never be two different colours at
+    // once, and the view showing the record is the last place that should be
+    // left in the app's own palette.
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer(overrides: [
+      databaseProvider.overrideWithValue(db),
+      artStoreProvider.overrideWithValue(ArtStore(artRoot)),
+      playbackEngineProvider.overrideWithValue(SilentEngine()),
+      playerProvider.overrideWith(() => _Playing(db, 'art/cover.jpg')),
+      adaptivePlayerColorsProvider.overrideWith(() => _Flag(true)),
+      artworkSchemeProvider((path: 'art/cover.jpg', brightness: Brightness.dark))
+          .overrideWith((ref) async => fromArtwork),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFFE8730C),
+              brightness: Brightness.dark,
+            ),
+          ),
+          home: const Scaffold(
+            body: AdaptivePlayerTheme(child: NowPlayingView()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final inside = Theme.of(
+      tester.element(find.byType(NowPlayingView)),
+    ).colorScheme;
+    expect(inside.primary, fromArtwork.primary);
+    expect(inside.surface, fromArtwork.surface);
+
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     await tester.pump(const Duration(milliseconds: 1));
