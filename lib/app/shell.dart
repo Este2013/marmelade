@@ -696,6 +696,12 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     final opacity = _shadeControlsOpacity();
     if (opacity == null) return null;
     final theme = Theme.of(context);
+    // The song, not the name of the page. Every other view puts its own
+    // subject here, and "Now playing" was the one caption that said nothing
+    // the person could not already see -- while the title it could have been
+    // showing took a headline's worth of room out of the middle of the view,
+    // where the artwork wants it.
+    final title = ref.watch(playerProvider.select((s) => s.current?.title));
 
     return Opacity(
       opacity: opacity,
@@ -703,7 +709,19 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
         children: [
           IconButton(tooltip: 'Close now playing', onPressed: () => _toggleShade(open: false), icon: const Icon(Icons.keyboard_arrow_down)),
           const SizedBox(width: 4),
-          Text('Now playing', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Expanded(
+            child: Text(
+              title ?? 'Now playing',
+              // Room for one line only: the strip is a caption, and a long
+              // title has the tooltip and the queue to fall back on.
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: title == null
+                  ? theme.textTheme.titleSmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)
+                  : theme.textTheme.titleLarge,
+            ),
+          ),
           const SizedBox(width: 8),
         ],
       ),

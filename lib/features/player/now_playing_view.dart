@@ -132,8 +132,20 @@ class _NowPlayingPane extends ConsumerWidget {
   final void Function(int artistId)? onOpenArtist;
   final void Function(int albumId)? onOpenAlbum;
 
-  /// Room the text below the artwork needs, at most.
-  static const _textHeight = 190.0;
+  /// Room the block under the artwork needs, in each of its two shapes.
+  ///
+  /// The title is not in either of them any more -- it names the whole view
+  /// from the caption strip now, and a headline repeating it here cost the
+  /// artwork eighty pixels for nothing.
+  static const _twoLineText = 130.0;
+  static const _oneLineText = 90.0;
+
+  /// Below this, the second line is not worth what it costs.
+  ///
+  /// Chosen against the picture rather than against a screen size: what
+  /// matters is how much artwork is left, and a 1080x720 window maximised on
+  /// a second monitor runs out of height long before it runs out of width.
+  static const _comfortableSide = 460.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -156,11 +168,37 @@ class _NowPlayingPane extends ConsumerWidget {
         // Square, bounded by whichever axis runs out first. With no transport
         // or scrubber to make room for, this is nearly the whole pane -- which
         // is the point of opening the shade at all.
-        final side = math
-            .min(constraints.maxHeight - _textHeight, constraints.maxWidth - 96)
+        double sideWith(double text) => math
+            .min(constraints.maxHeight - text, constraints.maxWidth - 96)
             .clamp(120.0, 720.0);
 
+        // Roomy first, and collapse only when the picture would suffer for
+        // it: artists on their own line, the album under them, is the better
+        // read when there is space for it.
+        var side = sideWith(_twoLineText);
+        final oneLine = side < _comfortableSide;
+        if (oneLine) side = sideWith(_oneLineText);
+
+        final albumLink = track.albumTitle == null
+            ? null
+            : _Link(
+                // Says which shape it ended up in -- the tests read it, and
+                // it is the one thing about this layout worth asserting.
+                key: ValueKey(oneLine ? 'album-inline' : 'album-stacked'),
+                text: track.albumTitle!,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant
+                      .withValues(alpha: 0.85),
+                ),
+                onTap: track.albumId == null || onOpenAlbum == null
+                    ? null
+                    : () => onOpenAlbum!(track.albumId!),
+              );
+
         return SingleChildScrollView(
+          // Named so a test can ask about this half of the view without
+          // catching the queue beside it, which lists these same titles.
+          key: const Key('now-playing-details'),
           padding: const EdgeInsets.fromLTRB(32, 8, 32, 24),
           child: Column(
             children: [
@@ -179,33 +217,19 @@ class _NowPlayingPane extends ConsumerWidget {
                   fallbackIcon: Icons.music_note_outlined,
                 ),
               ),
-              const SizedBox(height: 28),
-              Text(
-                track.title,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.headlineMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 10),
+              SizedBox(height: oneLine ? 20 : 28),
               _Credits(
                 trackId: track.trackId,
                 fallback: track.artistLine,
                 onOpenArtist: onOpenArtist,
+                // Folded onto the artists' own line when height is short,
+                // separated the way two artists already are, so one glance
+                // reads "who, from what" instead of three stacked lines.
+                trailing: oneLine ? albumLink : null,
               ),
-              if (track.albumTitle != null) ...[
+              if (!oneLine && albumLink != null) ...[
                 const SizedBox(height: 8),
-                _Link(
-                  text: track.albumTitle!,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant
-                        .withValues(alpha: 0.85),
-                  ),
-                  onTap: track.albumId == null || onOpenAlbum == null
-                      ? null
-                      : () => onOpenAlbum!(track.albumId!),
-                ),
+                albumLink,
               ],
             ],
           ),
@@ -221,11 +245,16 @@ class _Credits extends ConsumerWidget {
     required this.trackId,
     required this.fallback,
     this.onOpenArtist,
+    this.trailing,
   });
 
   final int trackId;
   final String fallback;
   final void Function(int artistId)? onOpenArtist;
+
+  /// Something to sit on the same line, after the artists and one more
+  /// separator -- the album, when there is no height for its own line.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -234,10 +263,24 @@ class _Credits extends ConsumerWidget {
     final style = theme.textTheme.titleMedium
         ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
 
+    final dot = Text(
+      ' · ',
+      style: style?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+      ),
+    );
+
     final credits = row?.credits ?? const <TrackCreditRef>[];
     if (credits.isEmpty) {
       // The joined line from the player snapshot, until the credits load.
-      return Text(fallback, style: style, textAlign: TextAlign.center);
+      return Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(fallback, style: style, textAlign: TextAlign.center),
+          if (trailing != null) ...[dot, trailing!],
+        ],
+      );
     }
 
     // The same artist can be credited more than once on one track -- main
@@ -254,14 +297,7 @@ class _Credits extends ConsumerWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         for (var i = 0; i < unique.length; i++) ...[
-          if (i > 0)
-            Text(
-              ' · ',
-              style: style?.copyWith(
-                color:
-                    theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-            ),
+          if (i > 0) dot,
           _Link(
             text: unique[i].creditedAs ?? unique[i].name,
             style: style,
@@ -270,6 +306,7 @@ class _Credits extends ConsumerWidget {
                 : () => onOpenArtist!(unique[i].artistId),
           ),
         ],
+        if (trailing != null) ...[dot, trailing!],
       ],
     );
   }
@@ -277,7 +314,7 @@ class _Credits extends ConsumerWidget {
 
 /// Text that underlines on hover when it leads somewhere.
 class _Link extends StatefulWidget {
-  const _Link({required this.text, this.style, this.onTap});
+  const _Link({super.key, required this.text, this.style, this.onTap});
 
   final String text;
   final TextStyle? style;

@@ -14,6 +14,7 @@ import 'package:marmelade/app/providers.dart';
 import 'package:marmelade/data/repositories/missing_files_repository.dart';
 import 'package:marmelade/app/shell.dart';
 import 'package:marmelade/app/window_chrome.dart';
+import 'package:marmelade/widgets/expandable_artwork.dart';
 import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart' show LinkRow;
@@ -835,14 +836,14 @@ void main() {
   testWidgets('the player bar draws the now-playing shade up over the content',
       (tester) async {
     await open(tester, app: buildApp(playing: true));
-    expect(find.text('Now playing'), findsNothing);
+    expect(find.byTooltip('Close now playing'), findsNothing);
 
     await tester.tap(find.byTooltip('Open now playing'));
     await settle(tester);
 
-    expect(find.text('Now playing'), findsOne);
+    // The caption names the song rather than the page -- see the group below.
     expect(find.text('Play queue'), findsOne);
-    expect(find.text('Kanraku'), findsOne);
+    expect(find.text('Kanraku'), findsWidgets);
     // Every credited artist is its own target in the now-playing pane. The
     // snapshot's own artist line reads "Camellia x Nanahira" as one string --
     // still correct for the compact bar and the queue rows -- so finding the
@@ -860,7 +861,86 @@ void main() {
 
     await tester.tap(find.byTooltip('Close now playing'));
     await settle(tester);
-    expect(find.text('Now playing'), findsNothing);
+    expect(find.byTooltip('Close now playing'), findsNothing);
+  });
+
+  /// What the now-playing view spends its height on.
+  ///
+  /// The view is opened maximised on a 1080x720 prompter screen, where a
+  /// headline in the middle repeating the caption, and an album on a line of
+  /// its own, were costing the artwork a third of its height.
+  group('the now-playing view', () {
+    /// Scoped, because the views behind the shade are still in the tree: the
+    /// albums grid has a "Comic and Cosmic" card of its own.
+    Finder inTheView(String text) => find.descendant(
+          of: find.byKey(const Key('now-playing-details')),
+          matching: find.text(text),
+        );
+
+    Future<void> openShade(WidgetTester tester, {required Size size}) async {
+      await open(tester, app: buildApp(playing: true), size: size);
+      await tester.tap(find.byTooltip('Open now playing'));
+      await settle(tester);
+    }
+
+    testWidgets('names the song in the caption, not the page', (tester) async {
+      await openShade(tester, size: const Size(1400, 900));
+
+      expect(find.text('Now playing'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.text('Cross Separator'),
+        ),
+        findsOne,
+      );
+    });
+
+    testWidgets('does not repeat the title in the middle', (tester) async {
+      // Where it used to sit, at headlineMedium and up to two lines.
+      await openShade(tester, size: const Size(1400, 900));
+
+      expect(inTheView('Cross Separator'), findsNothing);
+    });
+
+    testWidgets('gives the album its own line when there is room',
+        (tester) async {
+      await openShade(tester, size: const Size(1400, 1000));
+
+      expect(find.byKey(const ValueKey('album-stacked')), findsOne);
+      final artist = tester.getCenter(inTheView('Camellia')).dy;
+      final album = tester.getCenter(inTheView('Comic and Cosmic')).dy;
+      expect(album, greaterThan(artist + 10), reason: 'stacked, as before');
+    });
+
+    testWidgets('folds the album onto the artist line on a short screen',
+        (tester) async {
+      // The reported case, maximised on a second monitor. Asserted by which
+      // shape the layout chose rather than by pixels: on a narrow window the
+      // one-line block can still wrap, and that is the Wrap doing its job,
+      // not the collapse failing to happen.
+      await openShade(tester, size: const Size(1080, 720));
+
+      expect(find.byKey(const ValueKey('album-inline')), findsOne);
+      expect(find.byKey(const ValueKey('album-stacked')), findsNothing);
+    });
+
+    testWidgets('and the picture gets what the second line gave up',
+        (tester) async {
+      await openShade(tester, size: const Size(1080, 720));
+
+      final side = tester
+          .widget<ExpandableArtwork>(find.descendant(
+            of: find.byKey(const Key('now-playing-details')),
+            matching: find.byType(ExpandableArtwork),
+          ))
+          .size;
+
+      // This pane is 434 tall at this window size. Two stacked lines reserve
+      // 130 of it and would leave 304; one line reserves 90 and leaves 344.
+      expect(side, greaterThan(320),
+          reason: 'the collapse handed those pixels to the artwork');
+    });
   });
 
   testWidgets('an artist credited twice on one track is only linked once',
@@ -1073,23 +1153,22 @@ void main() {
           );
 
       // Closed: the strip carries nothing but the window's own buttons.
-      expect(inChrome(find.text('Now playing')), findsNothing);
       expect(inChrome(find.byTooltip('Close now playing')), findsNothing);
 
       await tester.tap(find.byTooltip('Open now playing'));
       await settle(tester);
 
-      expect(inChrome(find.text('Now playing')), findsOne);
+      // The song's name, which is what the strip says for this view now.
+      expect(inChrome(find.text('Cross Separator')), findsOne);
       expect(inChrome(find.byTooltip('Close now playing')), findsOne);
       expect(inChrome(find.byTooltip('Hide the queue')), findsOne);
       // And nowhere else: the shade has no header of its own any more.
-      expect(find.text('Now playing'), findsOne);
       expect(find.byTooltip('Close now playing'), findsOne);
 
       // Closing from the strip works.
       await tester.tap(inChrome(find.byTooltip('Close now playing')));
       await settle(tester);
-      expect(find.text('Now playing'), findsNothing);
+      expect(inChrome(find.text('Cross Separator')), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
