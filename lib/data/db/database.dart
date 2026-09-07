@@ -60,6 +60,33 @@ enum SearchEntity {
   final String key;
 }
 
+/// What a `wal_checkpoint` did.
+class WalCheckpoint {
+  const WalCheckpoint({
+    required this.busy,
+    required this.pages,
+    required this.moved,
+  });
+
+  /// True when a reader held the checkpoint off. The log then stays as it is,
+  /// and closing the database has the same work still to do -- which is the
+  /// first thing worth knowing when a close takes too long.
+  final bool busy;
+
+  /// Pages left in the log, and how many were folded back, *after* the fact.
+  ///
+  /// With TRUNCATE both read zero on success -- the log has been emptied, so
+  /// there is nothing left to report. Which means [busy] is the field that
+  /// carries the news: everything else is zero either way.
+  final int pages;
+  final int moved;
+
+  @override
+  String toString() => busy
+      ? 'busy: a reader held the log, $pages pages left in it'
+      : 'the log was emptied';
+}
+
 @DriftDatabase(
   tables: [
     // Physical layer
@@ -103,33 +130,6 @@ enum SearchEntity {
     PendingCredits,
   ],
 )
-/// What a `wal_checkpoint` did.
-class WalCheckpoint {
-  const WalCheckpoint({
-    required this.busy,
-    required this.pages,
-    required this.moved,
-  });
-
-  /// True when a reader held the checkpoint off. The log then stays as it is,
-  /// and closing the database has the same work still to do -- which is the
-  /// first thing worth knowing when a close takes too long.
-  final bool busy;
-
-  /// Pages left in the log, and how many were folded back, *after* the fact.
-  ///
-  /// With TRUNCATE both read zero on success -- the log has been emptied, so
-  /// there is nothing left to report. Which means [busy] is the field that
-  /// carries the news: everything else is zero either way.
-  final int pages;
-  final int moved;
-
-  @override
-  String toString() => busy
-      ? 'busy: a reader held the log, $pages pages left in it'
-      : 'the log was emptied';
-}
-
 class MarmeladeDatabase extends _$MarmeladeDatabase {
   MarmeladeDatabase(super.e);
 
