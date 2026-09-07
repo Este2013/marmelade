@@ -98,6 +98,83 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.2.4',
+    date: '2026-09-07',
+    headline: 'Colours that follow the music, and a player that plays what '
+        'you clicked.',
+    changes: [
+      Change.added(
+        'An "Adaptive" accent colour, which takes the whole interface -- '
+        'player included -- from the artwork of whatever is playing. It '
+        'survives a pause, and falls back to the Windows accent when nothing '
+        'is loaded.',
+      ),
+      Change.added(
+        "A Contrast setting: muted, default, high or highest. Material's own "
+        'contrast levels, so the colours stay the colours and only the gap '
+        'between text and what is behind it changes. Muted stops short of '
+        'the level that would put small text under the readable minimum.',
+      ),
+      Change.added(
+        'Eight palette styles, from the Material default through Faithful -- '
+        'which keeps a muted cover muted instead of brightening it -- to '
+        "Swapped, which builds the whole palette from the accent's opposite. "
+        'Monochrome and the two playful ones are there for the asking.',
+      ),
+      Change.added(
+        'The blurred artwork behind the now-playing view, and behind album '
+        'and artist pages, turns its colours to match a palette style that '
+        'moves the hue, so the ambiance and the interface agree rather than '
+        'arguing. A switch, and it only appears when it applies.',
+      ),
+      Change.changed(
+        'The now-playing view gives its height to the artwork: the song is '
+        'named in the title bar instead of the middle of the page, and the '
+        'artist and album fold onto one line once the picture would suffer '
+        'for the second. Worth 40 to 120 pixels of cover on a short screen.',
+      ),
+      Change.fixed(
+        'Clicking a song in an album that was already playing sometimes '
+        'started a neighbour instead, with the right title on screen. A track '
+        'ending and a click landing together were both moving the same index; '
+        'they take turns now, and an advance that has been overtaken is '
+        'dropped.',
+      ),
+      Change.fixed(
+        'An artist can be found by the other names they go by. The search bar '
+        'always could -- the filter boxes in Artists and Albums could not, '
+        'which is what made this look like something that broke.',
+      ),
+      Change.added(
+        'Tags on an artist reach their music: tag: in the Songs and Albums '
+        "filters finds their work, the tag's own page lists both the artists "
+        'wearing it and their tracks, and searching a tag name turns up the '
+        'artists. The tag stays off the individual song, where it would say '
+        'more about the cast than the recording.',
+      ),
+      Change.added(
+        'A library that has lost track of files says so on launch and keeps '
+        'saying so in settings. They can be kept out of the lists without '
+        'deleting anything -- they come back when the drive does -- or '
+        'removed outright, which asks first.',
+      ),
+      Change.added(
+        'Lyrics that are not on this machine get a "Search the web" menu, and '
+        'timing them by hand is now Ctrl+Enter: one keystroke per line, '
+        'hands where the typing is.',
+      ),
+      Change.fixed(
+        'Closing the app is immediate again. The window goes first and the '
+        'cleanup happens out of sight, so a slow database close is no longer '
+        'something to sit and watch.',
+      ),
+      Change.fixed(
+        'The window can be dragged by its title bar again while the '
+        'now-playing view is open.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.2.3',
     date: '2026-09-05',
     headline: 'Music that has gone walkabout, and being told about it.',
