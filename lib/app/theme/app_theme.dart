@@ -11,10 +11,15 @@ const marmeladeSeed = Color(0xFFE8730C); // marmalade orange
 ThemeData buildTheme({
   required Color seed,
   required Brightness brightness,
+  double contrastLevel = 0,
 }) {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed,
     brightness: brightness,
+    // Material's own knob: it moves the tones each role takes out of the
+    // palettes, so the colours stay the colours and only the gap between
+    // foreground and background changes.
+    contrastLevel: contrastLevel,
   );
   return _themeFrom(scheme);
 }

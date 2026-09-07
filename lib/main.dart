@@ -216,8 +216,16 @@ class MarmeladeApp extends ConsumerWidget {
             title: 'marmelade',
             debugShowCheckedModeBanner: false,
             themeMode: preference.mode,
-            theme: buildTheme(seed: seed, brightness: Brightness.light),
-            darkTheme: buildTheme(seed: seed, brightness: Brightness.dark),
+            theme: buildTheme(
+              seed: seed,
+              brightness: Brightness.light,
+              contrastLevel: preference.contrast.value,
+            ),
+            darkTheme: buildTheme(
+              seed: seed,
+              brightness: Brightness.dark,
+              contrastLevel: preference.contrast.value,
+            ),
             // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
             // tree, to test whether a fault is the accessibility bridge's.
             home: Platform.environment['MARMELADE_NO_SEMANTICS'] == '1' ? const ExcludeSemantics(child: AppShell()) : const AppShell(),

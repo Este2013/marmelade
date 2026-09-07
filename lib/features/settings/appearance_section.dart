@@ -49,6 +49,29 @@ class AppearanceSection extends ConsumerWidget {
             onSelectionChanged: (selection) => settings.setMode(selection.first),
           ),
         ),
+        ListTile(
+          leading: const Icon(Icons.contrast_outlined),
+          title: const Text('Contrast'),
+          subtitle: Text(switch (preference.contrast) {
+            ContrastLevel.muted =>
+              'Softer than the default, for a dim room.',
+            ContrastLevel.normal => "Material's normal contrast.",
+            ContrastLevel.high => 'A wider gap between text and what is '
+                'behind it.',
+            ContrastLevel.highest => 'As far apart as the palette goes: '
+                'near-black on near-white, or the reverse.',
+          }),
+          trailing: SegmentedButton<ContrastLevel>(
+            showSelectedIcon: false,
+            segments: [
+              for (final level in ContrastLevel.values)
+                ButtonSegment(value: level, label: Text(level.label)),
+            ],
+            selected: {preference.contrast},
+            onSelectionChanged: (selection) =>
+                settings.setContrast(selection.first),
+          ),
+        ),
         SwitchListTile(
           secondary: const Icon(Icons.color_lens_outlined),
           title: const Text('Adaptive player colours'),

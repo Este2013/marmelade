@@ -21,7 +21,9 @@ void main() {
   tearDown(() => db.close());
 
   Future<void> pump(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1100, 1000));
+    // Tall enough for the whole section: this page has grown, and a chip
+    // scrolled out of the viewport is a tap that quietly misses.
+    await tester.binding.setSurfaceSize(const Size(1200, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
@@ -46,6 +48,34 @@ void main() {
       }
       expect(find.text(source.label), findsOne, reason: source.name);
     }
+  });
+
+  testWidgets('offers every contrast level, and starts on the default',
+      (tester) async {
+    await pump(tester);
+
+    for (final level in ContrastLevel.values) {
+      expect(find.text(level.label), findsOne, reason: level.name);
+    }
+    final picker = tester.widget<SegmentedButton<ContrastLevel>>(
+      find.byType(SegmentedButton<ContrastLevel>),
+    );
+    expect(picker.selected, {ContrastLevel.normal});
+  });
+
+  testWidgets('choosing a contrast level takes effect', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.text(ContrastLevel.highest.label));
+    await tester.pump();
+
+    final picker = tester.widget<SegmentedButton<ContrastLevel>>(
+      find.byType(SegmentedButton<ContrastLevel>),
+    );
+    expect(picker.selected, {ContrastLevel.highest});
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('picking "whatever is playing" sticks', (tester) async {

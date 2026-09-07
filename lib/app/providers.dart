@@ -304,6 +304,9 @@ final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
   return ColorScheme.fromImageProvider(
     provider: FileImage(file),
     brightness: key.brightness,
+    // The same setting the rest of the app is built with, or the player
+    // would be the one surface ignoring it.
+    contrastLevel: ref.watch(themeSettingsProvider).contrast.value,
   );
 });
 
@@ -550,17 +553,27 @@ class ThemeSettings extends Notifier<ThemePreference> {
       SettingKeys.customAccent,
       marmeladeSeed.toARGB32(),
     );
+    final contrast = await _settings.get(
+      SettingKeys.contrast,
+      ContrastLevel.normal.name,
+    );
     state = ThemePreference(
       mode: ThemeMode.values.where((m) => m.name == mode).firstOrNull ??
           ThemeMode.dark,
       accent: AccentSource.of(accent),
       customAccent: Color(custom),
+      contrast: ContrastLevel.of(contrast),
     );
   }
 
   Future<void> setMode(ThemeMode mode) async {
     state = state.copyWith(mode: mode);
     await _settings.set(SettingKeys.themeMode, mode.name);
+  }
+
+  Future<void> setContrast(ContrastLevel contrast) async {
+    state = state.copyWith(contrast: contrast);
+    await _settings.set(SettingKeys.contrast, contrast.name);
   }
 
   Future<void> setAccent(AccentSource accent) async {

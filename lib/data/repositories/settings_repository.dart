@@ -110,6 +110,9 @@ abstract final class SettingKeys {
   static const themeMode = 'appearance.themeMode';
   static const accentSource = 'appearance.accentSource';
   static const customAccent = 'appearance.customAccent';
+  /// How far apart the palette's foreground and background tones sit.
+  static const contrast = 'appearance.contrast';
+
   static const updateChannel = 'updates.channel';
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';

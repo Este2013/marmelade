@@ -82,9 +82,81 @@ void main() {
     }
   });
 
+  contrastTests();
+
   test('an unknown stored value reads as the default, not a crash', () {
     // Downgrading after picking "adaptive" leaves this in the database.
     expect(AccentSource.of('adaptive'), AccentSource.adaptive);
     expect(AccentSource.of('something-else-entirely'), AccentSource.system);
+  });
+}
+
+/// The contrast setting.
+///
+/// Material's own `contrastLevel`, so what is worth testing here is not the
+/// algorithm but the two things this project decided: that the levels really
+/// are ordered, and that the softest one stays readable. Measured rather than
+/// asserted from the parameter, because the numbers are the whole point.
+void contrastTests() {
+  double ratio(Color a, Color b) {
+    final l1 = a.computeLuminance(), l2 = b.computeLuminance();
+    final hi = l1 > l2 ? l1 : l2, lo = l1 > l2 ? l2 : l1;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  ColorScheme schemeFor(ContrastLevel level, Brightness brightness) =>
+      ColorScheme.fromSeed(
+        seedColor: marmeladeSeed,
+        brightness: brightness,
+        contrastLevel: level.value,
+      );
+
+  group('contrast', () {
+    test('each level really is a step up on the one below', () {
+      for (final brightness in Brightness.values) {
+        double weakest(ContrastLevel level) {
+          final s = schemeFor(level, brightness);
+          final pairs = [
+            ratio(s.onSurface, s.surface),
+            ratio(s.onSurfaceVariant, s.surface),
+            ratio(s.onPrimary, s.primary),
+          ];
+          return pairs.reduce((a, b) => a < b ? a : b);
+        }
+
+        var previous = 0.0;
+        for (final level in ContrastLevel.values) {
+          final measured = weakest(level);
+          expect(measured, greaterThan(previous),
+              reason: '${level.name} in ${brightness.name}');
+          previous = measured;
+        }
+      }
+    });
+
+    test('even the softest keeps body text above the accessibility floor',
+        () {
+      // Why muted is -0.5 and not the -1.0 the parameter allows: at -1.0
+      // secondary text on surface measures 4.07:1 in the light theme, under
+      // the 4.5:1 body text is meant to clear.
+      for (final brightness in Brightness.values) {
+        final s = schemeFor(ContrastLevel.muted, brightness);
+        expect(ratio(s.onSurface, s.surface), greaterThan(4.5),
+            reason: brightness.name);
+        expect(ratio(s.onSurfaceVariant, s.surface), greaterThan(4.5),
+            reason: brightness.name);
+      }
+    });
+
+    test('the default is normal, so nothing moved for anyone who never '
+        'touches it', () {
+      expect(const ThemePreference().contrast, ContrastLevel.normal);
+      expect(ContrastLevel.normal.value, 0);
+    });
+
+    test('an unknown stored value reads as the default', () {
+      expect(ContrastLevel.of('muted'), ContrastLevel.muted);
+      expect(ContrastLevel.of('ludicrous'), ContrastLevel.normal);
+    });
   });
 }

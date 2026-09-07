@@ -25,6 +25,43 @@ enum AccentSource {
       AccentSource.system;
 }
 
+/// How far apart the palette's foreground and background tones sit.
+///
+/// Material's own parameter, not something computed here: `contrastLevel`
+/// moves the tones each role takes out of its palette, so higher settings
+/// guarantee a wider gap between pairs like primary and onPrimary. Off the
+/// same seed, so the colours stay the colours -- this is legibility, not a
+/// different palette.
+enum ContrastLevel {
+  /// Softer than the default, for a dim room.
+  ///
+  /// -0.5 rather than the -1.0 the parameter allows: measured against the
+  /// brand seed, -1.0 puts secondary text on surface at 4.07:1 in the light
+  /// theme, under the 4.5:1 that body text is meant to clear. -0.5 measures
+  /// 5.07 there and 6.08 in dark.
+  muted('Muted', -0.5),
+
+  /// Material's normal contrast, and what every build so far has used.
+  normal('Default', 0),
+
+  /// What Material calls medium contrast.
+  high('High', 0.5),
+
+  /// Material's high contrast: near-black on near-white, or the reverse.
+  highest('Highest', 1);
+
+  const ContrastLevel(this.label, this.value);
+
+  final String label;
+
+  /// Passed straight to `ColorScheme.fromSeed`.
+  final double value;
+
+  static ContrastLevel of(String name) =>
+      ContrastLevel.values.where((c) => c.name == name).firstOrNull ??
+      ContrastLevel.normal;
+}
+
 /// Everything the appearance settings decide.
 ///
 /// A value type rather than three loose providers: the theme is built from all
@@ -35,11 +72,13 @@ class ThemePreference {
     this.mode = ThemeMode.dark,
     this.accent = AccentSource.system,
     this.customAccent = marmeladeSeed,
+    this.contrast = ContrastLevel.normal,
   });
 
   final ThemeMode mode;
   final AccentSource accent;
   final Color customAccent;
+  final ContrastLevel contrast;
 
   /// The seed to build the palette from.
   ///
@@ -65,11 +104,13 @@ class ThemePreference {
     ThemeMode? mode,
     AccentSource? accent,
     Color? customAccent,
+    ContrastLevel? contrast,
   }) =>
       ThemePreference(
         mode: mode ?? this.mode,
         accent: accent ?? this.accent,
         customAccent: customAccent ?? this.customAccent,
+        contrast: contrast ?? this.contrast,
       );
 
   @override
@@ -77,10 +118,11 @@ class ThemePreference {
       other is ThemePreference &&
       other.mode == mode &&
       other.accent == accent &&
-      other.customAccent == customAccent;
+      other.customAccent == customAccent &&
+      other.contrast == contrast;
 
   @override
-  int get hashCode => Object.hash(mode, accent, customAccent);
+  int get hashCode => Object.hash(mode, accent, customAccent, contrast);
 }
 
 /// The colours offered when picking one by hand.
