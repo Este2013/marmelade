@@ -106,6 +106,84 @@ void main() {
     expect(colour, fromArtwork.surfaceContainer);
   });
 
+  testWidgets('survives moving to a differently coloured release',
+      (tester) async {
+    // What the first album change did: AnimatedTheme lerped the app's merged
+    // text styles against a freshly built theme's plain ones, TextStyle.lerp
+    // refused, and the whole bar became an error widget.
+    const second = 'art/other.jpg';
+    final otherScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFFF1744),
+      brightness: Brightness.dark,
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1200, 300));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer(overrides: [
+      databaseProvider.overrideWithValue(db),
+      artStoreProvider.overrideWithValue(ArtStore(artRoot)),
+      playbackEngineProvider.overrideWithValue(SilentEngine()),
+      playerProvider.overrideWith(() => _Playing(db, 'art/cover.jpg')),
+      adaptivePlayerColorsProvider.overrideWith(() => _Flag(true)),
+      artworkSchemeProvider((path: 'art/cover.jpg', brightness: Brightness.dark))
+          .overrideWith((ref) async => fromArtwork),
+      artworkSchemeProvider((path: second, brightness: Brightness.dark))
+          .overrideWith((ref) async => otherScheme),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFFE8730C),
+              brightness: Brightness.dark,
+            ),
+          ),
+          home: Scaffold(
+            body: PlayerBar(
+              expanded: false,
+              onToggleExpanded: () {},
+              onOpenQueue: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    (container.read(playerProvider.notifier) as _Playing).moveTo(second);
+    await tester.pump();
+    // Mid-fade, which is where the interpolation happens and where it threw.
+    await tester.pump(const Duration(milliseconds: 160));
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.takeException(), isNull);
+    expect(
+      tester
+          .widget<Material>(find
+              .descendant(
+                of: find.byType(PlayerBar),
+                matching: find.byType(Material),
+              )
+              .first)
+          .color,
+      otherScheme.surfaceContainer,
+    );
+
+    // Unmounted and disposed here rather than in a tearDown: drift posts a
+    // zero-duration cleanup timer when a query stream is cancelled, and after
+    // the body has finished there is no pump left to run it, so the binding
+    // fails the test on a pending timer.
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
   testWidgets('keeps the app colours for a track with no picture',
       (tester) async {
     // Nothing to take them from, so nothing is taken -- rather than a bar
@@ -128,8 +206,7 @@ class _Playing extends PlayerController {
 
   final String? artwork;
 
-  @override
-  PlayerSnapshot build() => PlayerSnapshot(
+  static PlayerSnapshot _snapshot(String? artwork) => PlayerSnapshot(
         status: PlaybackStatus.playing,
         currentIndex: 0,
         duration: const Duration(minutes: 3),
@@ -142,6 +219,12 @@ class _Playing extends PlayerController {
           imagePath: artwork,
         ),
       );
+
+  @override
+  PlayerSnapshot build() => _snapshot(artwork);
+
+  /// Moves to a track from another release, the way skipping does.
+  void moveTo(String? nextArtwork) => state = _snapshot(nextArtwork);
 }
 
 /// The setting, fixed.

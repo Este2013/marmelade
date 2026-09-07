@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../app/theme/app_theme.dart';
 import '../../services/audio/player_controller.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/spectrum_bars.dart';
@@ -53,9 +52,18 @@ class PlayerBar extends ConsumerWidget {
     // colour per track. A null scheme falls back to the app's own, so
     // turning the setting off or reaching a track with no picture fades
     // back rather than snapping.
+    //
+    // The tinted theme is this theme with a different scheme, not a theme
+    // built from scratch. A fresh ThemeData carries its own text styles --
+    // plain, `inherit: true` -- while the app's are merged and
+    // `inherit: false`, and TextStyle.lerp refuses to interpolate across
+    // that: the first album change threw "Failed to interpolate TextStyles
+    // with different inherit values" and replaced the whole bar with an
+    // error widget. Sharing one textTheme leaves nothing to disagree about,
+    // and the colours are all that needed to change anyway.
     return AnimatedTheme(
       duration: const Duration(milliseconds: 320),
-      data: tinted == null ? theme : themeFromScheme(tinted),
+      data: tinted == null ? theme : theme.copyWith(colorScheme: tinted),
       child: Builder(
         builder: (context) => _bar(context, ref, player),
       ),
