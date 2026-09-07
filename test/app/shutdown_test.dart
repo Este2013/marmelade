@@ -47,6 +47,29 @@ void main() {
       expect(ran, isTrue);
     });
 
+    test('a slow step that does finish is not abandoned', () async {
+      // The database is slow before it is stuck, and giving up on a close
+      // that was going to work is the one outcome with a real cost.
+      var finished = false;
+      await closeQuietly(
+        'something slow',
+        () async {
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          finished = true;
+        },
+        within: const Duration(seconds: 2),
+      );
+
+      expect(finished, isTrue);
+    });
+
+    test('the database gets longer than the rest', () async {
+      // One session in four has taken over four seconds to close, and that
+      // one had 1.98 GB of memory behind it -- a machine being slow, not a
+      // deadlock.
+      expect(databaseCloseTimeout, greaterThan(shutdownStepTimeout));
+    });
+
     test('a step that hangs does not strand the one after it', () async {
       // The whole point. The database close is last, and it is the step that
       // protects the file -- it has to run even when the audio engine is
@@ -97,12 +120,18 @@ void main() {
       expect(wal.existsSync(), isTrue, reason: 'WAL mode is on');
       expect(wal.lengthSync(), greaterThan(0));
 
-      await db.checkpoint();
+      final result = await db.checkpoint();
 
       // The log the app was leaving behind had grown to 8.8 MB across a
       // session that was killed rather than closed; emptied here, the writes
       // are in the database file itself and nothing depends on a sidecar.
       expect(wal.lengthSync(), 0, reason: 'the log was folded back and emptied');
+      // And it says so, which is what makes a slow close readable later.
+      // TRUNCATE reports the state afterwards, so a success is "not busy,
+      // nothing left in the log" rather than a count of pages moved.
+      expect(result.busy, isFalse);
+      expect(result.pages, 0);
+      expect('$result', 'the log was emptied');
     });
   });
 }

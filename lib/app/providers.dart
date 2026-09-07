@@ -1212,6 +1212,17 @@ class IndexJobController extends Notifier<IndexProgress?> {
 /// like closing a window rather than waiting on one.
 const shutdownStepTimeout = Duration(seconds: 4);
 
+/// The database gets longer, because it is the only step whose abandonment
+/// costs anything.
+///
+/// One session in four has taken more than four seconds over this, and the
+/// one that did was also the one whose memory had grown to 1.98 GB -- so the
+/// likeliest reading is a machine under pressure being slow, not a deadlock,
+/// and giving up on a slow close is the wrong answer to that. The log is
+/// already folded back by the step before, so even the worst case leaves a
+/// whole file behind.
+const databaseCloseTimeout = Duration(seconds: 20);
+
 /// Runs one shutdown step, and gives up rather than hanging the app.
 ///
 /// Reports which step it was, since "the app would not close" is otherwise
@@ -1222,12 +1233,24 @@ Future<void> closeQuietly(
   Future<void> Function() step, {
   Duration within = shutdownStepTimeout,
 }) async {
+  final started = DateTime.now();
   try {
     await step().timeout(within);
+    final took = DateTime.now().difference(started);
+    // Timed even when it works. A close that takes three seconds is on its
+    // way to taking five, and without the number there is nothing to notice
+    // that with -- the one time this went wrong, all it left behind was a
+    // single line saying it had.
+    AppLog.instance.info(
+      'closed $what',
+      tag: 'shutdown',
+      fields: {'ms': took.inMilliseconds, 'rss': AppLog.formatBytes(AppLog.residentBytes())},
+    );
   } on TimeoutException {
     AppLog.instance.error(
       'closing $what did not finish in ${within.inMilliseconds}ms, moving on',
       tag: 'shutdown',
+      fields: {'rss': AppLog.formatBytes(AppLog.residentBytes())},
     );
   } catch (error, stack) {
     AppLog.instance.error(
@@ -1303,8 +1326,18 @@ class AppServices {
   /// throws is logged and abandoned, and the next one still runs.
   Future<void> dispose() async {
     await closeQuietly('the audio engine', engine.shutdown);
-    await closeQuietly('the write-ahead log', db.checkpoint);
-    await closeQuietly('the database', db.close);
+    await closeQuietly('the write-ahead log', () async {
+      final result = await db.checkpoint();
+      // Said out loud because it decides how to read a slow close: a busy
+      // checkpoint means a reader was still holding the log, and the close
+      // then has that work in front of it.
+      AppLog.instance.info(
+        'folded the write-ahead log back',
+        tag: 'shutdown',
+        fields: {'result': '$result'},
+      );
+    });
+    await closeQuietly('the database', db.close, within: databaseCloseTimeout);
   }
 
   /// Builds the player the app runs on.

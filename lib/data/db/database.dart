@@ -103,6 +103,33 @@ enum SearchEntity {
     PendingCredits,
   ],
 )
+/// What a `wal_checkpoint` did.
+class WalCheckpoint {
+  const WalCheckpoint({
+    required this.busy,
+    required this.pages,
+    required this.moved,
+  });
+
+  /// True when a reader held the checkpoint off. The log then stays as it is,
+  /// and closing the database has the same work still to do -- which is the
+  /// first thing worth knowing when a close takes too long.
+  final bool busy;
+
+  /// Pages left in the log, and how many were folded back, *after* the fact.
+  ///
+  /// With TRUNCATE both read zero on success -- the log has been emptied, so
+  /// there is nothing left to report. Which means [busy] is the field that
+  /// carries the news: everything else is zero either way.
+  final int pages;
+  final int moved;
+
+  @override
+  String toString() => busy
+      ? 'busy: a reader held the log, $pages pages left in it'
+      : 'the log was emptied';
+}
+
 class MarmeladeDatabase extends _$MarmeladeDatabase {
   MarmeladeDatabase(super.e);
 
@@ -306,8 +333,19 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
   ///
   /// TRUNCATE rather than PASSIVE: it waits for readers and empties the log
   /// afterwards, so the sidecar does not keep growing across runs.
-  Future<void> checkpoint() =>
-      customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+  /// Returns what the checkpoint managed, which is the interesting part: a
+  /// `busy` answer means another reader held it off and the log was left
+  /// where it was, and that is invisible without asking.
+  Future<WalCheckpoint> checkpoint() async {
+    final row =
+        await customSelect('PRAGMA wal_checkpoint(TRUNCATE)').getSingleOrNull();
+    if (row == null) return const WalCheckpoint(busy: false, pages: 0, moved: 0);
+    return WalCheckpoint(
+      busy: (row.data['busy'] as int? ?? 0) != 0,
+      pages: row.data['log'] as int? ?? -1,
+      moved: row.data['checkpointed'] as int? ?? -1,
+    );
+  }
 
   /// Creates the artwork-resolution views.
   ///
