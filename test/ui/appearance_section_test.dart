@@ -118,6 +118,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
+  testWidgets('offers the artwork-turning switch, on by default',
+      (tester) async {
+    // On, because it is what makes a rotated palette read as one idea; a
+    // switch, because it is as personal a taste as the palette itself.
+    await pump(tester);
+
+    final tile = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, 'Turn artwork with the palette'),
+    );
+    expect(tile.value, isTrue);
+  });
+
   testWidgets('has no separate switch for tinting the player', (tester) async {
     // It was merged into the "Adaptive" accent: seeding the app from the
     // artwork produces the scheme the player used to derive for itself, so

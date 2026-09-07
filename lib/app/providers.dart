@@ -307,6 +307,16 @@ final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
   );
 });
 
+/// Whether blurred artwork turns with the palette style.
+///
+/// On, since it is what makes a rotated palette read as one idea rather than
+/// two: the styles that turn the hue are the ones where a picture left where
+/// it was fights the interface in front of it. Easy to put back, because it
+/// is a taste every bit as personal as the palette itself.
+final backdropFollowsPaletteProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.backdropFollowsPalette, initial: true),
+);
+
 /// A seed colour taken from the artwork of whatever is playing.
 ///
 /// The light scheme's primary, whichever brightness the app is in: a seed is

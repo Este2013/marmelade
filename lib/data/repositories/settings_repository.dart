@@ -116,6 +116,9 @@ abstract final class SettingKeys {
   /// How the palette is derived from the seed colour.
   static const paletteVariant = 'appearance.paletteVariant';
 
+  /// Whether blurred artwork behind a page turns with the palette style.
+  static const backdropFollowsPalette = 'appearance.backdropFollowsPalette';
+
   static const updateChannel = 'updates.channel';
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';

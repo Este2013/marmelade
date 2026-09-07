@@ -171,7 +171,7 @@ void variantTests() {
         seed: const Color(0xFFE8730C),
         brightness: brightness,
         variant: style.variant,
-        complementSeed: style.complementsSeed,
+        hueShift: style.hueShift,
       ).colorScheme;
 
   group('palette style', () {
@@ -184,7 +184,7 @@ void variantTests() {
         Color(0xFF6B7A8F), // a muted grey-blue
         Color(0xFF00E5FF), // cyan
       ]) {
-        final turned = HSLColor.fromColor(complementOf(colour)).hue;
+        final turned = HSLColor.fromColor(shiftHue(colour, 180)).hue;
         final original = HSLColor.fromColor(colour).hue;
         final apart = (turned - original).abs();
         expect(
@@ -245,7 +245,7 @@ void variantTests() {
             seed: muted,
             brightness: Brightness.dark,
             variant: style.variant,
-            complementSeed: style.complementsSeed,
+            hueShift: style.hueShift,
           ).colorScheme;
 
       final byDefault = of(PaletteVariant.tonalSpot).primary;

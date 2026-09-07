@@ -121,6 +121,19 @@ class AppearanceSection extends ConsumerWidget {
             ),
           ),
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.blur_on_outlined),
+          title: const Text('Turn artwork with the palette'),
+          subtitle: const Text(
+            'The blurred cover behind the now-playing view, and behind album '
+            'and artist pages, turns its colours the same way the palette '
+            'style turns the accent. Only does anything for a style that '
+            'turns the hue -- Swapped, at the moment.',
+          ),
+          value: ref.watch(backdropFollowsPaletteProvider),
+          onChanged: (value) =>
+              ref.read(backdropFollowsPaletteProvider.notifier).set(value),
+        ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
           title: const Text('Accent colour'),

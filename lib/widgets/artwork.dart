@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
 import 'dither_overlay.dart';
+import 'hue_filter.dart';
 
 /// Hard ceiling on decode width, in physical pixels.
 ///
@@ -218,19 +220,35 @@ class ArtworkBackdrop extends ConsumerWidget {
     final file = ref.watch(artworkFileProvider(storedPath));
     final scheme = Theme.of(context).colorScheme;
 
+    // A palette style that turns the hue turns this too, or the ambiance and
+    // the interface in front of it are two moods at once. Zero for every
+    // style that does not rotate its seed, so this costs nothing by default.
+    final shift = ref.watch(backdropFollowsPaletteProvider)
+        ? ref.watch(themeSettingsProvider).variant.hueShift
+        : 0.0;
+
+    Widget picture(File image) {
+      final decoded = Image.file(
+        image,
+        fit: BoxFit.cover,
+        // A small decode is plenty: it is about to be blurred to a smear,
+        // and decoding it at full size would be pure waste.
+        cacheWidth: 96,
+        filterQuality: FilterQuality.low,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+      if (shift == 0) return decoded;
+      return ColorFiltered(
+        colorFilter: ColorFilter.matrix(hueRotation(shift)),
+        child: decoded,
+      );
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
         if (file != null)
-          Image.file(
-            file,
-            fit: BoxFit.cover,
-            // A small decode is plenty: it is about to be blurred to a smear,
-            // and decoding it at full size would be pure waste.
-            cacheWidth: 96,
-            filterQuality: FilterQuality.low,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          )
+          picture(file)
         else
           DecoratedBox(
             decoration: BoxDecoration(color: scheme.surfaceContainerHigh),

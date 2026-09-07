@@ -221,14 +221,14 @@ class MarmeladeApp extends ConsumerWidget {
               brightness: Brightness.light,
               contrastLevel: preference.contrast.value,
               variant: preference.variant.variant,
-              complementSeed: preference.variant.complementsSeed,
+              hueShift: preference.variant.hueShift,
             ),
             darkTheme: buildTheme(
               seed: seed,
               brightness: Brightness.dark,
               contrastLevel: preference.contrast.value,
               variant: preference.variant.variant,
-              complementSeed: preference.variant.complementsSeed,
+              hueShift: preference.variant.hueShift,
             ),
             // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
             // tree, to test whether a fault is the accessibility bridge's.

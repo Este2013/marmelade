@@ -106,22 +106,23 @@ enum PaletteVariant {
   /// primary and tertiary *roles* was the first attempt at this and reads as
   /// far less of a change than it sounds, because under the default tertiary
   /// is only 60 degrees off the seed. A complement is the whole way round.
-  swapped('Swapped', DynamicSchemeVariant.tonalSpot, complementsSeed: true);
+  swapped('Swapped', DynamicSchemeVariant.tonalSpot, hueShift: 180);
 
-  const PaletteVariant(
-    this.label,
-    this.variant, {
-    this.complementsSeed = false,
-  });
+  const PaletteVariant(this.label, this.variant, {this.hueShift = 0});
 
   final String label;
 
   /// Passed straight to `ColorScheme.fromSeed`.
   final DynamicSchemeVariant variant;
 
-  /// Whether the seed is replaced by its opposite before the palettes are
-  /// built from it.
-  final bool complementsSeed;
+  /// Degrees the seed's hue turns before any palette is built from it.
+  ///
+  /// A number rather than a flag because the blurred artwork behind the
+  /// now-playing view turns by the same amount: a palette that crossed the
+  /// colour wheel while the picture behind it stayed put is two moods at
+  /// once. Zero for every style whose shifting happens inside Material's own
+  /// generator, where there is no single angle to follow.
+  final double hueShift;
 
   static PaletteVariant of(String name) =>
       PaletteVariant.values.where((v) => v.name == name).firstOrNull ??

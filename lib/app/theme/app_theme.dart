@@ -13,10 +13,10 @@ ThemeData buildTheme({
   required Brightness brightness,
   double contrastLevel = 0,
   DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot,
-  bool complementSeed = false,
+  double hueShift = 0,
 }) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: complementSeed ? complementOf(seed) : seed,
+    seedColor: hueShift == 0 ? seed : shiftHue(seed, hueShift),
     brightness: brightness,
     // How the palettes are derived from the seed -- whether the seed's own
     // saturation survives, and where tertiary comes from.
@@ -29,18 +29,18 @@ ThemeData buildTheme({
   return _themeFrom(scheme);
 }
 
-/// The colour half a turn round the wheel from [color].
+/// [color] with its hue turned [degrees] round the wheel.
 ///
-/// A plain 180-degree hue rotation, which is what "the complement" usually
-/// means to anyone looking at a colour wheel. Material has a subtler idea of
-/// it -- `TemperatureCache.complement`, weighted by warm and cool, which is
-/// what the faithful style uses for its tertiary -- but that lives in a
-/// package this app only depends on transitively, and the difference does not
-/// survive what happens next: the seed contributes its hue and nothing else,
-/// since the generator clamps chroma to the variant's own values.
-Color complementOf(Color color) {
+/// A plain rotation, which at 180 is what "the complement" means to anyone
+/// looking at a colour wheel. Material has a subtler idea of that --
+/// `TemperatureCache.complement`, weighted by warm and cool, which is what
+/// the faithful style uses for its tertiary -- but that lives in a package
+/// this app only depends on transitively, and the difference does not survive
+/// what happens next: the seed contributes its hue and nothing else, since
+/// the generator clamps chroma to the variant's own values.
+Color shiftHue(Color color, double degrees) {
   final hsl = HSLColor.fromColor(color);
-  return hsl.withHue((hsl.hue + 180) % 360).toColor();
+  return hsl.withHue((hsl.hue + degrees) % 360).toColor();
 }
 
 ThemeData _themeFrom(ColorScheme scheme) {
