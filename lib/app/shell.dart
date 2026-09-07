@@ -20,7 +20,6 @@ import '../features/playlists/playlist_detail_view.dart';
 import '../features/playlists/playlists_view.dart';
 import '../features/tags/tag_detail_view.dart';
 import '../features/tags/tags_view.dart';
-import '../features/player/adaptive_player_theme.dart';
 import '../features/player/player_bar.dart';
 import '../features/search/search_view.dart';
 import '../features/settings/changelog_dialog.dart';
@@ -704,8 +703,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     // where the artwork wants it.
     final title = ref.watch(playerProvider.select((s) => s.current?.title));
 
-    return AdaptivePlayerTheme(
-      child: Opacity(
+    return Opacity(
       opacity: opacity,
       child: Row(
         children: [
@@ -731,7 +729,6 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
           const SizedBox(width: 8),
         ],
       ),
-      ),
     );
   }
 
@@ -743,8 +740,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     final lyricsVisible = ref.watch(lyricsPaneVisibleProvider);
     final queueLength = ref.watch(playerProvider.select((s) => s.queue.length));
 
-    return AdaptivePlayerTheme(
-      child: Opacity(
+    return Opacity(
       opacity: opacity,
       child: Padding(
         padding: const EdgeInsets.only(right: 4),
@@ -767,7 +763,6 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
             ),
           ],
         ),
-      ),
       ),
     );
   }
@@ -855,13 +850,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
                 child: SizedBox(
                   height: constraints.maxHeight,
                   width: constraints.maxWidth,
-                  // The whole shade, not only the bar underneath it: the
-                  // artwork fills this view, and a page carrying a record's
-                  // colours everywhere except the panel showing the record
-                  // was the odd half of the idea.
-                  child: AdaptivePlayerTheme(
-                    child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtistFromShade, onOpenAlbum: _openAlbumFromShade),
-                  ),
+                  child: NowPlayingView(topInset: WindowChrome.height, onOpenArtist: _openArtistFromShade, onOpenAlbum: _openAlbumFromShade),
                 ),
               ),
             ),

@@ -55,7 +55,14 @@ void main() {
     await pump(tester);
 
     for (final level in ContrastLevel.values) {
-      expect(find.text(level.label), findsOne, reason: level.name);
+      expect(
+        find.descendant(
+          of: find.byType(SegmentedButton<ContrastLevel>),
+          matching: find.text(level.label),
+        ),
+        findsOne,
+        reason: level.name,
+      );
     }
     final picker = tester.widget<SegmentedButton<ContrastLevel>>(
       find.byType(SegmentedButton<ContrastLevel>),
@@ -78,7 +85,38 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
-  testWidgets('picking "whatever is playing" sticks', (tester) async {
+  testWidgets('offers every palette style there is', (tester) async {
+    // The point of the control: nine of them look genuinely different, and
+    // the only way to know which one you want is to try them.
+    await pump(tester);
+
+    final picker = tester.widget<DropdownButton<PaletteVariant>>(
+      find.byType(DropdownButton<PaletteVariant>),
+    );
+    expect(picker.items, hasLength(PaletteVariant.values.length));
+    expect(picker.value, PaletteVariant.tonalSpot, reason: 'the default');
+  });
+
+  testWidgets('has no separate switch for tinting the player', (tester) async {
+    // It was merged into the "Adaptive" accent: seeding the app from the
+    // artwork produces the scheme the player used to derive for itself, so
+    // two controls could only agree loudly or disagree quietly.
+    await pump(tester);
+
+    expect(find.text('Adaptive player colours'), findsNothing);
+    expect(find.text(AccentSource.adaptive.label), findsOne);
+  });
+
+  testWidgets('no longer offers the brand colour as a source of its own',
+      (tester) async {
+    // Still the fallback, and still the first swatch.
+    await pump(tester);
+
+    expect(find.text('marmelade'), findsNothing);
+    expect(find.text('Marmalade'), findsNothing, reason: 'a swatch tooltip');
+  });
+
+  testWidgets('picking "Adaptive" sticks', (tester) async {
     await pump(tester);
 
     await tester.tap(find.text(AccentSource.adaptive.label));

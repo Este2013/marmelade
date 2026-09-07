@@ -72,16 +72,39 @@ class AppearanceSection extends ConsumerWidget {
                 settings.setContrast(selection.first),
           ),
         ),
-        SwitchListTile(
-          secondary: const Icon(Icons.color_lens_outlined),
-          title: const Text('Adaptive player colours'),
-          subtitle: const Text(
-            'Tints the player bar with the colours of the artwork that is '
-            'playing, fading between them as tracks change. Off leaves it in '
-            "the app's own colours.",
+        ListTile(
+          leading: const Icon(Icons.gradient_outlined),
+          title: const Text('Palette style'),
+          subtitle: Text(switch (preference.variant) {
+            PaletteVariant.tonalSpot =>
+              "Material's default: gentle palettes at a fixed saturation, "
+                  'whatever the accent.',
+            PaletteVariant.fidelity =>
+              "Keeps the accent's own saturation, so a muted colour gives a "
+                  'muted theme. Third colour is its complement.',
+            PaletteVariant.content =>
+              'As faithful, and containers take the accent colour itself.',
+            PaletteVariant.vibrant => 'Saturation at maximum. Loud.',
+            PaletteVariant.expressive =>
+              'Medium saturation, with the main hue shifted off the accent '
+                  'for variety.',
+            PaletteVariant.neutral => 'Barely coloured at all.',
+            PaletteVariant.monochrome => 'Grey. No colour anywhere.',
+            PaletteVariant.rainbow =>
+              "Playful: the accent's hue does not appear in the theme.",
+            PaletteVariant.fruitSalad => 'The other playful one.',
+          }),
+          trailing: DropdownButton<PaletteVariant>(
+            value: preference.variant,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final variant in PaletteVariant.values)
+                DropdownMenuItem(value: variant, child: Text(variant.label)),
+            ],
+            onChanged: (variant) {
+              if (variant != null) settings.setVariant(variant);
+            },
           ),
-          value: ref.watch(adaptivePlayerColorsProvider),
-          onChanged: (value) => ref.read(adaptivePlayerColorsProvider.notifier).set(value),
         ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
@@ -90,10 +113,9 @@ class AppearanceSection extends ConsumerWidget {
             AccentSource.system =>
               'Taken from the Windows accent colour, so the app matches the '
                   'desktop around it.',
-            AccentSource.brand => "marmelade's own orange.",
             AccentSource.adaptive =>
-              'Taken from the artwork of whatever is playing, so the whole '
-                  'app moves with the record. Falls back to the Windows '
+              'Taken from the artwork of whatever is playing -- the whole '
+                  'interface, player included. Falls back to the Windows '
                   'accent when nothing is loaded.',
             AccentSource.custom => 'A colour picked below.',
           }),
@@ -106,7 +128,6 @@ class AppearanceSection extends ConsumerWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _SourceChip(label: AccentSource.system.label, selected: preference.accent == AccentSource.system, onSelected: () => settings.setAccent(AccentSource.system)),
-              _SourceChip(label: AccentSource.brand.label, selected: preference.accent == AccentSource.brand, onSelected: () => settings.setAccent(AccentSource.brand)),
               _SourceChip(label: AccentSource.adaptive.label, selected: preference.accent == AccentSource.adaptive, onSelected: () => settings.setAccent(AccentSource.adaptive)),
               Container(width: 1, height: 26, color: scheme.outlineVariant),
               for (final choice in accentChoices)

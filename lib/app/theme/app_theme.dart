@@ -12,10 +12,14 @@ ThemeData buildTheme({
   required Color seed,
   required Brightness brightness,
   double contrastLevel = 0,
+  DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot,
 }) {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed,
     brightness: brightness,
+    // How the palettes are derived from the seed -- whether the seed's own
+    // saturation survives, and where tertiary comes from.
+    dynamicSchemeVariant: variant,
     // Material's own knob: it moves the tones each role takes out of the
     // palettes, so the colours stay the colours and only the gap between
     // foreground and background changes.
@@ -23,10 +27,6 @@ ThemeData buildTheme({
   );
   return _themeFrom(scheme);
 }
-
-/// Builds a theme from an already-derived scheme, e.g. one generated from
-/// album art by [ColorScheme.fromImageProvider].
-ThemeData themeFromScheme(ColorScheme scheme) => _themeFrom(scheme);
 
 ThemeData _themeFrom(ColorScheme scheme) {
   final base = ThemeData(colorScheme: scheme, useMaterial3: true);

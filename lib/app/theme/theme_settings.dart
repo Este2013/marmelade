@@ -7,11 +7,14 @@ enum AccentSource {
   /// The Windows accent colour, so the app matches the desktop it sits on.
   system('Windows accent'),
 
-  /// marmelade's own orange.
-  brand('marmelade'),
-
-  /// Drawn from the artwork of whatever is playing.
-  adaptive('Whatever is playing'),
+  /// Drawn from the artwork of whatever is playing, everywhere at once.
+  ///
+  /// There used to be a separate switch for tinting the player. It was
+  /// redundant: seeding the app from the artwork produces the same scheme the
+  /// player was deriving for itself -- measured identical to within a hex
+  /// digit -- so two controls could only ever agree loudly or disagree
+  /// quietly.
+  adaptive('Adaptive'),
 
   /// A colour chosen here.
   custom('A colour I picked');
@@ -62,6 +65,56 @@ enum ContrastLevel {
       ContrastLevel.normal;
 }
 
+/// How the palette is derived from the seed.
+///
+/// Material's `DynamicSchemeVariant`, exposed because the differences are
+/// large and entirely a matter of taste -- and because the default clamps
+/// chroma to fixed values, which means a muted cover and a vivid one at the
+/// same hue currently produce the same palette. `fidelity` and `content` are
+/// the two that keep the seed's own saturation.
+enum PaletteVariant {
+  /// Material's default: pastel palettes at fixed chroma, tertiary rotated
+  /// 60 degrees off the seed's hue.
+  tonalSpot('Material default', DynamicSchemeVariant.tonalSpot),
+
+  /// Keeps the seed's own chroma, and makes tertiary its complement. The one
+  /// to try if a washed-out sleeve should give a washed-out theme.
+  fidelity('Faithful', DynamicSchemeVariant.fidelity),
+
+  /// Almost identical to faithful, with primaryContainer set to the seed
+  /// itself and an analogous tertiary.
+  content('Faithful+', DynamicSchemeVariant.content),
+
+  /// Primary chroma at maximum. Loud.
+  vibrant('Vibrant', DynamicSchemeVariant.vibrant),
+
+  /// Medium chroma, and the primary hue deliberately shifted off the seed.
+  expressive('Expressive', DynamicSchemeVariant.expressive),
+
+  /// A hint of chroma, close to grey.
+  neutral('Neutral', DynamicSchemeVariant.neutral),
+
+  /// No chroma at all.
+  monochrome('Monochrome', DynamicSchemeVariant.monochrome),
+
+  /// Playful: the seed's hue does not appear in the theme at all.
+  rainbow('Rainbow', DynamicSchemeVariant.rainbow),
+
+  /// The other playful one, same idea.
+  fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad);
+
+  const PaletteVariant(this.label, this.variant);
+
+  final String label;
+
+  /// Passed straight to `ColorScheme.fromSeed`.
+  final DynamicSchemeVariant variant;
+
+  static PaletteVariant of(String name) =>
+      PaletteVariant.values.where((v) => v.name == name).firstOrNull ??
+      PaletteVariant.tonalSpot;
+}
+
 /// Everything the appearance settings decide.
 ///
 /// A value type rather than three loose providers: the theme is built from all
@@ -73,18 +126,22 @@ class ThemePreference {
     this.accent = AccentSource.system,
     this.customAccent = marmeladeSeed,
     this.contrast = ContrastLevel.normal,
+    this.variant = PaletteVariant.tonalSpot,
   });
 
   final ThemeMode mode;
   final AccentSource accent;
   final Color customAccent;
   final ContrastLevel contrast;
+  final PaletteVariant variant;
 
   /// The seed to build the palette from.
   ///
   /// [systemAccent] is what the OS reported, which is null often enough --
   /// no accent set, a remote session, an older Windows -- that "system" has to
-  /// mean "system, or the brand colour if the system will not say".
+  /// mean "system, or the brand colour if the system will not say". The brand
+  /// colour is no longer a choice of its own, only this fallback and the first
+  /// of the swatches.
   ///
   /// [nowPlaying] is the colour taken from the current track's artwork, and is
   /// null with nothing loaded or nothing to take it from. It survives a pause:
@@ -93,7 +150,6 @@ class ThemePreference {
   /// unbearable.
   Color seed(Color? systemAccent, {Color? nowPlaying}) => switch (accent) {
         AccentSource.system => systemAccent ?? marmeladeSeed,
-        AccentSource.brand => marmeladeSeed,
         AccentSource.custom => customAccent,
         // Falls back the way "system" does, since an empty queue has no
         // colour to offer and the app still has to be some colour.
@@ -105,12 +161,14 @@ class ThemePreference {
     AccentSource? accent,
     Color? customAccent,
     ContrastLevel? contrast,
+    PaletteVariant? variant,
   }) =>
       ThemePreference(
         mode: mode ?? this.mode,
         accent: accent ?? this.accent,
         customAccent: customAccent ?? this.customAccent,
         contrast: contrast ?? this.contrast,
+        variant: variant ?? this.variant,
       );
 
   @override
@@ -119,10 +177,12 @@ class ThemePreference {
       other.mode == mode &&
       other.accent == accent &&
       other.customAccent == customAccent &&
-      other.contrast == contrast;
+      other.contrast == contrast &&
+      other.variant == variant;
 
   @override
-  int get hashCode => Object.hash(mode, accent, customAccent, contrast);
+  int get hashCode =>
+      Object.hash(mode, accent, customAccent, contrast, variant);
 }
 
 /// The colours offered when picking one by hand.

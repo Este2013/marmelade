@@ -27,12 +27,6 @@ void main() {
     expect(preference.seed(null), marmeladeSeed);
   });
 
-  test('the brand colour, whatever the desktop is doing', () {
-    const preference = ThemePreference(accent: AccentSource.brand);
-
-    expect(preference.seed(windows), marmeladeSeed);
-  });
-
   test('a colour picked by hand', () {
     const preference = ThemePreference(
       accent: AccentSource.custom,
@@ -60,7 +54,6 @@ void main() {
       // A track's colours must not leak into a palette somebody pinned.
       for (final source in const [
         AccentSource.system,
-        AccentSource.brand,
         AccentSource.custom,
       ]) {
         expect(
@@ -75,8 +68,9 @@ void main() {
 
   test('every source is offered and named', () {
     // The settings page lists them by hand; a new one added here without a
-    // chip there would be unreachable.
-    expect(AccentSource.values, hasLength(4));
+    // chip there would be unreachable. Three now: the brand colour stopped
+    // being a source of its own -- it is the fallback, and the first swatch.
+    expect(AccentSource.values, hasLength(3));
     for (final source in AccentSource.values) {
       expect(source.label, isNotEmpty, reason: source.name);
     }
@@ -88,6 +82,9 @@ void main() {
     // Downgrading after picking "adaptive" leaves this in the database.
     expect(AccentSource.of('adaptive'), AccentSource.adaptive);
     expect(AccentSource.of('something-else-entirely'), AccentSource.system);
+    // Anyone who had picked the brand colour lands on the Windows accent,
+    // and the same orange is still one swatch away.
+    expect(AccentSource.of('brand'), AccentSource.system);
   });
 }
 

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import 'adaptive_player_theme.dart';
 import '../../services/audio/player_controller.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/spectrum_bars.dart';
@@ -34,15 +33,6 @@ class PlayerBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
-
-    // Shared with the now-playing view above it, so the bar and the shade it
-    // opens are never two different colours at once.
-    return AdaptivePlayerTheme(
-      child: Builder(builder: (context) => _bar(context, ref, player)),
-    );
-  }
-
-  Widget _bar(BuildContext context, WidgetRef ref, PlayerSnapshot player) {
     final scheme = Theme.of(context).colorScheme;
 
     return Material(

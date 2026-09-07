@@ -85,11 +85,6 @@ void main() {
       expect(preference.seed(null), marmeladeSeed);
     });
 
-    test('brand ignores the OS entirely', () {
-      const preference = ThemePreference(accent: AccentSource.brand);
-      expect(preference.seed(const Color(0xFF00FF00)), marmeladeSeed);
-    });
-
     test('custom uses the chosen colour', () {
       const chosen = Color(0xFF123456);
       const preference = ThemePreference(

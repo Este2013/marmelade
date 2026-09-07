@@ -285,11 +285,6 @@ final artworkFileProvider = Provider.family<File?, String?>((ref, storedPath) {
   return file.existsSync() ? file : null;
 });
 
-/// Whether the player bar takes its colours from what is playing.
-final adaptivePlayerColorsProvider = NotifierProvider<StoredFlag, bool>(
-  () => StoredFlag(SettingKeys.adaptivePlayerColors),
-);
-
 /// A colour scheme drawn out of one piece of artwork.
 ///
 /// Keyed by the picture *and* the brightness, so switching between light and
@@ -304,9 +299,11 @@ final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
   return ColorScheme.fromImageProvider(
     provider: FileImage(file),
     brightness: key.brightness,
-    // The same setting the rest of the app is built with, or the player
-    // would be the one surface ignoring it.
+    // The same settings the rest of the app is built with. This scheme only
+    // exists to have its primary read back out as a seed, so deriving it any
+    // other way would hand the app a hue from a palette it is not using.
     contrastLevel: ref.watch(themeSettingsProvider).contrast.value,
+    dynamicSchemeVariant: ref.watch(themeSettingsProvider).variant.variant,
   );
 });
 
@@ -557,12 +554,17 @@ class ThemeSettings extends Notifier<ThemePreference> {
       SettingKeys.contrast,
       ContrastLevel.normal.name,
     );
+    final variant = await _settings.get(
+      SettingKeys.paletteVariant,
+      PaletteVariant.tonalSpot.name,
+    );
     state = ThemePreference(
       mode: ThemeMode.values.where((m) => m.name == mode).firstOrNull ??
           ThemeMode.dark,
       accent: AccentSource.of(accent),
       customAccent: Color(custom),
       contrast: ContrastLevel.of(contrast),
+      variant: PaletteVariant.of(variant),
     );
   }
 
@@ -574,6 +576,11 @@ class ThemeSettings extends Notifier<ThemePreference> {
   Future<void> setContrast(ContrastLevel contrast) async {
     state = state.copyWith(contrast: contrast);
     await _settings.set(SettingKeys.contrast, contrast.name);
+  }
+
+  Future<void> setVariant(PaletteVariant variant) async {
+    state = state.copyWith(variant: variant);
+    await _settings.set(SettingKeys.paletteVariant, variant.name);
   }
 
   Future<void> setAccent(AccentSource accent) async {

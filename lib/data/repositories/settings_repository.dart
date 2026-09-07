@@ -113,6 +113,9 @@ abstract final class SettingKeys {
   /// How far apart the palette's foreground and background tones sit.
   static const contrast = 'appearance.contrast';
 
+  /// How the palette is derived from the seed colour.
+  static const paletteVariant = 'appearance.paletteVariant';
+
   static const updateChannel = 'updates.channel';
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';
@@ -121,11 +124,6 @@ abstract final class SettingKeys {
   /// something that cannot be played. Off, because a missing file is usually
   /// an unplugged drive and hiding it silently would be its own confusion.
   static const hideMissing = 'library.hideMissing';
-
-  /// Tint the player bar with the colours of what is playing. Off by
-  /// default: it is a matter of taste, and a strongly coloured sleeve makes a
-  /// strongly coloured bar.
-  static const adaptivePlayerColors = 'appearance.adaptivePlayerColors';
 
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
