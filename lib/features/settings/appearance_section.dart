@@ -82,8 +82,6 @@ class AppearanceSection extends ConsumerWidget {
             PaletteVariant.fidelity =>
               "Keeps the accent's own saturation, so a muted colour gives a "
                   'muted theme. Third colour is its complement.',
-            PaletteVariant.content =>
-              'As faithful, and containers take the accent colour itself.',
             PaletteVariant.vibrant => 'Saturation at maximum. Loud.',
             PaletteVariant.expressive =>
               'Medium saturation, with the main hue shifted off the accent '
@@ -93,17 +91,35 @@ class AppearanceSection extends ConsumerWidget {
             PaletteVariant.rainbow =>
               "Playful: the accent's hue does not appear in the theme.",
             PaletteVariant.fruitSalad => 'The other playful one.',
+            PaletteVariant.swapped =>
+              "The default's two accent palettes with their jobs traded: the "
+                  'hue 60 degrees off the accent leads, and the accent itself '
+                  'becomes the highlight.',
           }),
-          trailing: DropdownButton<PaletteVariant>(
-            value: preference.variant,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final variant in PaletteVariant.values)
-                DropdownMenuItem(value: variant, child: Text(variant.label)),
-            ],
-            onChanged: (variant) {
-              if (variant != null) settings.setVariant(variant);
-            },
+          // Material 3's dropdown, not the older DropdownButton: this one is
+          // a menu anchored to a field, sized rather than sized-to-content,
+          // which is what keeps a nine-item list from setting the width of
+          // the whole settings row.
+          trailing: SizedBox(
+            width: 200,
+            child: DropdownMenu<PaletteVariant>(
+              // Re-applied when it changes, which is what keeps this in step
+              // with the stored setting rather than only its first value.
+              initialSelection: preference.variant,
+              requestFocusOnTap: false,
+              enableSearch: false,
+              inputDecorationTheme: const InputDecorationTheme(
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              dropdownMenuEntries: [
+                for (final variant in PaletteVariant.values)
+                  DropdownMenuEntry(value: variant, label: variant.label),
+              ],
+              onSelected: (variant) {
+                if (variant != null) settings.setVariant(variant);
+              },
+            ),
           ),
         ),
         ListTile(

@@ -86,15 +86,36 @@ void main() {
   });
 
   testWidgets('offers every palette style there is', (tester) async {
-    // The point of the control: nine of them look genuinely different, and
-    // the only way to know which one you want is to try them.
+    // The point of the control: these look genuinely different, and the only
+    // way to know which one you want is to try them.
     await pump(tester);
 
-    final picker = tester.widget<DropdownButton<PaletteVariant>>(
-      find.byType(DropdownButton<PaletteVariant>),
+    final picker = tester.widget<DropdownMenu<PaletteVariant>>(
+      find.byType(DropdownMenu<PaletteVariant>),
     );
-    expect(picker.items, hasLength(PaletteVariant.values.length));
-    expect(picker.value, PaletteVariant.tonalSpot, reason: 'the default');
+    expect(
+      picker.dropdownMenuEntries.map((e) => e.value),
+      PaletteVariant.values,
+    );
+    expect(picker.initialSelection, PaletteVariant.tonalSpot,
+        reason: 'the default');
+  });
+
+  testWidgets('picking a palette style sticks', (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byType(DropdownMenu<PaletteVariant>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(PaletteVariant.swapped.label).last);
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<DropdownMenu<PaletteVariant>>(
+      find.byType(DropdownMenu<PaletteVariant>),
+    );
+    expect(picker.initialSelection, PaletteVariant.swapped);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('has no separate switch for tinting the player', (tester) async {

@@ -221,12 +221,14 @@ class MarmeladeApp extends ConsumerWidget {
               brightness: Brightness.light,
               contrastLevel: preference.contrast.value,
               variant: preference.variant.variant,
+              swapAccents: preference.variant.swapsAccents,
             ),
             darkTheme: buildTheme(
               seed: seed,
               brightness: Brightness.dark,
               contrastLevel: preference.contrast.value,
               variant: preference.variant.variant,
+              swapAccents: preference.variant.swapsAccents,
             ),
             // Diagnostic: MARMELADE_NO_SEMANTICS=1 strips the accessibility
             // tree, to test whether a fault is the accessibility bridge's.

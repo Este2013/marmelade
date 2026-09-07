@@ -77,6 +77,7 @@ void main() {
   });
 
   contrastTests();
+  variantTests();
 
   test('an unknown stored value reads as the default, not a crash', () {
     // Downgrading after picking "adaptive" leaves this in the database.
@@ -156,4 +157,114 @@ void contrastTests() {
       expect(ContrastLevel.of('ludicrous'), ContrastLevel.normal);
     });
   });
+}
+
+/// The palette styles.
+///
+/// Nine ways to turn one seed into a scheme, eight of them Material's own and
+/// one this project added. What is worth asserting is the one we built and
+/// the promise the others make: that choosing a style changes the palette
+/// without breaking the contrast floor underneath it.
+void variantTests() {
+  ColorScheme schemeFor(PaletteVariant style, Brightness brightness) =>
+      buildTheme(
+        seed: const Color(0xFFE8730C),
+        brightness: brightness,
+        variant: style.variant,
+        swapAccents: style.swapsAccents,
+      ).colorScheme;
+
+  group('palette style', () {
+    test('swapped really does trade the two accent groups', () {
+      // What was asked for: the roles change places, group for group.
+      final plain = schemeFor(PaletteVariant.tonalSpot, Brightness.dark);
+      final swapped = schemeFor(PaletteVariant.swapped, Brightness.dark);
+
+      expect(swapped.primary, plain.tertiary);
+      expect(swapped.tertiary, plain.primary);
+      expect(swapped.onPrimary, plain.onTertiary);
+      expect(swapped.primaryContainer, plain.tertiaryContainer);
+      expect(swapped.onPrimaryContainer, plain.onTertiaryContainer);
+      expect(swapped.tertiaryFixed, plain.primaryFixed);
+    });
+
+    test('and leaves everything else where it was', () {
+      // Only the accents trade. Surfaces moving too would be a different
+      // theme, not a swap.
+      final plain = schemeFor(PaletteVariant.tonalSpot, Brightness.dark);
+      final swapped = schemeFor(PaletteVariant.swapped, Brightness.dark);
+
+      expect(swapped.surface, plain.surface);
+      expect(swapped.onSurface, plain.onSurface);
+      expect(swapped.secondary, plain.secondary);
+      expect(swapped.error, plain.error);
+      expect(swapped.inversePrimary, plain.inversePrimary);
+    });
+
+    test('a swapped accent still reads against what sits on it', () {
+      // The reason the groups move together: a swapped primary with an
+      // unswapped onPrimary is text on the wrong colour.
+      for (final brightness in Brightness.values) {
+        final s = schemeFor(PaletteVariant.swapped, brightness);
+        expect(_ratio(s.onPrimary, s.primary), greaterThan(4.5),
+            reason: brightness.name);
+        expect(_ratio(s.onTertiary, s.tertiary), greaterThan(4.5),
+            reason: brightness.name);
+      }
+    });
+
+    test('every style keeps body text readable', () {
+      // Including the playful ones, and monochrome, which has no colour to
+      // hide behind.
+      for (final style in PaletteVariant.values) {
+        for (final brightness in Brightness.values) {
+          final s = schemeFor(style, brightness);
+          expect(_ratio(s.onSurface, s.surface), greaterThan(4.5),
+              reason: '${style.name} in ${brightness.name}');
+        }
+      }
+    });
+
+    test('faithful keeps a muted accent muted, where the default boosts it',
+        () {
+      // The whole reason that style is offered, and it only shows on a muted
+      // colour: the default clamps chroma to a fixed value, so a washed-out
+      // grey-blue comes out a confident blue. Measured on this seed, the
+      // default gives #a1c9fd and faithful #b8c8df.
+      //
+      // Which also means the two are *identical* for a saturated accent --
+      // the seed's own chroma is already past the clamp. Asserting they
+      // always differ would be asserting something untrue.
+      const muted = Color(0xFF6B7A8F);
+      ColorScheme of(PaletteVariant style) => buildTheme(
+            seed: muted,
+            brightness: Brightness.dark,
+            variant: style.variant,
+            swapAccents: style.swapsAccents,
+          ).colorScheme;
+
+      final byDefault = of(PaletteVariant.tonalSpot).primary;
+      final faithful = of(PaletteVariant.fidelity).primary;
+      expect(faithful, isNot(byDefault));
+
+      double chroma(Color c) {
+        final hsl = HSLColor.fromColor(c);
+        return hsl.saturation;
+      }
+
+      expect(chroma(faithful), lessThan(chroma(byDefault)),
+          reason: 'faithful is the less saturated of the two');
+    });
+
+    test('an unknown stored style reads as the default', () {
+      expect(PaletteVariant.of('swapped'), PaletteVariant.swapped);
+      expect(PaletteVariant.of('content'), PaletteVariant.tonalSpot);
+    });
+  });
+}
+
+double _ratio(Color a, Color b) {
+  final l1 = a.computeLuminance(), l2 = b.computeLuminance();
+  final hi = l1 > l2 ? l1 : l2, lo = l1 > l2 ? l2 : l1;
+  return (hi + 0.05) / (lo + 0.05);
 }

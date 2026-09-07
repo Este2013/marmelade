@@ -81,10 +81,6 @@ enum PaletteVariant {
   /// to try if a washed-out sleeve should give a washed-out theme.
   fidelity('Faithful', DynamicSchemeVariant.fidelity),
 
-  /// Almost identical to faithful, with primaryContainer set to the seed
-  /// itself and an analogous tertiary.
-  content('Faithful+', DynamicSchemeVariant.content),
-
   /// Primary chroma at maximum. Loud.
   vibrant('Vibrant', DynamicSchemeVariant.vibrant),
 
@@ -101,14 +97,26 @@ enum PaletteVariant {
   rainbow('Rainbow', DynamicSchemeVariant.rainbow),
 
   /// The other playful one, same idea.
-  fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad);
+  fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad),
 
-  const PaletteVariant(this.label, this.variant);
+  /// The default's palettes, with the accent roles traded.
+  ///
+  /// Not a Material variant -- there is no such thing -- but a swap applied
+  /// afterwards. Under the default, tertiary is the seed's hue turned 60
+  /// degrees, so trading the two makes that rotated hue the colour the
+  /// interface actually uses and leaves the seed's own hue for the accents
+  /// that were tertiary. The same two palettes, opposite jobs.
+  swapped('Swapped', DynamicSchemeVariant.tonalSpot, swapsAccents: true);
+
+  const PaletteVariant(this.label, this.variant, {this.swapsAccents = false});
 
   final String label;
 
   /// Passed straight to `ColorScheme.fromSeed`.
   final DynamicSchemeVariant variant;
+
+  /// Whether the primary and tertiary roles change places afterwards.
+  final bool swapsAccents;
 
   static PaletteVariant of(String name) =>
       PaletteVariant.values.where((v) => v.name == name).firstOrNull ??
