@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/app/providers.dart';
+import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/app/theme/theme_settings.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/services/art/art_store.dart';
@@ -45,16 +46,32 @@ void main() {
     WidgetTester tester, {
     required PaletteVariant style,
     required bool follows,
+    AccentSource accent = AccentSource.system,
+    // The picture's own hue, normally measured by decoding it -- which a
+    // widget test's binding will not complete, so it is supplied here. 220
+    // is a blue, and expressive lands on 120 from the seed below, which is
+    // the hundred degrees this is about.
+    double? pictureHue = 220,
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
           artStoreProvider.overrideWithValue(ArtStore(artRoot)),
-          themeSettingsProvider.overrideWith(() => _FixedTheme(style)),
+          themeSettingsProvider.overrideWith(() => _FixedTheme(style, accent)),
           backdropFollowsPaletteProvider.overrideWith(() => _Flag(follows)),
+          artworkHueProvider(storedPath).overrideWith((ref) async => pictureHue),
         ],
         child: MaterialApp(
+          // Built from the style, the way main.dart builds it: the widget
+          // measures against the palette actually in front of the picture,
+          // so a test with the stock theme would be measuring nothing.
+          theme: buildTheme(
+            seed: const Color(0xFF4285F4),
+            brightness: Brightness.light,
+            variant: style.variant,
+            hueShift: style.hueShift,
+          ),
           home: Scaffold(body: ArtworkBackdrop(storedPath: storedPath)),
         ),
       ),
@@ -88,16 +105,66 @@ void main() {
 
     expect(tint(), findsNothing);
   });
+
+  testWidgets('follows a style that lands on its own hue, once the palette '
+      'comes from the artwork', (tester) async {
+    // Expressive shifts by a table rather than a fixed angle, so there is no
+    // number to follow -- only the distance between where the picture was
+    // and where the palette ended up.
+    await pump(
+      tester,
+      style: PaletteVariant.expressive,
+      follows: true,
+      accent: AccentSource.adaptive,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tint(), findsOne);
+  });
+
+  testWidgets('and leaves a greyscale sleeve alone, having no hue to turn',
+      (tester) async {
+    // Nothing to rotate towards or away from, and a hue read off near-grey
+    // is noise.
+    await pump(
+      tester,
+      style: PaletteVariant.expressive,
+      follows: true,
+      accent: AccentSource.adaptive,
+      pictureHue: null,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tint(), findsNothing);
+  });
+
+  testWidgets('but leaves the picture alone against a fixed accent',
+      (tester) async {
+    // The measurement would then say how far the artwork sits from the
+    // Windows accent, and turning a red sleeve blue to match a blue
+    // interface throws away the one thing the backdrop is there for.
+    await pump(
+      tester,
+      style: PaletteVariant.expressive,
+      follows: true,
+      accent: AccentSource.system,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tint(), findsNothing);
+  });
 }
 
 /// The appearance settings, fixed to one palette style.
 class _FixedTheme extends ThemeSettings {
-  _FixedTheme(this.style);
+  _FixedTheme(this.style, this.accent);
 
   final PaletteVariant style;
+  final AccentSource accent;
 
   @override
-  ThemePreference build() => ThemePreference(variant: style);
+  ThemePreference build() =>
+      ThemePreference(variant: style, accent: accent);
 }
 
 class _Flag extends StoredFlag {

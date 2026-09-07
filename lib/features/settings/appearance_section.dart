@@ -121,20 +121,27 @@ class AppearanceSection extends ConsumerWidget {
             ),
           ),
         ),
-        // Only while the chosen style actually turns the hue. Every style but
-        // Swapped leaves the seed where it is -- their shifting happens
-        // inside Material's generator, where there is no single angle for a
-        // picture to follow -- so anywhere else this switch would be a
-        // control with nothing on the other end of it.
-        if (preference.variant.hueShift != 0)
+        // Only while the chosen style has somewhere to turn the picture.
+        // Swapped rotates the seed outright; the playful styles and
+        // expressive land elsewhere by a route of their own, which is
+        // measurable but only when the palette came from the artwork in the
+        // first place. Anywhere else this would be a control with nothing on
+        // the other end of it.
+        if (preference.variant.hueShift != 0 ||
+            (preference.variant.movesHueItself &&
+                preference.accent == AccentSource.adaptive))
           SwitchListTile(
             secondary: const Icon(Icons.blur_on_outlined),
             title: const Text('Turn artwork with the palette'),
             subtitle: Text(
-              'The blurred cover behind the now-playing view, and behind '
-              'album and artist pages, turns '
-              '${preference.variant.hueShift.round()} degrees with it, so '
-              'the ambiance and the interface agree.',
+              preference.variant.hueShift != 0
+                  ? 'The blurred cover behind the now-playing view, and '
+                      'behind album and artist pages, turns '
+                      '${preference.variant.hueShift.round()} degrees with '
+                      'it, so the ambiance and the interface agree.'
+                  : 'This style lands on its own hue, so the blurred cover '
+                      'turns to meet it -- by however far it moved, which '
+                      'depends on the record.',
             ),
             value: ref.watch(backdropFollowsPaletteProvider),
             onChanged: (value) =>

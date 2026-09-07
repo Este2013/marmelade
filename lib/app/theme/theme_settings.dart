@@ -85,7 +85,8 @@ enum PaletteVariant {
   vibrant('Vibrant', DynamicSchemeVariant.vibrant),
 
   /// Medium chroma, and the primary hue deliberately shifted off the seed.
-  expressive('Expressive', DynamicSchemeVariant.expressive),
+  expressive('Expressive', DynamicSchemeVariant.expressive,
+      movesHueItself: true),
 
   /// A hint of chroma, close to grey.
   neutral('Neutral', DynamicSchemeVariant.neutral),
@@ -94,10 +95,11 @@ enum PaletteVariant {
   monochrome('Monochrome', DynamicSchemeVariant.monochrome),
 
   /// Playful: the seed's hue does not appear in the theme at all.
-  rainbow('Rainbow', DynamicSchemeVariant.rainbow),
+  rainbow('Rainbow', DynamicSchemeVariant.rainbow, movesHueItself: true),
 
   /// The other playful one, same idea.
-  fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad),
+  fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad,
+      movesHueItself: true),
 
   /// The whole palette built from the accent's opposite.
   ///
@@ -108,7 +110,12 @@ enum PaletteVariant {
   /// is only 60 degrees off the seed. A complement is the whole way round.
   swapped('Swapped', DynamicSchemeVariant.tonalSpot, hueShift: 180);
 
-  const PaletteVariant(this.label, this.variant, {this.hueShift = 0});
+  const PaletteVariant(
+    this.label,
+    this.variant, {
+    this.hueShift = 0,
+    this.movesHueItself = false,
+  });
 
   final String label;
 
@@ -123,6 +130,16 @@ enum PaletteVariant {
   /// once. Zero for every style whose shifting happens inside Material's own
   /// generator, where there is no single angle to follow.
   final double hueShift;
+
+  /// Whether Material's generator lands on a different hue than the seed's,
+  /// by a route of its own rather than a rotation this app applied.
+  ///
+  /// There is no angle to read off these -- expressive rotates by a table
+  /// that depends on the input hue, and the playful two abandon it entirely
+  /// -- so the only way to know how far the palette moved is to compare the
+  /// result with what went in. Which is only meaningful when what went in
+  /// was the artwork: see `ArtworkBackdrop`.
+  final bool movesHueItself;
 
   static PaletteVariant of(String name) =>
       PaletteVariant.values.where((v) => v.name == name).firstOrNull ??

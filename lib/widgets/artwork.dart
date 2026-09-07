@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app/providers.dart';
+import '../app/theme/theme_settings.dart';
 import 'dither_overlay.dart';
 import 'hue_filter.dart';
 
@@ -220,11 +221,8 @@ class ArtworkBackdrop extends ConsumerWidget {
     final file = ref.watch(artworkFileProvider(storedPath));
     final scheme = Theme.of(context).colorScheme;
 
-    // A palette style that turns the hue turns this too, or the ambiance and
-    // the interface in front of it are two moods at once. Zero for every
-    // style that does not rotate its seed, so this costs nothing by default.
     final shift = ref.watch(backdropFollowsPaletteProvider)
-        ? ref.watch(themeSettingsProvider).variant.hueShift
+        ? _shiftFor(ref, context)
         : 0.0;
 
     Widget picture(File image) {
@@ -271,5 +269,40 @@ class ArtworkBackdrop extends ConsumerWidget {
         ?child,
       ],
     );
+  }
+
+  /// How far to turn the picture so it agrees with the palette in front of it.
+  ///
+  /// Two routes, because the styles move the hue two different ways. Swapped
+  /// rotates the seed by a fixed angle this app applied, so the angle is
+  /// known outright. The playful styles and expressive land somewhere else by
+  /// a route of their own -- a table, or by abandoning the seed's hue
+  /// entirely -- so the only way to know how far is to measure: compare the
+  /// palette's own hue against the picture's.
+  ///
+  /// That measurement is only meaningful when the palette came *from* the
+  /// picture. With a fixed accent it would say how far the artwork sits from
+  /// the Windows accent, and turning a red sleeve blue to match a blue
+  /// interface would throw away the one thing the backdrop is there for.
+  double _shiftFor(WidgetRef ref, BuildContext context) {
+    final preference = ref.watch(themeSettingsProvider);
+    if (preference.variant.hueShift != 0) return preference.variant.hueShift;
+    if (!preference.variant.movesHueItself) return 0;
+    if (preference.accent != AccentSource.adaptive) return 0;
+
+    final path = storedPath;
+    if (path == null) return 0;
+    final pictureHue = ref.watch(artworkHueProvider(path)).value;
+    if (pictureHue == null) return 0;
+
+    final palette = HSLColor.fromColor(Theme.of(context).colorScheme.primary);
+    // A palette with no hue of its own -- monochrome, or near it -- is not
+    // somewhere to turn a picture towards.
+    if (palette.saturation < 0.05) return 0;
+
+    // The short way round, so a 350-degree difference reads as -10 and the
+    // filter turns the picture the way the eye expects.
+    final delta = (palette.hue - pictureHue + 540) % 360 - 180;
+    return delta;
   }
 }

@@ -5,7 +5,14 @@ import 'dart:io';
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart'
-    show Brightness, Color, ColorScheme, FileImage, ThemeMode;
+    show
+        Brightness,
+        Color,
+        ColorScheme,
+        DynamicSchemeVariant,
+        FileImage,
+        HSLColor,
+        ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -316,6 +323,27 @@ final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
 final backdropFollowsPaletteProvider = NotifierProvider<StoredFlag, bool>(
   () => StoredFlag(SettingKeys.backdropFollowsPalette, initial: true),
 );
+
+/// The hue of one piece of artwork, before any palette style touches it.
+///
+/// Derived with the faithful variant on purpose: it keeps the source colour's
+/// own hue and chroma, so this answers "what colour is this picture" rather
+/// than "what colour would this picture become". Null for a picture with no
+/// hue worth speaking of -- a greyscale sleeve has nothing to rotate towards
+/// or away from, and a hue read off near-grey is noise.
+final artworkHueProvider =
+    FutureProvider.family<double?, String>((ref, path) async {
+  final file = ref.watch(artworkFileProvider(path));
+  if (file == null) return null;
+
+  final scheme = await ColorScheme.fromImageProvider(
+    provider: FileImage(file),
+    brightness: Brightness.light,
+    dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
+  );
+  final hsl = HSLColor.fromColor(scheme.primary);
+  return hsl.saturation < 0.05 ? null : hsl.hue;
+});
 
 /// A seed colour taken from the artwork of whatever is playing.
 ///
