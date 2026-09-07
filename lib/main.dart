@@ -11,6 +11,7 @@ import 'app/providers.dart';
 import 'app/shell.dart';
 import 'app/storage_paths.dart';
 import 'app/theme/app_theme.dart';
+import 'app/theme/theme_settings.dart';
 import 'core/debug/screenshotter.dart';
 import 'core/logging/app_log.dart';
 import 'core/logging/error_handlers.dart';
@@ -192,6 +193,11 @@ class MarmeladeApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final preference = ref.watch(themeSettingsProvider);
+    // Watched only while it is being asked for, so nothing quantises an
+    // image for a palette nobody chose.
+    final nowPlaying = preference.accent == AccentSource.adaptive
+        ? ref.watch(nowPlayingSeedProvider)
+        : null;
 
     // The boundary wraps the whole MaterialApp, not just `home`: a dialog or
     // snackbar lives in the Navigator's Overlay, a sibling of the home
@@ -205,7 +211,7 @@ class MarmeladeApp extends ConsumerWidget {
       child: DynamicColorBuilder(
         builder: (lightDynamic, darkDynamic) {
           final systemAccent = darkDynamic?.primary ?? lightDynamic?.primary;
-          final seed = preference.seed(systemAccent);
+          final seed = preference.seed(systemAccent, nowPlaying: nowPlaying);
           return MaterialApp(
             title: 'marmelade',
             debugShowCheckedModeBanner: false,

@@ -29,7 +29,7 @@ class AppearanceSection extends ConsumerWidget {
             preference.mode == ThemeMode.system
                 ? 'Follows the Windows light and dark setting.'
                 : 'Always ${themeModeLabel(preference.mode).toLowerCase()}, '
-                    'whatever Windows is doing.',
+                      'whatever Windows is doing.',
           ),
           trailing: SegmentedButton<ThemeMode>(
             showSelectedIcon: false,
@@ -38,19 +38,15 @@ class AppearanceSection extends ConsumerWidget {
                 ButtonSegment(
                   value: mode,
                   label: Text(themeModeLabel(mode)),
-                  icon: Icon(
-                    switch (mode) {
-                      ThemeMode.system => Icons.contrast,
-                      ThemeMode.light => Icons.light_mode_outlined,
-                      ThemeMode.dark => Icons.dark_mode_outlined,
-                    },
-                    size: 16,
-                  ),
+                  icon: Icon(switch (mode) {
+                    ThemeMode.system => Icons.contrast,
+                    ThemeMode.light => Icons.light_mode_outlined,
+                    ThemeMode.dark => Icons.dark_mode_outlined,
+                  }, size: 16),
                 ),
             ],
             selected: {preference.mode},
-            onSelectionChanged: (selection) =>
-                settings.setMode(selection.first),
+            onSelectionChanged: (selection) => settings.setMode(selection.first),
           ),
         ),
         SwitchListTile(
@@ -62,21 +58,22 @@ class AppearanceSection extends ConsumerWidget {
             "the app's own colours.",
           ),
           value: ref.watch(adaptivePlayerColorsProvider),
-          onChanged: (value) =>
-              ref.read(adaptivePlayerColorsProvider.notifier).set(value),
+          onChanged: (value) => ref.read(adaptivePlayerColorsProvider.notifier).set(value),
         ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
           title: const Text('Accent colour'),
-          subtitle: Text(
-            switch (preference.accent) {
-              AccentSource.system =>
-                'Taken from the Windows accent colour, so the app matches the '
-                    'desktop around it.',
-              AccentSource.brand => "marmelade's own orange.",
-              AccentSource.custom => 'A colour picked below.',
-            },
-          ),
+          subtitle: Text(switch (preference.accent) {
+            AccentSource.system =>
+              'Taken from the Windows accent colour, so the app matches the '
+                  'desktop around it.',
+            AccentSource.brand => "marmelade's own orange.",
+            AccentSource.adaptive =>
+              'Taken from the artwork of whatever is playing, so the whole '
+                  'app moves with the record. Falls back to the Windows '
+                  'accent when nothing is loaded.',
+            AccentSource.custom => 'A colour picked below.',
+          }),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(56, 0, 16, 8),
@@ -85,41 +82,18 @@ class AppearanceSection extends ConsumerWidget {
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _SourceChip(
-                label: AccentSource.system.label,
-                selected: preference.accent == AccentSource.system,
-                onSelected: () => settings.setAccent(AccentSource.system),
-              ),
-              _SourceChip(
-                label: AccentSource.brand.label,
-                selected: preference.accent == AccentSource.brand,
-                onSelected: () => settings.setAccent(AccentSource.brand),
-              ),
-              Container(
-                width: 1,
-                height: 26,
-                color: scheme.outlineVariant,
-              ),
+              _SourceChip(label: AccentSource.system.label, selected: preference.accent == AccentSource.system, onSelected: () => settings.setAccent(AccentSource.system)),
+              _SourceChip(label: AccentSource.brand.label, selected: preference.accent == AccentSource.brand, onSelected: () => settings.setAccent(AccentSource.brand)),
+              _SourceChip(label: AccentSource.adaptive.label, selected: preference.accent == AccentSource.adaptive, onSelected: () => settings.setAccent(AccentSource.adaptive)),
+              Container(width: 1, height: 26, color: scheme.outlineVariant),
               for (final choice in accentChoices)
                 _Swatch(
                   name: choice.name,
                   color: choice.color,
-                  selected: preference.accent == AccentSource.custom &&
-                      preference.customAccent.toARGB32() ==
-                          choice.color.toARGB32(),
+                  selected: preference.accent == AccentSource.custom && preference.customAccent.toARGB32() == choice.color.toARGB32(),
                   onTap: () => settings.setCustomAccent(choice.color),
                 ),
             ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(56, 0, 16, 16),
-          child: Text(
-            'Every colour here is one Material can build a readable palette '
-            'from, in both light and dark. That is why it is a set rather '
-            'than a colour wheel.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ),
       ],
@@ -129,32 +103,19 @@ class AppearanceSection extends ConsumerWidget {
 
 /// One of the two non-colour sources.
 class _SourceChip extends StatelessWidget {
-  const _SourceChip({
-    required this.label,
-    required this.selected,
-    required this.onSelected,
-  });
+  const _SourceChip({required this.label, required this.selected, required this.onSelected});
 
   final String label;
   final bool selected;
   final VoidCallback onSelected;
 
   @override
-  Widget build(BuildContext context) => ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onSelected(),
-      );
+  Widget build(BuildContext context) => ChoiceChip(label: Text(label), selected: selected, onSelected: (_) => onSelected());
 }
 
 /// One pickable colour.
 class _Swatch extends StatelessWidget {
-  const _Swatch({
-    required this.name,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
+  const _Swatch({required this.name, required this.color, required this.selected, required this.onTap});
 
   final String name;
   final Color color;
@@ -180,20 +141,14 @@ class _Swatch extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: selected ? scheme.onSurface : scheme.outlineVariant,
-                width: selected ? 3 : 1,
-              ),
+              border: Border.all(color: selected ? scheme.onSurface : scheme.outlineVariant, width: selected ? 3 : 1),
             ),
             child: selected
                 ? Icon(
                     Icons.check,
                     size: 16,
                     // Against the swatch, not against the page.
-                    color: ThemeData.estimateBrightnessForColor(color) ==
-                            Brightness.dark
-                        ? Colors.white
-                        : Colors.black,
+                    color: ThemeData.estimateBrightnessForColor(color) == Brightness.dark ? Colors.white : Colors.black,
                   )
                 : null,
           ),

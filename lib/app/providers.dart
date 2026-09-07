@@ -307,6 +307,25 @@ final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
   );
 });
 
+/// A seed colour taken from the artwork of whatever is playing.
+///
+/// The light scheme's primary, whichever brightness the app is in: a seed is
+/// a hue to build a palette from, and asking for it in one fixed brightness
+/// keeps the app from re-seeding itself when somebody switches to dark.
+///
+/// Null with nothing loaded, or with a track that has no picture -- see
+/// `ThemePreference.seed` for what happens then.
+final nowPlayingSeedProvider = Provider<Color?>((ref) {
+  final artwork = ref.watch(playerProvider.select((s) => s.current?.imagePath));
+  if (artwork == null) return null;
+  return ref
+      .watch(artworkSchemeProvider(
+        (path: artwork, brightness: Brightness.light),
+      ))
+      .value
+      ?.primary;
+});
+
 /// The playhead, ticking only while something is playing.
 ///
 /// Separate from [playerProvider] on purpose: the position changes constantly,

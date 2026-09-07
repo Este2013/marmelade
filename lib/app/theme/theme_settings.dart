@@ -10,6 +10,9 @@ enum AccentSource {
   /// marmelade's own orange.
   brand('marmelade'),
 
+  /// Drawn from the artwork of whatever is playing.
+  adaptive('Whatever is playing'),
+
   /// A colour chosen here.
   custom('A colour I picked');
 
@@ -43,10 +46,19 @@ class ThemePreference {
   /// [systemAccent] is what the OS reported, which is null often enough --
   /// no accent set, a remote session, an older Windows -- that "system" has to
   /// mean "system, or the brand colour if the system will not say".
-  Color seed(Color? systemAccent) => switch (accent) {
+  ///
+  /// [nowPlaying] is the colour taken from the current track's artwork, and is
+  /// null with nothing loaded or nothing to take it from. It survives a pause:
+  /// what is loaded is still what is playing as far as this is concerned, and
+  /// an app that changed colour every time somebody stopped a song would be
+  /// unbearable.
+  Color seed(Color? systemAccent, {Color? nowPlaying}) => switch (accent) {
         AccentSource.system => systemAccent ?? marmeladeSeed,
         AccentSource.brand => marmeladeSeed,
         AccentSource.custom => customAccent,
+        // Falls back the way "system" does, since an empty queue has no
+        // colour to offer and the app still has to be some colour.
+        AccentSource.adaptive => nowPlaying ?? systemAccent ?? marmeladeSeed,
       };
 
   ThemePreference copyWith({
