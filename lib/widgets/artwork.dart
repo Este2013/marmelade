@@ -24,6 +24,16 @@ const maxDecodeWidth = 1200;
 /// full-resolution.
 const _fallbackDecodeWidth = 256.0;
 
+/// Decoded a little larger than the box it is drawn in.
+///
+/// Both grids lift a cover on hover -- 1.03 in Albums, 1.04 in Artists -- and
+/// a bitmap decoded to exactly its box is being resampled the moment anything
+/// moves it, which is what makes a hovered tile look softer than its
+/// neighbours. Five per cent clears both lifts and every frame of the
+/// animation in between, for about ten per cent more pixels, which on a
+/// grid-sized tile is nothing.
+const _scaleHeadroom = 1.05;
+
 /// Album or artist artwork, with a placeholder when there is none.
 ///
 /// The fallback chain itself lives in SQL (`v_track_artwork`,
@@ -94,10 +104,9 @@ class Artwork extends ConsumerWidget {
                         ? constraints.maxWidth
                         : _fallbackDecodeWidth);
                 final decodeWidth =
-                    (logicalWidth * devicePixelRatio).round().clamp(
-                          32,
-                          maxDecodeWidth,
-                        );
+                    (logicalWidth * devicePixelRatio * _scaleHeadroom)
+                        .round()
+                        .clamp(32, maxDecodeWidth);
 
                 return Image.file(
                   file,
