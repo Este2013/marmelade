@@ -4,7 +4,8 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
-import 'package:flutter/material.dart' show Color, ThemeMode;
+import 'package:flutter/material.dart'
+    show Brightness, Color, ColorScheme, FileImage, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -282,6 +283,28 @@ final artworkFileProvider = Provider.family<File?, String?>((ref, storedPath) {
   final store = ref.watch(artStoreProvider);
   final file = store.fileFor(storedPath);
   return file.existsSync() ? file : null;
+});
+
+/// Whether the player bar takes its colours from what is playing.
+final adaptivePlayerColorsProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.adaptivePlayerColors),
+);
+
+/// A colour scheme drawn out of one piece of artwork.
+///
+/// Keyed by the picture *and* the brightness, so switching between light and
+/// dark does not hand back a scheme built for the other one. Cached per
+/// artwork by the family itself, which matters: quantising an image is not
+/// something to redo on every rebuild of a bar that rebuilds several times a
+/// second while the playhead moves.
+final artworkSchemeProvider = FutureProvider.family<ColorScheme?,
+    ({String path, Brightness brightness})>((ref, key) async {
+  final file = ref.watch(artworkFileProvider(key.path));
+  if (file == null) return null;
+  return ColorScheme.fromImageProvider(
+    provider: FileImage(file),
+    brightness: key.brightness,
+  );
 });
 
 /// The playhead, ticking only while something is playing.

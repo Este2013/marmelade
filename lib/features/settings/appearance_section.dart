@@ -53,6 +53,18 @@ class AppearanceSection extends ConsumerWidget {
                 settings.setMode(selection.first),
           ),
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.color_lens_outlined),
+          title: const Text('Adaptive player colours'),
+          subtitle: const Text(
+            'Tints the player bar with the colours of the artwork that is '
+            'playing, fading between them as tracks change. Off leaves it in '
+            "the app's own colours.",
+          ),
+          value: ref.watch(adaptivePlayerColorsProvider),
+          onChanged: (value) =>
+              ref.read(adaptivePlayerColorsProvider.notifier).set(value),
+        ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
           title: const Text('Accent colour'),

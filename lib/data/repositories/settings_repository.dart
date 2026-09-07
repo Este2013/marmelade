@@ -119,6 +119,11 @@ abstract final class SettingKeys {
   /// an unplugged drive and hiding it silently would be its own confusion.
   static const hideMissing = 'library.hideMissing';
 
+  /// Tint the player bar with the colours of what is playing. Off by
+  /// default: it is a matter of taste, and a strongly coloured sleeve makes a
+  /// strongly coloured bar.
+  static const adaptivePlayerColors = 'appearance.adaptivePlayerColors';
+
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
 

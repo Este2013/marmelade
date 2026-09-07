@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../app/theme/app_theme.dart';
 import '../../services/audio/player_controller.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/spectrum_bars.dart';
@@ -33,6 +34,35 @@ class PlayerBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.watch(playerProvider);
+    final theme = Theme.of(context);
+
+    // Optional, and off unless asked for: a strongly coloured sleeve makes a
+    // strongly coloured bar, which is a matter of taste rather than a
+    // straightforwardly better idea.
+    final artwork = player.current?.imagePath;
+    final tinted = ref.watch(adaptivePlayerColorsProvider) && artwork != null
+        ? ref
+            .watch(artworkSchemeProvider(
+              (path: artwork, brightness: theme.brightness),
+            ))
+            .value
+        : null;
+
+    // Animated, and over the same 320ms the artwork itself cross-fades in:
+    // skipping through a queue otherwise strobes the whole bar a different
+    // colour per track. A null scheme falls back to the app's own, so
+    // turning the setting off or reaching a track with no picture fades
+    // back rather than snapping.
+    return AnimatedTheme(
+      duration: const Duration(milliseconds: 320),
+      data: tinted == null ? theme : themeFromScheme(tinted),
+      child: Builder(
+        builder: (context) => _bar(context, ref, player),
+      ),
+    );
+  }
+
+  Widget _bar(BuildContext context, WidgetRef ref, PlayerSnapshot player) {
     final scheme = Theme.of(context).colorScheme;
 
     return Material(
