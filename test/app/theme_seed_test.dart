@@ -171,44 +171,49 @@ void variantTests() {
         seed: const Color(0xFFE8730C),
         brightness: brightness,
         variant: style.variant,
-        swapAccents: style.swapsAccents,
+        complementSeed: style.complementsSeed,
       ).colorScheme;
 
   group('palette style', () {
-    test('swapped really does trade the two accent groups', () {
-      // What was asked for: the roles change places, group for group.
+    test('the complement really is half a turn away', () {
+      // Trading the primary and tertiary roles was the first attempt at this
+      // and barely showed, because the default's tertiary is only 60 degrees
+      // off the seed. This is the whole way round.
+      for (final colour in const [
+        Color(0xFFE8730C), // marmalade orange
+        Color(0xFF6B7A8F), // a muted grey-blue
+        Color(0xFF00E5FF), // cyan
+      ]) {
+        final turned = HSLColor.fromColor(complementOf(colour)).hue;
+        final original = HSLColor.fromColor(colour).hue;
+        final apart = (turned - original).abs();
+        expect(
+          apart > 179.5 && apart < 180.5,
+          isTrue,
+          reason: 'expected 180 degrees, got $apart',
+        );
+      }
+    });
+
+    test('and the whole palette follows it, not just one role', () {
+      // The difference from the version this replaced: everything moves,
+      // because the seed itself moved before the palettes were built.
       final plain = schemeFor(PaletteVariant.tonalSpot, Brightness.dark);
       final swapped = schemeFor(PaletteVariant.swapped, Brightness.dark);
 
-      expect(swapped.primary, plain.tertiary);
-      expect(swapped.tertiary, plain.primary);
-      expect(swapped.onPrimary, plain.onTertiary);
-      expect(swapped.primaryContainer, plain.tertiaryContainer);
-      expect(swapped.onPrimaryContainer, plain.onTertiaryContainer);
-      expect(swapped.tertiaryFixed, plain.primaryFixed);
+      expect(swapped.primary, isNot(plain.primary));
+      expect(swapped.secondary, isNot(plain.secondary));
+      expect(swapped.tertiary, isNot(plain.tertiary));
+      // Even the surfaces, which take a trace of the seed's hue.
+      expect(swapped.surface, isNot(plain.surface));
     });
 
-    test('and leaves everything else where it was', () {
-      // Only the accents trade. Surfaces moving too would be a different
-      // theme, not a swap.
-      final plain = schemeFor(PaletteVariant.tonalSpot, Brightness.dark);
-      final swapped = schemeFor(PaletteVariant.swapped, Brightness.dark);
-
-      expect(swapped.surface, plain.surface);
-      expect(swapped.onSurface, plain.onSurface);
-      expect(swapped.secondary, plain.secondary);
-      expect(swapped.error, plain.error);
-      expect(swapped.inversePrimary, plain.inversePrimary);
-    });
-
-    test('a swapped accent still reads against what sits on it', () {
-      // The reason the groups move together: a swapped primary with an
-      // unswapped onPrimary is text on the wrong colour.
+    test('a complemented palette still reads against what sits on it', () {
       for (final brightness in Brightness.values) {
         final s = schemeFor(PaletteVariant.swapped, brightness);
         expect(_ratio(s.onPrimary, s.primary), greaterThan(4.5),
             reason: brightness.name);
-        expect(_ratio(s.onTertiary, s.tertiary), greaterThan(4.5),
+        expect(_ratio(s.onSurface, s.surface), greaterThan(4.5),
             reason: brightness.name);
       }
     });
@@ -240,7 +245,7 @@ void variantTests() {
             seed: muted,
             brightness: Brightness.dark,
             variant: style.variant,
-            swapAccents: style.swapsAccents,
+            complementSeed: style.complementsSeed,
           ).colorScheme;
 
       final byDefault = of(PaletteVariant.tonalSpot).primary;

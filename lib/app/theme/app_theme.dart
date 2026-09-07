@@ -13,10 +13,10 @@ ThemeData buildTheme({
   required Brightness brightness,
   double contrastLevel = 0,
   DynamicSchemeVariant variant = DynamicSchemeVariant.tonalSpot,
-  bool swapAccents = false,
+  bool complementSeed = false,
 }) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: seed,
+    seedColor: complementSeed ? complementOf(seed) : seed,
     brightness: brightness,
     // How the palettes are derived from the seed -- whether the seed's own
     // saturation survives, and where tertiary comes from.
@@ -26,37 +26,22 @@ ThemeData buildTheme({
     // foreground and background changes.
     contrastLevel: contrastLevel,
   );
-  return _themeFrom(swapAccents ? swapPrimaryAndTertiary(scheme) : scheme);
+  return _themeFrom(scheme);
 }
 
-/// Trades the primary and tertiary roles, group for group.
+/// The colour half a turn round the wheel from [color].
 ///
-/// There is no Material variant for this, so it happens after the scheme is
-/// built. Every member of each group moves together -- the containers and the
-/// fixed roles as well as the accent itself -- because a scheme with a
-/// swapped `primary` and an unswapped `onPrimary` is one where text sits on
-/// the wrong colour.
-///
-/// `inversePrimary` stays put: there is no tertiary counterpart to trade it
-/// with, and it is only used on inverse surfaces.
-ColorScheme swapPrimaryAndTertiary(ColorScheme s) => s.copyWith(
-      primary: s.tertiary,
-      onPrimary: s.onTertiary,
-      primaryContainer: s.tertiaryContainer,
-      onPrimaryContainer: s.onTertiaryContainer,
-      primaryFixed: s.tertiaryFixed,
-      primaryFixedDim: s.tertiaryFixedDim,
-      onPrimaryFixed: s.onTertiaryFixed,
-      onPrimaryFixedVariant: s.onTertiaryFixedVariant,
-      tertiary: s.primary,
-      onTertiary: s.onPrimary,
-      tertiaryContainer: s.primaryContainer,
-      onTertiaryContainer: s.onPrimaryContainer,
-      tertiaryFixed: s.primaryFixed,
-      tertiaryFixedDim: s.primaryFixedDim,
-      onTertiaryFixed: s.onPrimaryFixed,
-      onTertiaryFixedVariant: s.onPrimaryFixedVariant,
-    );
+/// A plain 180-degree hue rotation, which is what "the complement" usually
+/// means to anyone looking at a colour wheel. Material has a subtler idea of
+/// it -- `TemperatureCache.complement`, weighted by warm and cool, which is
+/// what the faithful style uses for its tertiary -- but that lives in a
+/// package this app only depends on transitively, and the difference does not
+/// survive what happens next: the seed contributes its hue and nothing else,
+/// since the generator clamps chroma to the variant's own values.
+Color complementOf(Color color) {
+  final hsl = HSLColor.fromColor(color);
+  return hsl.withHue((hsl.hue + 180) % 360).toColor();
+}
 
 ThemeData _themeFrom(ColorScheme scheme) {
   final base = ThemeData(colorScheme: scheme, useMaterial3: true);

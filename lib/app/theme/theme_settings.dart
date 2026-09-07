@@ -99,24 +99,29 @@ enum PaletteVariant {
   /// The other playful one, same idea.
   fruitSalad('Fruit salad', DynamicSchemeVariant.fruitSalad),
 
-  /// The default's palettes, with the accent roles traded.
+  /// The whole palette built from the accent's opposite.
   ///
-  /// Not a Material variant -- there is no such thing -- but a swap applied
-  /// afterwards. Under the default, tertiary is the seed's hue turned 60
-  /// degrees, so trading the two makes that rotated hue the colour the
-  /// interface actually uses and leaves the seed's own hue for the accents
-  /// that were tertiary. The same two palettes, opposite jobs.
-  swapped('Swapped', DynamicSchemeVariant.tonalSpot, swapsAccents: true);
+  /// Not a Material variant -- there is no such thing -- but the seed turned
+  /// half a circle before the palettes are derived from it. Trading the
+  /// primary and tertiary *roles* was the first attempt at this and reads as
+  /// far less of a change than it sounds, because under the default tertiary
+  /// is only 60 degrees off the seed. A complement is the whole way round.
+  swapped('Swapped', DynamicSchemeVariant.tonalSpot, complementsSeed: true);
 
-  const PaletteVariant(this.label, this.variant, {this.swapsAccents = false});
+  const PaletteVariant(
+    this.label,
+    this.variant, {
+    this.complementsSeed = false,
+  });
 
   final String label;
 
   /// Passed straight to `ColorScheme.fromSeed`.
   final DynamicSchemeVariant variant;
 
-  /// Whether the primary and tertiary roles change places afterwards.
-  final bool swapsAccents;
+  /// Whether the seed is replaced by its opposite before the palettes are
+  /// built from it.
+  final bool complementsSeed;
 
   static PaletteVariant of(String name) =>
       PaletteVariant.values.where((v) => v.name == name).firstOrNull ??

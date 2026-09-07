@@ -92,9 +92,8 @@ class AppearanceSection extends ConsumerWidget {
               "Playful: the accent's hue does not appear in the theme.",
             PaletteVariant.fruitSalad => 'The other playful one.',
             PaletteVariant.swapped =>
-              "The default's two accent palettes with their jobs traded: the "
-                  'hue 60 degrees off the accent leads, and the accent itself '
-                  'becomes the highlight.',
+              "Built from the accent's opposite: the colour half a turn "
+                  'round the wheel leads the whole interface.',
           }),
           // Material 3's dropdown, not the older DropdownButton: this one is
           // a menu anchored to a field, sized rather than sized-to-content,
