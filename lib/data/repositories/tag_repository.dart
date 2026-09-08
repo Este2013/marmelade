@@ -359,6 +359,33 @@ class TagRepository {
         .map((rows) => [for (final row in rows) row.read<int>('artist_id')]);
   }
 
+  /// The albums represented among the tracks carrying a tag.
+  ///
+  /// Not "albums somebody tagged": a tag on a record and a tag on eight of
+  /// its songs both mean the album belongs on this page, and the cascade has
+  /// already reconciled the two. Whatever is left over -- tracks on no album
+  /// at all -- the page counts for itself.
+  Stream<List<int>> watchAlbumIdsWithTag(int tagId) {
+    return db
+        .customSelect(
+          'SELECT DISTINCT t.album_id AS id FROM v_track_effective_tags e '
+          'JOIN tracks t ON t.id = e.track_id '
+          'WHERE e.tag_id = ?1 AND t.album_id IS NOT NULL',
+          variables: [Variable(tagId)],
+          readsFrom: {
+            db.tracks,
+            db.trackTags,
+            db.albumTags,
+            db.playlistTags,
+            db.playlistItems,
+            db.artistTags,
+            db.trackCredits,
+          },
+        )
+        .watch()
+        .map((rows) => [for (final row in rows) row.read<int>('id')]);
+  }
+
   /// The tracks carrying a tag, cascade included.
   Future<List<int>> trackIdsWithTag(int tagId) async {
     final rows = await db

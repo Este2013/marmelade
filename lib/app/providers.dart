@@ -964,6 +964,28 @@ final tagArtistsProvider =
       );
 });
 
+/// Whether a detail page has been scrolled past its own title row.
+///
+/// Lives outside both widgets because they are siblings: the page owns the
+/// scroll, the caption strip is built by the shell, and the strip is where
+/// the title has to reappear. One flag rather than one per page -- only one
+/// detail page is ever on screen -- and the page clears it on the way out so
+/// the next one does not open already collapsed.
+final detailHeaderCollapsedProvider =
+    NotifierProvider<ViewSetting<bool>, bool>(() => ViewSetting(false));
+
+/// The albums a tag reaches, for the row above its track list.
+final tagAlbumsProvider =
+    StreamProvider.family<List<AlbumCard>, int>((ref, tagId) {
+  final tags = ref.watch(tagRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  return tags.watchAlbumIdsWithTag(tagId).asyncExpand(
+        (ids) => ids.isEmpty
+            ? Stream.value(const <AlbumCard>[])
+            : library.watchAlbums(ids: ids),
+      );
+});
+
 /// Headline library counts, refreshed when the catalog changes.
 final libraryCountsProvider = FutureProvider<LibraryCounts>((ref) async {
   // Depend on the tracks stream so the counts refresh after an index run.

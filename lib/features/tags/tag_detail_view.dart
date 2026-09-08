@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/title_with_actions.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
@@ -16,7 +17,7 @@ import 'tag_visuals.dart';
 /// Includes tracks that inherit it from their album or from a playlist, because
 /// that is what the tag means. A page that showed only directly-tagged tracks
 /// would disagree with the count in the tag list and with search.
-class TagDetailView extends ConsumerWidget {
+class TagDetailView extends ConsumerStatefulWidget {
   const TagDetailView({
     super.key,
     required this.tagId,
@@ -33,7 +34,47 @@ class TagDetailView extends ConsumerWidget {
   final void Function(int trackId)? onEditTrack;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TagDetailView> createState() => _TagDetailViewState();
+}
+
+class _TagDetailViewState extends ConsumerState<TagDetailView> {
+  /// How far the page has to travel before the title row is treated as gone.
+  ///
+  /// Roughly the height of the icon-and-name row: past this the name and the
+  /// play controls have left the screen, which is the moment the strip has to
+  /// take them over. Measured by eye rather than by the widget's real height,
+  /// which is not known until it has been laid out and varies with how many
+  /// artists and albums the tag reaches.
+  static const _collapseAfter = 150.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Cleared on the way in rather than on the way out: a page opens at the
+    // top, so it opens uncollapsed, and `ref` is not safe to touch from
+    // dispose -- by then the widget is already unmounted.
+    Future.microtask(() {
+      if (!mounted) return;
+      ref.read(detailHeaderCollapsedProvider.notifier).set(false);
+    });
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    final collapsed = notification.metrics.pixels > _collapseAfter;
+    if (collapsed != ref.read(detailHeaderCollapsedProvider)) {
+      ref.read(detailHeaderCollapsedProvider.notifier).set(collapsed);
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tagId = widget.tagId;
+    final onBack = widget.onBack;
+    final onOpenArtist = widget.onOpenArtist;
+    final onOpenAlbum = widget.onOpenAlbum;
+    final onEditTrack = widget.onEditTrack;
     final tracks = ref.watch(tagTrackListProvider(tagId));
     final tag = ref
         .watch(taggedProvider)
@@ -58,7 +99,9 @@ class TagDetailView extends ConsumerWidget {
                 FilledButton(onPressed: onBack, child: const Text('Back')),
           );
         }
-        return TrackList(
+        return NotificationListener<ScrollNotification>(
+          onNotification: _onScroll,
+          child: TrackList(
           tracks: items,
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
@@ -69,7 +112,9 @@ class TagDetailView extends ConsumerWidget {
             tag: tag,
             tracks: items,
             onOpenArtist: onOpenArtist,
+            onOpenAlbum: onOpenAlbum,
           ),
+        ),
         );
       },
     );
@@ -97,6 +142,18 @@ class TagDetailChrome extends ConsumerWidget {
         ?.where((t) => t.id == tagId)
         .firstOrNull;
 
+    // Taken over from the page once its own title row has scrolled away, so
+    // the name and the play controls are reachable the whole way down a long
+    // tag rather than only at the top of it.
+    final collapsed = ref.watch(detailHeaderCollapsedProvider) && tag != null;
+    final visuals = tag == null
+        ? null
+        : tagVisuals(
+            context,
+            categoryIcon: tag.categoryIcon,
+            color: tag.color,
+          );
+
     return Row(
       children: [
         IconButton(
@@ -104,20 +161,39 @@ class TagDetailChrome extends ConsumerWidget {
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back),
         ),
-        const Spacer(),
-        IconButton(
-          tooltip: 'Edit this tag',
-          onPressed: tag == null
-              ? null
-              : () => editTag(
+        if (collapsed) ...[
+          const SizedBox(width: 4),
+          Icon(visuals!.icon, size: 20, color: visuals.color),
+          const SizedBox(width: 10),
+          Flexible(
+            child: TitleWithActions(
+              title: Text(
+                tag.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Edit this tag',
+                  onPressed: () => editTag(
                     context,
                     ref,
                     tagId: tag.id,
                     name: tag.name,
                     categoryId: tag.categoryId,
                   ),
-          icon: const Icon(Icons.edit_outlined),
-        ),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const Spacer(),
+        if (collapsed) ...[
+          _CollapsedTransport(tagId: tag.id),
+          const SizedBox(width: 4),
+        ],
         PopupMenuButton<String>(
           tooltip: 'More',
           enabled: tag != null,
@@ -166,11 +242,13 @@ class _Header extends ConsumerWidget {
     required this.tag,
     required this.tracks,
     this.onOpenArtist,
+    this.onOpenAlbum,
   });
 
   final TagCard tag;
   final List<TrackRow> tracks;
   final void Function(int artistId)? onOpenArtist;
+  final void Function(int albumId)? onOpenAlbum;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -202,10 +280,25 @@ class _Header extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      tag.name,
-                      style: theme.textTheme.displaySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                    TitleWithActions(
+                      title: Text(
+                        tag.name,
+                        style: theme.textTheme.displaySmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      actions: [
+                        IconButton(
+                          tooltip: 'Edit this tag',
+                          onPressed: () => editTag(
+                            context,
+                            ref,
+                            tagId: tag.id,
+                            name: tag.name,
+                            categoryId: tag.categoryId,
+                          ),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -250,6 +343,11 @@ class _Header extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           _TaggedArtists(tagId: tag.id, onOpen: onOpenArtist),
+          _TaggedAlbums(
+            tagId: tag.id,
+            singles: tracks.where((t) => t.albumId == null).length,
+            onOpen: onOpenAlbum,
+          ),
           Text(
             'Tracks carrying this tag, including through an album, a playlist '
             'or someone credited on them',
@@ -310,6 +408,202 @@ class _TaggedArtists extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+
+
+/// The albums this tag reaches, and what is left over.
+///
+/// A tag's page is a long list of songs, and a list of songs is a poor way to
+/// see that most of them come from four records. The row says that at a
+/// glance, and the "Singles" card at the end accounts for the rest rather
+/// than leaving the arithmetic to the reader -- without it, a row of four
+/// albums over a list of ninety tracks looks like a bug.
+class _TaggedAlbums extends ConsumerWidget {
+  const _TaggedAlbums({
+    required this.tagId,
+    required this.singles,
+    this.onOpen,
+  });
+
+  final int tagId;
+
+  /// Tagged tracks belonging to no album at all.
+  final int singles;
+
+  final void Function(int albumId)? onOpen;
+
+  static const _tile = 132.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final albums = ref.watch(tagAlbumsProvider(tagId)).value ?? const [];
+    if (albums.isEmpty && singles == 0) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          [
+            if (albums.isNotEmpty) pluralize(albums.length, 'album'),
+            if (singles > 0) pluralize(singles, 'single'),
+          ].join(' and '),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: _tile + 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final album in albums)
+                _AlbumSquare(
+                  album: album,
+                  onTap: onOpen == null ? null : () => onOpen!(album.id),
+                ),
+              // Last, and deliberately not a link: there is no page for "the
+              // rest of them", and a card that looks tappable and is not is
+              // worse than one that plainly is not.
+              if (singles > 0) _SinglesSquare(count: singles),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+
+class _AlbumSquare extends StatelessWidget {
+  const _AlbumSquare({required this.album, this.onTap});
+
+  final AlbumCard album;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: SizedBox(
+        width: _TaggedAlbums._tile,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Artwork(
+                storedPath: album.imagePath,
+                size: _TaggedAlbums._tile,
+                borderRadius: 10,
+                fallbackSeed: album.title,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                album.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+              Text(
+                album.artistName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The leftovers, counted rather than listed.
+class _SinglesSquare extends StatelessWidget {
+  const _SinglesSquare({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Tooltip(
+      message: 'Tagged tracks that are not on any album',
+      child: SizedBox(
+        width: _TaggedAlbums._tile,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: _TaggedAlbums._tile,
+              height: _TaggedAlbums._tile,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: Icon(
+                Icons.music_note_outlined,
+                color: scheme.onSurfaceVariant,
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text('Singles', style: theme.textTheme.bodyMedium),
+            Text(
+              pluralize(count, 'track'),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Play and shuffle, for the caption strip once the header has scrolled off.
+class _CollapsedTransport extends ConsumerWidget {
+  const _CollapsedTransport({required this.tagId});
+
+  final int tagId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tracks = ref.watch(tagTrackListProvider(tagId)).value ?? const [];
+    final ids = [for (final track in tracks) track.id];
+    final player = ref.read(playerProvider.notifier);
+
+    Future<void> play({bool shuffled = false}) async {
+      await player.playAll(ids, source: QueueSource.tag, sourceRefId: tagId);
+      if (shuffled) await player.shuffleQueue();
+    }
+
+    // Icons rather than the header's labelled buttons: the strip is 56 tall
+    // and shared with the window controls, and by the time somebody is this
+    // far down a tag page they know what the page is for.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Play',
+          onPressed: ids.isEmpty ? null : play,
+          icon: const Icon(Icons.play_arrow),
+        ),
+        IconButton(
+          tooltip: 'Shuffle',
+          onPressed: ids.isEmpty ? null : () => play(shuffled: true),
+          icon: const Icon(Icons.shuffle),
+        ),
       ],
     );
   }
