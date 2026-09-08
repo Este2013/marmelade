@@ -98,6 +98,53 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.3.0',
+    date: '2026-09-08',
+    headline: 'A detail page keeps its name in reach, and a playlist tree '
+        'finally looks like one.',
+    changes: [
+      Change.added(
+        'Scrolling down an album, artist, tag or playlist page hands its '
+        'name and its Play button to the window\'s title bar once the '
+        "header itself has scrolled away, so they're never more than a "
+        'glance off. Proven first on tags, now everywhere.',
+      ),
+      Change.added(
+        "A tag's own page lists the albums it reaches, above the songs, "
+        'with a Singles card for whatever has no album at all. Editing the '
+        'tag moves from the title bar to beside its name, revealed on hover.',
+      ),
+      Change.added(
+        'The play queue follows what is playing: stepping to the next or '
+        'previous track scrolls just enough to keep the playing row on '
+        'screen, and a "Jump to playing" pill appears when you have scrolled '
+        'away from it yourself.',
+      ),
+      Change.added(
+        'Playlists that include other playlists now actually look like it: '
+        'an included playlist is indented under whatever includes it, with '
+        'a chevron to fold the branch away. It used to sit at the top level '
+        'with no sign it belonged anywhere.',
+      ),
+      Change.changed(
+        'Switching to Search puts the caret in the field and selects '
+        'whatever was already typed, the same as Ctrl+F. The smart-playlist '
+        'sparkle icon is gone -- the row underneath already says "Follows a '
+        'search".',
+      ),
+      Change.removed(
+        'The edit-picture button over the now-playing artwork. It opens '
+        'large on a click either way; the album, artist and track pages are '
+        'still where you change the picture.',
+      ),
+      Change.fixed(
+        'A hovered cover in Albums or Artists looked slightly soft compared '
+        'to its neighbours -- the tile lifts a few per cent on hover, and the '
+        'bitmap underneath was decoded to exactly its resting size.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.2.4',
     date: '2026-09-07',
     headline: 'Colours that follow the music, and a player that plays what '
