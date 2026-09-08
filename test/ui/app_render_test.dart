@@ -1421,6 +1421,17 @@ void main() {
     });
 
     testWidgets(
+        'switching to search puts the caret in the field, ready to type',
+        (tester) async {
+      await open(tester);
+      await tester.tap(railItem('Search'));
+      await settle(tester);
+
+      final field = tester.widget<SearchToolbar>(find.byType(SearchToolbar));
+      expect(field.focusNode.hasFocus, isTrue);
+    });
+
+    testWidgets(
         "a detail page's back and edit controls live in the caption "
         'strip, not the page', (tester) async {
       await open(tester);

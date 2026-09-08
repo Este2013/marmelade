@@ -355,6 +355,11 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
       if (!_visitedOrder.contains(section)) _visitedOrder.add(section);
       _section = section;
     });
+    if (section == LibrarySection.search) {
+      // The field's chrome does not exist yet in this frame, so the caret
+      // has to wait for it -- same reason _openSearch does.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearchField());
+    }
   }
 
   void _push(Widget page, {Widget? Function(BuildContext)? chrome, bool bleed = false, bool retry = true}) {

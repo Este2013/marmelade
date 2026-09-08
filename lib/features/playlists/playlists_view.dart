@@ -16,7 +16,7 @@ import '../../widgets/time_text.dart';
 /// A playlist can sit inside another, so this is a flat list with indentation
 /// rather than a grid: the nesting is the structure, and a grid would throw it
 /// away.
-class PlaylistsView extends ConsumerWidget {
+class PlaylistsView extends ConsumerStatefulWidget {
   const PlaylistsView({
     super.key,
     required this.onOpenPlaylist,
@@ -25,7 +25,38 @@ class PlaylistsView extends ConsumerWidget {
   final void Function(int playlistId) onOpenPlaylist;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlaylistsView> createState() => _PlaylistsViewState();
+}
+
+class _PlaylistsViewState extends ConsumerState<PlaylistsView> {
+  /// Playlists whose children are hidden, by id.
+  final _collapsed = <int>{};
+
+  void _toggle(int id) => setState(() {
+        if (!_collapsed.add(id)) _collapsed.remove(id);
+      });
+
+  /// Drops every row that sits, at any depth, inside a collapsed playlist.
+  ///
+  /// The list is already parent-then-children order, so a row is hidden
+  /// exactly when its parent is hidden or collapsed -- no need to walk the
+  /// whole ancestor chain each time.
+  List<PlaylistCard> _visible(List<PlaylistCard> items) {
+    final hiddenParents = <int>{};
+    final result = <PlaylistCard>[];
+    for (final item in items) {
+      if (item.parentId != null && hiddenParents.contains(item.parentId)) {
+        hiddenParents.add(item.id);
+        continue;
+      }
+      result.add(item);
+      if (_collapsed.contains(item.id)) hiddenParents.add(item.id);
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final playlists = ref.watch(playlistsProvider);
 
     return Column(
@@ -53,13 +84,21 @@ class PlaylistsView extends ConsumerWidget {
                   ),
                 );
               }
+              final visible = _visible(items);
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                itemCount: items.length,
-                itemBuilder: (context, index) => _PlaylistTile(
-                  playlist: items[index],
-                  onOpen: () => onOpenPlaylist(items[index].id),
-                ),
+                itemCount: visible.length,
+                itemBuilder: (context, index) {
+                  final playlist = visible[index];
+                  return _PlaylistTile(
+                    playlist: playlist,
+                    collapsed: _collapsed.contains(playlist.id),
+                    onToggleCollapsed: playlist.childCount > 0
+                        ? () => _toggle(playlist.id)
+                        : null,
+                    onOpen: () => widget.onOpenPlaylist(playlist.id),
+                  );
+                },
               );
             },
           ),
@@ -196,10 +235,21 @@ Future<int?> createPlaylist(
 }
 
 class _PlaylistTile extends ConsumerWidget {
-  const _PlaylistTile({required this.playlist, required this.onOpen});
+  const _PlaylistTile({
+    required this.playlist,
+    required this.onOpen,
+    this.collapsed = false,
+    this.onToggleCollapsed,
+  });
 
   final PlaylistCard playlist;
   final VoidCallback onOpen;
+
+  /// Whether this playlist's children are currently hidden.
+  final bool collapsed;
+
+  /// Toggles [collapsed]. Null when this playlist has nothing to collapse.
+  final VoidCallback? onToggleCollapsed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -221,6 +271,25 @@ class _PlaylistTile extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
+                // A fixed-width slot whether or not this row has anything to
+                // collapse, so playlists at the same depth still line up.
+                SizedBox(
+                  width: 32,
+                  child: onToggleCollapsed == null
+                      ? null
+                      : IconButton(
+                          tooltip: collapsed ? 'Show what it contains' : 'Hide what it contains',
+                          onPressed: onToggleCollapsed,
+                          icon: AnimatedRotation(
+                            turns: collapsed ? -0.25 : 0,
+                            duration: const Duration(milliseconds: 150),
+                            child: const Icon(Icons.expand_more),
+                          ),
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                ),
                 Artwork(
                   storedPath: playlist.imagePath,
                   size: 44,
@@ -245,15 +314,6 @@ class _PlaylistTile extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (playlist.isSmart)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Tooltip(
-                      message: 'Follows a search: ${playlist.query ?? ''}',
-                      child: Icon(Icons.auto_awesome,
-                          size: 18, color: scheme.primary),
-                    ),
-                  ),
                 IconButton(
                   tooltip: 'Play',
                   onPressed: () => _play(ref),
