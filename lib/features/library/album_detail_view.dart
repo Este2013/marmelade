@@ -7,6 +7,7 @@ import '../../data/repositories/tag_repository.dart';
 import '../../domain/models/library_views.dart';
 import '../tags/tag_line.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/collapsing_header.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
@@ -82,25 +83,27 @@ class AlbumDetailView extends ConsumerWidget {
                 title: 'Could not load tracks',
                 message: '$error',
               ),
-              data: (items) => TrackList(
-                tracks: items,
-                showArtwork: false,
-                showAlbum: false,
-                showTrackNumbers: true,
-                onOpenArtist: onOpenArtist,
-                onEditTrack: onEditTrack,
-                queueSource: QueueSource.album,
-                queueSourceId: albumId,
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                header: _AlbumHeader(
-                  album: card,
+              data: (items) => CollapsingHeader(
+                child: TrackList(
                   tracks: items,
+                  showArtwork: false,
+                  showAlbum: false,
+                  showTrackNumbers: true,
                   onOpenArtist: onOpenArtist,
-                  onOpenTag: onOpenTag,
-                  onEdit: onEditAlbum == null
-                      ? null
-                      : () => onEditAlbum!(albumId),
-                  topInset: topInset,
+                  onEditTrack: onEditTrack,
+                  queueSource: QueueSource.album,
+                  queueSourceId: albumId,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  header: _AlbumHeader(
+                    album: card,
+                    tracks: items,
+                    onOpenArtist: onOpenArtist,
+                    onOpenTag: onOpenTag,
+                    onEdit: onEditAlbum == null
+                        ? null
+                        : () => onEditAlbum!(albumId),
+                    topInset: topInset,
+                  ),
                 ),
               ),
             ),
@@ -130,14 +133,18 @@ class AlbumDetailChrome extends ConsumerWidget {
     super.key,
     required this.albumId,
     required this.onBack,
+    this.onEdit,
   });
 
   final int albumId;
   final VoidCallback onBack;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final album = ref.watch(albumDetailProvider(albumId)).value;
+    // Taken over from the page once its own title row has scrolled away.
+    final collapsed = ref.watch(detailHeaderCollapsedProvider) && album != null;
 
     return Row(
       children: [
@@ -146,7 +153,39 @@ class AlbumDetailChrome extends ConsumerWidget {
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back),
         ),
-        const Spacer(),
+        if (collapsed) ...[
+          Expanded(
+            child: CollapsedTitle(
+              leading: Artwork(
+                storedPath: album.imagePath,
+                size: 26,
+                borderRadius: 4,
+                fallbackSeed: album.title,
+                fallbackIcon: Icons.album_outlined,
+              ),
+              title: album.title,
+              actions: [
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: 'Edit this album',
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+              ],
+            ),
+          ),
+          CollapsedTransport(
+            trackIds: [
+              for (final track
+                  in ref.watch(albumTracksProvider(albumId)).value ?? const [])
+                track.id,
+            ],
+            source: QueueSource.album,
+            sourceRefId: albumId,
+          ),
+          const SizedBox(width: 4),
+        ] else
+          const Spacer(),
         IconButton(
           tooltip: 'Add this album to a playlist',
           onPressed: album == null

@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/collapsing_header.dart';
 import '../../widgets/title_with_actions.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
@@ -38,36 +39,6 @@ class TagDetailView extends ConsumerStatefulWidget {
 }
 
 class _TagDetailViewState extends ConsumerState<TagDetailView> {
-  /// How far the page has to travel before the title row is treated as gone.
-  ///
-  /// Roughly the height of the icon-and-name row: past this the name and the
-  /// play controls have left the screen, which is the moment the strip has to
-  /// take them over. Measured by eye rather than by the widget's real height,
-  /// which is not known until it has been laid out and varies with how many
-  /// artists and albums the tag reaches.
-  static const _collapseAfter = 150.0;
-
-  @override
-  void initState() {
-    super.initState();
-    // Cleared on the way in rather than on the way out: a page opens at the
-    // top, so it opens uncollapsed, and `ref` is not safe to touch from
-    // dispose -- by then the widget is already unmounted.
-    Future.microtask(() {
-      if (!mounted) return;
-      ref.read(detailHeaderCollapsedProvider.notifier).set(false);
-    });
-  }
-
-  bool _onScroll(ScrollNotification notification) {
-    if (notification.metrics.axis != Axis.vertical) return false;
-    final collapsed = notification.metrics.pixels > _collapseAfter;
-    if (collapsed != ref.read(detailHeaderCollapsedProvider)) {
-      ref.read(detailHeaderCollapsedProvider.notifier).set(collapsed);
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final tagId = widget.tagId;
@@ -99,8 +70,7 @@ class _TagDetailViewState extends ConsumerState<TagDetailView> {
                 FilledButton(onPressed: onBack, child: const Text('Back')),
           );
         }
-        return NotificationListener<ScrollNotification>(
-          onNotification: _onScroll,
+        return CollapsingHeader(
           child: TrackList(
           tracks: items,
           onOpenArtist: onOpenArtist,
@@ -161,18 +131,13 @@ class TagDetailChrome extends ConsumerWidget {
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back),
         ),
-        if (collapsed) ...[
-          const SizedBox(width: 4),
-          Icon(visuals!.icon, size: 20, color: visuals.color),
-          const SizedBox(width: 10),
-          Flexible(
-            child: TitleWithActions(
-              title: Text(
-                tag.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+        // One flexible element either way: the title takes the room when it
+        // is there, and a plain Spacer holds it open when it is not.
+        if (collapsed)
+          Expanded(
+            child: CollapsedTitle(
+              leading: Icon(visuals!.icon, size: 20, color: visuals.color),
+              title: tag.name,
               actions: [
                 IconButton(
                   tooltip: 'Edit this tag',
@@ -187,11 +152,19 @@ class TagDetailChrome extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
-        ],
-        const Spacer(),
+          )
+        else
+          const Spacer(),
         if (collapsed) ...[
-          _CollapsedTransport(tagId: tag.id),
+          CollapsedTransport(
+            trackIds: [
+              for (final track
+                  in ref.watch(tagTrackListProvider(tag.id)).value ?? const [])
+                track.id,
+            ],
+            source: QueueSource.tag,
+            sourceRefId: tag.id,
+          ),
           const SizedBox(width: 4),
         ],
         PopupMenuButton<String>(
@@ -571,40 +544,3 @@ class _SinglesSquare extends StatelessWidget {
 }
 
 
-/// Play and shuffle, for the caption strip once the header has scrolled off.
-class _CollapsedTransport extends ConsumerWidget {
-  const _CollapsedTransport({required this.tagId});
-
-  final int tagId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tracks = ref.watch(tagTrackListProvider(tagId)).value ?? const [];
-    final ids = [for (final track in tracks) track.id];
-    final player = ref.read(playerProvider.notifier);
-
-    Future<void> play({bool shuffled = false}) async {
-      await player.playAll(ids, source: QueueSource.tag, sourceRefId: tagId);
-      if (shuffled) await player.shuffleQueue();
-    }
-
-    // Icons rather than the header's labelled buttons: the strip is 56 tall
-    // and shared with the window controls, and by the time somebody is this
-    // far down a tag page they know what the page is for.
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          tooltip: 'Play',
-          onPressed: ids.isEmpty ? null : play,
-          icon: const Icon(Icons.play_arrow),
-        ),
-        IconButton(
-          tooltip: 'Shuffle',
-          onPressed: ids.isEmpty ? null : () => play(shuffled: true),
-          icon: const Icon(Icons.shuffle),
-        ),
-      ],
-    );
-  }
-}

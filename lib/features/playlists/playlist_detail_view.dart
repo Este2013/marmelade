@@ -8,6 +8,8 @@ import '../../data/repositories/smart_playlist_resolver.dart' show smartPlaylist
 import '../../data/repositories/tag_repository.dart';
 import '../tags/tag_line.dart';
 import '../../domain/models/library_views.dart';
+import '../../widgets/artwork.dart';
+import '../../widgets/collapsing_header.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
@@ -68,33 +70,35 @@ class PlaylistDetailView extends ConsumerWidget {
         }
 
         final items = tracks.value ?? const <TrackRow>[];
-        return PlaylistTracks(
-          playlist: card,
-          tracks: items,
-          title: switch (card) {
-            final p when p.isSmart => 'Tracks matching this query',
-            final p when p.childCount > 0 =>
-              'Every track, including the included playlists',
-            _ => 'Tracks',
-          },
-          onOpenArtist: onOpenArtist,
-          onOpenAlbum: onOpenAlbum,
-          onEditTrack: onEditTrack,
-          // A query put these tracks here, so there is no row to delete. The
-          // only way to drop one is to say it does not belong, which is what
-          // an exclusion is.
-          onRemoveTrack: !card.isSmart
-              ? null
-              : (trackId) => ref
-                  .read(playlistRepositoryProvider)
-                  .exclude(playlistId, trackId),
-          removeTooltip: 'Keep this track out of this playlist',
-          header: _Header(
+        return CollapsingHeader(
+          child: PlaylistTracks(
             playlist: card,
             tracks: items,
-            entries: entries.value ?? const [],
-            onOpenPlaylist: onOpenPlaylist,
-            onOpenTag: onOpenTag,
+            title: switch (card) {
+              final p when p.isSmart => 'Tracks matching this query',
+              final p when p.childCount > 0 =>
+                'Every track, including the included playlists',
+              _ => 'Tracks',
+            },
+            onOpenArtist: onOpenArtist,
+            onOpenAlbum: onOpenAlbum,
+            onEditTrack: onEditTrack,
+            // A query put these tracks here, so there is no row to delete. The
+            // only way to drop one is to say it does not belong, which is what
+            // an exclusion is.
+            onRemoveTrack: !card.isSmart
+                ? null
+                : (trackId) => ref
+                    .read(playlistRepositoryProvider)
+                    .exclude(playlistId, trackId),
+            removeTooltip: 'Keep this track out of this playlist',
+            header: _Header(
+              playlist: card,
+              tracks: items,
+              entries: entries.value ?? const [],
+              onOpenPlaylist: onOpenPlaylist,
+              onOpenTag: onOpenTag,
+            ),
           ),
         );
       },
@@ -122,6 +126,9 @@ class PlaylistDetailChrome extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playlist = ref.watch(playlistProvider(playlistId)).value;
+    // Taken over from the page once its own title row has scrolled away.
+    final collapsed =
+        ref.watch(detailHeaderCollapsedProvider) && playlist != null;
 
     return Row(
       children: [
@@ -130,7 +137,32 @@ class PlaylistDetailChrome extends ConsumerWidget {
           onPressed: onBack,
           icon: const Icon(Icons.arrow_back),
         ),
-        const Spacer(),
+        if (collapsed) ...[
+          Expanded(
+            child: CollapsedTitle(
+              leading: Artwork(
+                storedPath: playlist.imagePath,
+                size: 26,
+                borderRadius: 4,
+                fallbackSeed: playlist.name,
+                fallbackIcon: Icons.queue_music,
+              ),
+              title: playlist.name,
+            ),
+          ),
+          CollapsedTransport(
+            trackIds: [
+              for (final track
+                  in ref.watch(playlistTracksProvider(playlistId)).value ??
+                      const [])
+                track.id,
+            ],
+            source: QueueSource.playlist,
+            sourceRefId: playlistId,
+          ),
+          const SizedBox(width: 4),
+        ] else
+          const Spacer(),
         IconButton(
           tooltip: 'Add songs',
           onPressed: playlist == null

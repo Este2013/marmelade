@@ -7,6 +7,7 @@ import '../../data/repositories/edit_repository.dart' show LinkRow;
 import '../../data/repositories/tag_repository.dart' show AttachedTag, TagTarget;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
+import '../../widgets/collapsing_header.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/time_text.dart';
@@ -54,7 +55,8 @@ class ArtistDetailView extends ConsumerWidget {
       data: (items) => Stack(
         children: [
           Positioned.fill(child: ArtworkBackdrop(storedPath: artist?.imagePath, blur: 90, overlayOpacity: 0.88)),
-          TrackList(
+          CollapsingHeader(
+            child: TrackList(
             tracks: items,
             onOpenAlbum: onOpenAlbum,
             onOpenArtist: onOpenArtist,
@@ -75,6 +77,7 @@ class ArtistDetailView extends ConsumerWidget {
               topInset: topInset,
             ),
           ),
+          ),
         ],
       ),
     );
@@ -88,16 +91,65 @@ class ArtistDetailView extends ConsumerWidget {
 /// among the window buttons -- see [TitleWithActions]. Back stays because it
 /// is about the page rather than the artist, and because it has to be
 /// reachable after the header has scrolled away.
-class ArtistDetailChrome extends StatelessWidget {
-  const ArtistDetailChrome({super.key, required this.onBack});
+class ArtistDetailChrome extends ConsumerWidget {
+  const ArtistDetailChrome({
+    super.key,
+    required this.artistId,
+    required this.onBack,
+    this.onEdit,
+  });
 
+  final int artistId;
   final VoidCallback onBack;
+  final VoidCallback? onEdit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final artist = ref
+        .watch(artistsProvider)
+        .value
+        ?.where((a) => a.id == artistId)
+        .firstOrNull;
+    // Taken over from the page once its own title row has scrolled away.
+    final collapsed = ref.watch(detailHeaderCollapsedProvider) && artist != null;
+
     return Row(
       children: [
         IconButton(tooltip: 'Back', onPressed: onBack, icon: const Icon(Icons.arrow_back)),
+        if (collapsed) ...[
+          Expanded(
+            child: CollapsedTitle(
+              leading: ClipOval(
+                child: Artwork(
+                  storedPath: artist.imagePath,
+                  size: 26,
+                  borderRadius: 13,
+                  fallbackSeed: artist.name,
+                  fallbackIcon: Icons.person_outline,
+                ),
+              ),
+              title: artist.name,
+              actions: [
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: 'Edit this artist',
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+              ],
+            ),
+          ),
+          CollapsedTransport(
+            trackIds: [
+              for (final track
+                  in ref.watch(artistTracksProvider(artistId)).value ?? const [])
+                track.id,
+            ],
+            source: QueueSource.artist,
+            sourceRefId: artistId,
+          ),
+          const SizedBox(width: 4),
+        ],
       ],
     );
   }

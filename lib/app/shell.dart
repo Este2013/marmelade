@@ -382,13 +382,13 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   void _openAlbum(int albumId) => _push(
     AlbumDetailView(albumId: albumId, onOpenArtist: _openArtist, onOpenTag: _openTag, onEditAlbum: _editAlbum, onEditTrack: _editTrack, topInset: WindowChrome.height),
-    chrome: (_) => AlbumDetailChrome(albumId: albumId, onBack: _pop),
+    chrome: (_) => AlbumDetailChrome(albumId: albumId, onBack: _pop, onEdit: () => _editAlbum(albumId)),
     bleed: true,
   );
 
   void _openArtist(int artistId) => _push(
     ArtistDetailView(artistId: artistId, onOpenAlbum: _openAlbum, onOpenArtist: _openArtist, onEditArtist: _editArtist, onEditTrack: _editTrack, onOpenTag: _openTag, topInset: WindowChrome.height),
-    chrome: (_) => ArtistDetailChrome(onBack: _pop),
+    chrome: (_) => ArtistDetailChrome(artistId: artistId, onBack: _pop, onEdit: () => _editArtist(artistId)),
     bleed: true,
   );
 
