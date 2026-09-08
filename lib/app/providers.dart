@@ -151,6 +151,13 @@ final playlistEntriesProvider =
   return ref.watch(playlistRepositoryProvider).watchEntries(playlistId);
 });
 
+/// Every "included playlist" edge, for nesting them under whatever includes
+/// them in the main playlists view.
+final playlistInclusionsProvider =
+    StreamProvider<List<PlaylistInclusion>>((ref) {
+  return ref.watch(playlistRepositoryProvider).watchInclusions();
+});
+
 /// A playlist's tracks: its rows, its nested playlists, or its query.
 final playlistTracksProvider =
     StreamProvider.family<List<TrackRow>, int>((ref, playlistId) {

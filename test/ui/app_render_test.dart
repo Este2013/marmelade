@@ -19,6 +19,8 @@ import 'package:marmelade/app/theme/app_theme.dart';
 import 'package:marmelade/data/db/database.dart';
 import 'package:marmelade/data/repositories/edit_repository.dart' show LinkRow;
 import 'package:marmelade/data/repositories/library_repository.dart';
+import 'package:marmelade/data/repositories/playlist_repository.dart'
+    show PlaylistInclusion;
 import 'package:marmelade/data/repositories/queue_repository.dart';
 import 'package:marmelade/data/repositories/review_repository.dart';
 import 'package:marmelade/data/repositories/search_repository.dart';
@@ -545,6 +547,11 @@ void main() {
         // chrome tests, so this one was missing until it started tripping.
         playlistsProvider
             .overrideWith((ref) => Stream.value(const <PlaylistCard>[])),
+        // Same fake-timer reason as playlistsProvider just above: Playlists
+        // now nests included playlists, which means PlaylistsView watches
+        // this one too as soon as that tab is opened.
+        playlistInclusionsProvider
+            .overrideWith((ref) => Stream.value(const <PlaylistInclusion>[])),
         tagCategoriesProvider
             .overrideWith((ref) => Stream.value(const <TagCategoryRow>[])),
         // A real drift stream here would work, but cancelling one schedules a

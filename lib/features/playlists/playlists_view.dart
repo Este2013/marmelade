@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../data/db/enums.dart' show PlaylistKind, QueueSource;
+import '../../data/repositories/playlist_repository.dart' show PlaylistInclusion;
 import '../../domain/models/library_views.dart';
 import '../../domain/search/smart_query.dart';
 import 'smart_query_field.dart';
@@ -28,36 +29,87 @@ class PlaylistsView extends ConsumerStatefulWidget {
   ConsumerState<PlaylistsView> createState() => _PlaylistsViewState();
 }
 
+/// One row in the rendered tree: a playlist at a particular depth.
+///
+/// [depth] is the *display* depth, not [PlaylistCard.depth]: an included
+/// playlist can appear at a different depth under each parent that includes
+/// it, and unlike folder placement (one parent per playlist) that is not
+/// something a single field on the card could carry.
+class _TreeRow {
+  const _TreeRow({required this.playlist, required this.depth});
+
+  final PlaylistCard playlist;
+  final int depth;
+}
+
 class _PlaylistsViewState extends ConsumerState<PlaylistsView> {
-  /// Playlists whose children are hidden, by id.
+  /// Playlists whose included children are hidden, by id.
   final _collapsed = <int>{};
 
   void _toggle(int id) => setState(() {
         if (!_collapsed.add(id)) _collapsed.remove(id);
       });
 
-  /// Drops every row that sits, at any depth, inside a collapsed playlist.
+  /// Builds the tree shown on screen: every playlist at its own folder
+  /// position (see [PlaylistCard.parentId]), with the playlists it includes
+  /// (see [PlaylistInclusion]) nested directly beneath it.
   ///
-  /// The list is already parent-then-children order, so a row is hidden
-  /// exactly when its parent is hidden or collapsed -- no need to walk the
-  /// whole ancestor chain each time.
-  List<PlaylistCard> _visible(List<PlaylistCard> items) {
-    final hiddenParents = <int>{};
-    final result = <PlaylistCard>[];
+  /// An included playlist does not also get a separate row at the top level
+  /// -- that would show the same playlist twice, once nested where it
+  /// belongs and once floating above it for no visible reason. If it is
+  /// included in more than one place, each place gets its own nested copy,
+  /// since unlike the folder a playlist sits in, being included is not
+  /// exclusive to one parent.
+  List<_TreeRow> _rows(List<PlaylistCard> items, List<PlaylistInclusion> inclusions) {
+    final byId = {for (final item in items) item.id: item};
+    final includedBy = <int, List<int>>{};
+    final includedIds = <int>{};
+    for (final edge in inclusions) {
+      includedBy.putIfAbsent(edge.parentId, () => []).add(edge.childId);
+      includedIds.add(edge.childId);
+    }
+
+    final rows = <_TreeRow>[];
+
+    void addIncluded(int parentId, int depth, Set<int> ancestry) {
+      if (_collapsed.contains(parentId)) return;
+      for (final childId in includedBy[parentId] ?? const <int>[]) {
+        // A cycle should never reach here -- addChildPlaylist refuses to
+        // create one -- but a branch that did loop would hang the tree
+        // rather than merely looking wrong, so it is worth guarding anyway.
+        if (!ancestry.add(childId)) continue;
+        final child = byId[childId];
+        if (child != null) {
+          rows.add(_TreeRow(playlist: child, depth: depth));
+          addIncluded(childId, depth + 1, ancestry);
+        }
+        ancestry.remove(childId);
+      }
+    }
+
+    final hiddenFolders = <int>{};
     for (final item in items) {
-      if (item.parentId != null && hiddenParents.contains(item.parentId)) {
-        hiddenParents.add(item.id);
+      // A row whose folder parent is itself hidden (collapsed, or nested
+      // inside another hidden folder) stays out of the tree entirely.
+      if (item.parentId != null && hiddenFolders.contains(item.parentId)) {
+        hiddenFolders.add(item.id);
         continue;
       }
-      result.add(item);
-      if (_collapsed.contains(item.id)) hiddenParents.add(item.id);
+      if (includedIds.contains(item.id)) continue;
+      rows.add(_TreeRow(playlist: item, depth: item.depth));
+      if (_collapsed.contains(item.id)) {
+        hiddenFolders.add(item.id);
+      } else {
+        addIncluded(item.id, item.depth + 1, {item.id});
+      }
     }
-    return result;
+    return rows;
   }
 
   @override
   Widget build(BuildContext context) {
     final playlists = ref.watch(playlistsProvider);
+    final inclusions = ref.watch(playlistInclusionsProvider);
 
     return Column(
       children: [
@@ -84,19 +136,20 @@ class _PlaylistsViewState extends ConsumerState<PlaylistsView> {
                   ),
                 );
               }
-              final visible = _visible(items);
+              final rows = _rows(items, inclusions.value ?? const []);
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                itemCount: visible.length,
+                itemCount: rows.length,
                 itemBuilder: (context, index) {
-                  final playlist = visible[index];
+                  final row = rows[index];
                   return _PlaylistTile(
-                    playlist: playlist,
-                    collapsed: _collapsed.contains(playlist.id),
-                    onToggleCollapsed: playlist.childCount > 0
-                        ? () => _toggle(playlist.id)
+                    playlist: row.playlist,
+                    depth: row.depth,
+                    collapsed: _collapsed.contains(row.playlist.id),
+                    onToggleCollapsed: row.playlist.childCount > 0
+                        ? () => _toggle(row.playlist.id)
                         : null,
-                    onOpen: () => widget.onOpenPlaylist(playlist.id),
+                    onOpen: () => widget.onOpenPlaylist(row.playlist.id),
                   );
                 },
               );
@@ -238,12 +291,17 @@ class _PlaylistTile extends ConsumerWidget {
   const _PlaylistTile({
     required this.playlist,
     required this.onOpen,
+    this.depth = 0,
     this.collapsed = false,
     this.onToggleCollapsed,
   });
 
   final PlaylistCard playlist;
   final VoidCallback onOpen;
+
+  /// How far to indent -- the row's position in the *displayed* tree, which
+  /// is not always [PlaylistCard.depth] (see [_TreeRow]).
+  final int depth;
 
   /// Whether this playlist's children are currently hidden.
   final bool collapsed;
@@ -260,7 +318,7 @@ class _PlaylistTile extends ConsumerWidget {
     return Padding(
       // Indented by depth, which is the whole visual signal that this playlist
       // sits inside another.
-      padding: EdgeInsets.only(left: playlist.depth * 28.0, bottom: 4),
+      padding: EdgeInsets.only(left: depth * 28.0, bottom: 4),
       child: Material(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(10),

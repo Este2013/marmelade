@@ -32,6 +32,20 @@ class PlaylistEntry {
   bool get isChildPlaylist => childPlaylistId != null;
 }
 
+/// One "included playlist" edge: [childId] sits inside [parentId] as a row.
+///
+/// A playlist can be included in more than one place, so this is a graph
+/// rather than a tree -- the same [childId] can appear under several
+/// [parentId]s. Kept separate from [PlaylistCard.parentId], which is the
+/// unrelated folder placement a playlist has regardless of whether it is
+/// included anywhere.
+class PlaylistInclusion {
+  const PlaylistInclusion({required this.parentId, required this.childId});
+
+  final int parentId;
+  final int childId;
+}
+
 /// Reads and writes playlists.
 ///
 /// A playlist holds tracks *and* other playlists, which is what makes nesting
@@ -188,6 +202,34 @@ class PlaylistRepository {
 
   Stream<PlaylistCard?> watchPlaylist(int playlistId) => watchPlaylists()
       .map((all) => all.where((p) => p.id == playlistId).firstOrNull);
+
+  /// Every "included playlist" edge in the library, in one shot.
+  ///
+  /// The main playlists view nests included playlists under whatever
+  /// includes them, which needs every edge at once rather than one playlist
+  /// at a time the way [watchEntries] reads a single playlist's own rows.
+  Stream<List<PlaylistInclusion>> watchInclusions() {
+    return db
+        .customSelect(
+          '''
+      SELECT playlist_id AS parent_id, child_playlist_id AS child_id
+      FROM playlist_items
+      WHERE child_playlist_id IS NOT NULL
+      ORDER BY playlist_id, position
+      ''',
+          readsFrom: {db.playlistItems},
+        )
+        .watch()
+        .map(
+          (rows) => [
+            for (final row in rows)
+              PlaylistInclusion(
+                parentId: row.read<int>('parent_id'),
+                childId: row.read<int>('child_id'),
+              ),
+          ],
+        );
+  }
 
   /// Every track in a playlist, in order, following nested playlists.
   ///

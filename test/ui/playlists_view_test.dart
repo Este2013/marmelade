@@ -142,6 +142,7 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           playlistsProvider.overrideWith((ref) => Stream.value(const [playlist])),
+          playlistInclusionsProvider.overrideWith((ref) => Stream.value(const [])),
           playlistRepositoryProvider.overrideWithValue(
             _FakePlaylistRepository(db, [10, 11, 12]),
           ),
@@ -181,6 +182,7 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           playlistsProvider.overrideWith((ref) => Stream.value(const [playlist])),
+          playlistInclusionsProvider.overrideWith((ref) => Stream.value(const [])),
           playlistRepositoryProvider.overrideWithValue(
             _FakePlaylistRepository(db, const []),
           ),
@@ -203,31 +205,29 @@ void main() {
   });
 
   group('the nesting tree', () {
-    // Parent-then-children order, the same order watchPlaylists() hands the
-    // view -- collapsing has to work off that order, not off a tree it
-    // rebuilds itself.
+    // All three sit at the top level of their own folder placement --
+    // "Coding sessions" includes "Late night", which includes "Focus", the
+    // same way addChildPlaylist() links them, rather than through the
+    // unrelated parent_id/folder mechanism.
     const parent = PlaylistCard(
       id: 1,
       name: 'Coding sessions',
       kind: 'manual',
       trackCount: 0,
-      childCount: 2,
+      childCount: 1,
     );
     const child = PlaylistCard(
       id: 2,
       name: 'Late night',
       kind: 'manual',
       trackCount: 5,
-      parentId: 1,
-      depth: 1,
+      childCount: 1,
     );
     const grandchild = PlaylistCard(
       id: 3,
       name: 'Focus',
       kind: 'manual',
       trackCount: 5,
-      parentId: 2,
-      depth: 2,
     );
 
     Future<void> pump(WidgetTester tester) async {
@@ -237,6 +237,12 @@ void main() {
             databaseProvider.overrideWithValue(db),
             playlistsProvider.overrideWith(
               (ref) => Stream.value(const [parent, child, grandchild]),
+            ),
+            playlistInclusionsProvider.overrideWith(
+              (ref) => Stream.value(const [
+                PlaylistInclusion(parentId: 1, childId: 2),
+                PlaylistInclusion(parentId: 2, childId: 3),
+              ]),
             ),
             playlistRepositoryProvider.overrideWithValue(
               _FakePlaylistRepository(db, const []),
@@ -250,6 +256,14 @@ void main() {
       );
       await tester.pumpAndSettle();
     }
+
+    Finder toggleFor(String name) => find.descendant(
+          of: find.ancestor(
+            of: find.text(name),
+            matching: find.byType(InkWell),
+          ),
+          matching: find.byTooltip('Hide what it contains'),
+        );
 
     testWidgets('a playlist with nothing inside offers no toggle',
         (tester) async {
@@ -265,6 +279,23 @@ void main() {
       );
     });
 
+    testWidgets('an included playlist does not also float at the top level',
+        (tester) async {
+      // The bug this whole tree exists to fix: before, "Late night" and
+      // "Focus" each got their own untouched, unindented row up top, with no
+      // sign they were included anywhere.
+      await pump(tester);
+
+      expect(find.text('Late night'), findsOneWidget);
+      expect(find.text('Focus'), findsOneWidget);
+
+      final lateNight = tester.getRect(find.text('Late night'));
+      final focus = tester.getRect(find.text('Focus'));
+      final root = tester.getRect(find.text('Coding sessions'));
+      expect(lateNight.left, greaterThan(root.left));
+      expect(focus.left, greaterThan(lateNight.left));
+    });
+
     testWidgets('collapsing a playlist hides everything nested under it',
         (tester) async {
       await pump(tester);
@@ -272,7 +303,7 @@ void main() {
       expect(find.text('Late night'), findsOneWidget);
       expect(find.text('Focus'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Hide what it contains'));
+      await tester.tap(toggleFor('Coding sessions'));
       await tester.pumpAndSettle();
 
       expect(find.text('Coding sessions'), findsOneWidget);
@@ -284,7 +315,7 @@ void main() {
         (tester) async {
       await pump(tester);
 
-      await tester.tap(find.byTooltip('Hide what it contains'));
+      await tester.tap(toggleFor('Coding sessions'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Show what it contains'));
       await tester.pumpAndSettle();
