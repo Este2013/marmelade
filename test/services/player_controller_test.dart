@@ -57,9 +57,25 @@ class _EndingEngine implements PlaybackEngine {
   /// snapshot claims to be describing.
   String? lastLoadedPath;
 
+  /// Set to make the next load hang, the way a wedged device does.
+  var hangOnNextLoad = false;
+  Completer<Duration>? _hung;
+
+  void releaseHungLoad() {
+    _hung?.complete(const Duration(minutes: 3));
+    _hung = null;
+  }
+
   @override
   Future<Duration> load(String filePath, {AudioLoadMode? mode}) async {
     voiceFinished = false;
+    if (hangOnNextLoad) {
+      // Consumed, so only the command it was set for hangs -- the queued one
+      // behind it runs normally, which is the whole point of the test.
+      hangOnNextLoad = false;
+      _hung = Completer<Duration>();
+      return _hung!.future;
+    }
     // A real load is not instant, and the gap is where two overlapping
     // commands used to interleave.
     await Future<void>.delayed(Duration.zero);
@@ -142,6 +158,9 @@ void main() {
             queueRepository: QueueRepository(db),
             libraryRepository: LibraryRepository(db),
             db: db,
+            // Short, so the test that proves a wedged command cannot hold the
+            // queue does not cost the suite the ten seconds the app allows.
+            commandTimeout: const Duration(milliseconds: 300),
           ),
         ),
       ],
@@ -239,6 +258,35 @@ void main() {
 
       expect(container.read(playerProvider).currentIndex, 1);
       expect(container.read(playerProvider).current?.trackId, two);
+    });
+  });
+
+  /// One stuck command must not take the player with it.
+  ///
+  /// Track changes run one at a time, which fixed a real bug and introduced
+  /// the risk of another: a load that never returns would hold every later
+  /// command behind it, and the first thing anybody would notice is the media
+  /// keys going dead.
+  group('a command that never finishes', () {
+    test('lets the next one through, and the player still answers', () async {
+      final one = await playableTrack('One');
+      final two = await playableTrack('Two');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, two]);
+
+      // A load that hangs, the way a wedged audio device would.
+      engine.hangOnNextLoad = true;
+      final stuck = controller.playAt(1);
+
+      // The command behind it, which must not wait forever. The controller
+      // under test is built with a 300ms budget, so this returns quickly
+      // rather than after the ten seconds the app allows.
+      await controller.playAt(0).timeout(const Duration(seconds: 5));
+
+      expect(container.read(playerProvider).currentIndex, 0);
+      expect(container.read(playerProvider).isPlaying, isTrue);
+      engine.releaseHungLoad();
+      await stuck;
     });
   });
 

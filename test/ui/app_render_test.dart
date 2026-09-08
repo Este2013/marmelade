@@ -189,6 +189,9 @@ class _LongQueuePlayer extends PlayerController {
         ],
         current: _playing.current,
       );
+
+  /// Moves to another row, the way finishing a track or pressing skip does.
+  void moveTo(int next) => state = state.copyWith(currentIndex: next);
 }
 
 /// Something queued, nothing loaded. The "ready to play" state.
@@ -1069,6 +1072,13 @@ void main() {
   });
 
   /// The scroll position of the queue list.
+  /// The queue's own notifier, so a test can move the playing row the way
+  /// finishing a track does -- the same notifier changing underneath the
+  /// pane, rather than a different player being swapped in.
+  _LongQueuePlayer player(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(AppShell)))
+          .read(playerProvider.notifier) as _LongQueuePlayer;
+
   ScrollPosition queueScroll(WidgetTester tester) => tester
       .state<ScrollableState>(
         find.descendant(
@@ -1094,6 +1104,80 @@ void main() {
       moreOrLessEquals(20 * 56, epsilon: 1),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the queue follows the track it is playing', (tester) async {
+    // Playing row on screen, and the next one arrives: the list moves one row
+    // under it, so the row you are listening to stays where you are looking.
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+    final before = queueScroll(tester).pixels;
+
+    player(tester).moveTo(21);
+    await settle(tester);
+
+    expect(queueScroll(tester).pixels, moreOrLessEquals(before + 56, epsilon: 1));
+  });
+
+  testWidgets('and follows it back when you go the other way', (tester) async {
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+    final before = queueScroll(tester).pixels;
+
+    player(tester).moveTo(19);
+    await settle(tester);
+
+    expect(queueScroll(tester).pixels, moreOrLessEquals(before - 56, epsilon: 1));
+  });
+
+  testWidgets('but not while you are reading somewhere else', (tester) async {
+    // Yanking the list out from under whatever is being looked at is worse
+    // than leaving it; that is what the button is for.
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+    queueScroll(tester).jumpTo(0);
+    await settle(tester);
+
+    player(tester).moveTo(21);
+    await settle(tester);
+
+    expect(queueScroll(tester).pixels, moreOrLessEquals(0, epsilon: 1));
+  });
+
+  testWidgets('offers a way back once the playing row is off screen',
+      (tester) async {
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+    expect(find.text('Jump to playing'), findsNothing,
+        reason: 'nothing to offer while it is in view');
+
+    // Scrolled to the top, so the playing row is below.
+    queueScroll(tester).jumpTo(0);
+    await settle(tester);
+    expect(find.text('Jump to playing'), findsOne);
+    expect(find.byIcon(Icons.arrow_downward), findsOne,
+        reason: 'points the way back');
+
+    await tester.tap(find.text('Jump to playing'));
+    await settle(tester);
+
+    expect(queueScroll(tester).pixels, moreOrLessEquals(20 * 56, epsilon: 1));
+    expect(find.text('Jump to playing'), findsNothing);
+  });
+
+  testWidgets('and points up when the playing row is above', (tester) async {
+    await open(tester, app: buildApp(longQueue: (index: 5, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    queueScroll(tester).jumpTo(queueScroll(tester).maxScrollExtent);
+    await settle(tester);
+
+    expect(find.byIcon(Icons.arrow_upward), findsOne);
   });
 
   testWidgets('a track near the end scrolls only as far as the queue goes',

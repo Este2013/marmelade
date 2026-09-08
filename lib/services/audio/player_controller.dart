@@ -118,12 +118,24 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     required this.queueRepository,
     required this.libraryRepository,
     required this.db,
+    this.commandTimeout = const Duration(seconds: 10),
   });
 
   final PlaybackEngine engine;
   final QueueRepository queueRepository;
   final LibraryRepository libraryRepository;
   final MarmeladeDatabase db;
+
+  /// How long one command may hold the queue before the next one goes anyway.
+  ///
+  /// Serialising these fixed a real bug and introduced the risk of another: a
+  /// load that never returns would hold every later command behind it
+  /// forever, and the first thing anybody would notice is that the media keys
+  /// had stopped working. Generous enough that a slow file on a slow drive
+  /// still finishes in its turn, short enough that a wedged one costs a pause
+  /// rather than the player. Injectable so a test can prove that without
+  /// waiting ten seconds for it.
+  final Duration commandTimeout;
 
   StreamSubscription<void>? _completionSubscription;
 
@@ -155,7 +167,14 @@ class PlayerController extends Notifier<PlayerSnapshot> {
 
   /// Runs [action] after whatever is already in flight.
   Future<void> _queued(Future<void> Function() action) {
-    final next = _pending.then((_) => action());
+    final next = _pending.then((_) => action().timeout(
+          commandTimeout,
+          onTimeout: () => AppLog.instance.error(
+            'a playback command did not finish in '
+            '${commandTimeout.inMilliseconds}ms, letting the next one through',
+            tag: 'player',
+          ),
+        ));
     // Swallowed here so one failed load cannot strand every later command
     // behind a broken future; the caller still sees its own error.
     _pending = next.catchError((Object _) {});

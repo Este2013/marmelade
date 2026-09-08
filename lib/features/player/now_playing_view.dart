@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../services/audio/player_controller.dart';
 import 'lyrics_pane.dart';
 import '../../data/repositories/queue_repository.dart';
 import '../../domain/models/library_views.dart';
@@ -215,6 +216,12 @@ class _NowPlayingPane extends ConsumerWidget {
                   id: track.trackId,
                   title: track.title,
                   fallbackIcon: Icons.music_note_outlined,
+                  // Still opens large on a click; just does not offer to
+                  // change the picture. This is the view you look at while
+                  // listening, and a hover button over the artwork is an
+                  // editing affordance in a place nobody is editing -- the
+                  // album, artist and track pages all still have it.
+                  editable: false,
                 ),
               ),
               SizedBox(height: oneLine ? 20 : 28),
@@ -456,8 +463,15 @@ class _QueuePane extends ConsumerStatefulWidget {
   ConsumerState<_QueuePane> createState() => _QueuePaneState();
 }
 
+/// Where the playing row sits relative to what is on screen.
+enum _Playing { visible, above, below }
+
 class _QueuePaneState extends ConsumerState<_QueuePane> {
   late final ScrollController _scroll;
+
+  /// Recomputed on every scroll, so the button offering to go back to the
+  /// playing row can appear at the end it actually went off.
+  var _playing = _Playing.visible;
 
   @override
   void initState() {
@@ -471,22 +485,91 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
     );
     // The offset may be past the end of a short queue, and maxScrollExtent is
     // not known until the list has been laid out.
+    _scroll.addListener(_syncPlayingPosition);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
       final max = _scroll.position.maxScrollExtent;
       if (_scroll.offset > max) _scroll.jumpTo(max);
+      _syncPlayingPosition();
     });
   }
 
   @override
   void dispose() {
+    _scroll.removeListener(_syncPlayingPosition);
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// Where the row at [index] sits relative to the viewport.
+  _Playing _whereIs(int index) {
+    if (index < 0 || !_scroll.hasClients) return _Playing.visible;
+    final top = index * _QueuePane.rowExtent;
+    final viewTop = _scroll.offset;
+    final viewBottom = viewTop + _scroll.position.viewportDimension;
+    // Half a row's worth of overlap counts as visible: a row peeking in at
+    // the edge is on screen as far as anybody looking at it is concerned.
+    if (top + _QueuePane.rowExtent / 2 <= viewTop) return _Playing.above;
+    if (top + _QueuePane.rowExtent / 2 >= viewBottom) return _Playing.below;
+    return _Playing.visible;
+  }
+
+  void _syncPlayingPosition() {
+    final next = _whereIs(ref.read(playerProvider).currentIndex);
+    if (next != _playing && mounted) setState(() => _playing = next);
+  }
+
+  /// Keeps the playing row where it is on screen as the queue moves under it.
+  ///
+  /// Only for a step to the next or previous track, and only when the row that
+  /// was playing could be seen. Following a jump -- someone clicking a row
+  /// eight down -- would drag the list eight rows to put that one where the
+  /// old one had been, which is a lurch, not a follow. And following a track
+  /// change while the queue is scrolled somewhere else entirely would yank
+  /// the list out from under whatever is being read; that is what the button
+  /// is for instead.
+  void _followTrackChange(int? previous, int next) {
+    if (previous == null || !_scroll.hasClients) return;
+    final step = next - previous;
+    if (step.abs() != 1) return;
+    if (_whereIs(previous) != _Playing.visible) return;
+
+    final target = (_scroll.offset + step * _QueuePane.rowExtent)
+        .clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Puts the playing row at the top, the way opening the pane does.
+  void _scrollToPlaying() {
+    if (!_scroll.hasClients) return;
+    final index = ref.read(playerProvider).currentIndex;
+    if (index < 0) return;
+    _scroll.animateTo(
+      (index * _QueuePane.rowExtent).clamp(0.0, _scroll.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final player = ref.watch(playerProvider);
+    // Listened rather than compared against a remembered index: this pane is
+    // rebuilt for plenty of reasons that are not a track change, and acting
+    // on the ones that are is exactly what listen is for.
+    ref.listen(
+      playerProvider.select((s) => s.currentIndex),
+      (previous, next) {
+        _followTrackChange(previous, next);
+        // After the follow, so the button reflects where the row ended up.
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _syncPlayingPosition());
+      },
+    );
     final controller = ref.read(playerProvider.notifier);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -546,7 +629,33 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
                   title: 'The queue is empty',
                   message: 'Tracks you play or add will line up here.',
                 )
-              : ReorderableListView.builder(
+              : Stack(
+                  children: [
+                    Positioned.fill(child: _queueList(player, controller)),
+                    // At the end it went off, pointing the way back, so the
+                    // button says which direction it is without reading it.
+                    if (_playing != _Playing.visible && player.currentIndex >= 0)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: _playing == _Playing.above ? 8 : null,
+                        bottom: _playing == _Playing.below ? 28 : null,
+                        child: Center(
+                          child: _ScrollToPlaying(
+                            above: _playing == _Playing.above,
+                            onPressed: _scrollToPlaying,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _queueList(PlayerSnapshot player, PlayerController controller) {
+    return ReorderableListView.builder(
                   scrollController: _scroll,
                   itemExtent: _QueuePane.rowExtent,
                   padding: const EdgeInsets.only(bottom: 24),
@@ -581,9 +690,30 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
                       onRemove: () => controller.removeFromQueue(entry.itemId),
                     );
                   },
-                ),
-        ),
-      ],
+    );
+  }
+}
+
+/// A way back to the row that is playing, once it has scrolled out of sight.
+class _ScrollToPlaying extends StatelessWidget {
+  const _ScrollToPlaying({required this.above, required this.onPressed});
+
+  /// True when the playing row is off the top, which decides both which way
+  /// the arrow points and which edge this sits at.
+  final bool above;
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.tonalIcon(
+      onPressed: onPressed,
+      icon: Icon(above ? Icons.arrow_upward : Icons.arrow_downward, size: 16),
+      label: const Text('Jump to playing'),
+      style: FilledButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        elevation: 3,
+      ),
     );
   }
 }
