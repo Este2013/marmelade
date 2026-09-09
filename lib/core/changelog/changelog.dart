@@ -98,6 +98,54 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.3.1',
+    date: '2026-09-09',
+    headline: 'The real reason some tracks silently refused to play, found '
+        'and fixed.',
+    changes: [
+      Change.fixed(
+        'Some tracks failed to play with no explanation, always on files '
+        'under deeply nested folders. The cause: SoLoud opens files by path '
+        'natively, which on Windows is capped at 260 characters regardless '
+        'of how long a path the OS otherwise allows -- reading the file '
+        "ourselves and handing SoLoud the bytes directly sidesteps it, "
+        'whatever the path looks like.',
+      ),
+      Change.added(
+        'A failed play now says so on screen, with a Details button for the '
+        'exact log lines -- which file, which codec, the raw error -- and a '
+        'Copy button. Session logging is far more thorough throughout '
+        'playback, and a new Log level setting controls how much of it gets '
+        'written.',
+      ),
+      Change.added(
+        'A right-click menu on every track row, everywhere one shows up -- '
+        'previously only Songs had one. Open in Explorer and Edit track are '
+        'new; the rest (play next, queue, playlists, tags) already existed '
+        'in Songs and now reach every other list too.',
+      ),
+      Change.changed(
+        'The "Add a tag" dialog shows what a track, album or artist already '
+        'carries as removable chips, and applies every change immediately '
+        'instead of collecting one pick to apply when the dialog closes.',
+      ),
+      Change.added(
+        "A tag's own page lists the artists it reaches, the same way it "
+        'already listed albums: artists wearing the tag directly first, '
+        'then artists whose entire output happens to carry it anyway, both '
+        'ordered by how much of their work is tagged.',
+      ),
+      Change.changed(
+        "A track's Picture section shows the real fallback chain -- artist, "
+        "then album, then the track's own picture, in the order each "
+        'overrides the last -- instead of a single control with no sign of '
+        'where the picture actually comes from. Whichever stage wins is '
+        'highlighted; the album and artist cards jump to that page, and the '
+        "track's own picture can be replaced or removed right there.",
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.3.0',
     date: '2026-09-08',
     headline: 'A detail page keeps its name in reach, and a playlist tree '
