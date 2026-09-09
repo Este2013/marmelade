@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show ImageFilter;
 
@@ -29,6 +30,7 @@ import '../core/debug/screenshotter.dart';
 import '../core/logging/app_log.dart';
 import '../data/db/database.dart' show SearchEntity;
 import '../data/db/enums.dart' show ScanTrigger;
+import '../services/audio/playback_engine.dart' show PlaybackStatus;
 import '../widgets/section_title.dart';
 import '../widgets/time_text.dart';
 import 'providers.dart';
@@ -83,6 +85,16 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   late final AnimationController _bar = AnimationController(duration: const Duration(milliseconds: 340), reverseDuration: const Duration(milliseconds: 240), vsync: this);
 
   late final Animation<double> _barCurve = CurvedAnimation(parent: _bar, curve: Curves.easeOutCubic);
+
+  /// Closes the current playback-error SnackBar once its own time is up.
+  ///
+  /// Kept as a real [Timer] rather than a bare `Future.delayed`, and
+  /// cancelled in [dispose], because ScaffoldMessenger's own auto-dismiss
+  /// only runs while this route is the current one -- opening the error's
+  /// own "Details" dialog interrupts that, and nothing afterwards prompts it
+  /// to notice the route is current again, so the SnackBar would otherwise
+  /// sit there until something unrelated happens to rebuild the messenger.
+  Timer? _errorSnackBarTimer;
 
   /// Hardware media keys (Fn+play/pause, next, previous).
   ///
@@ -220,6 +232,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   @override
   void dispose() {
+    _errorSnackBarTimer?.cancel();
     _mediaKeysChannel.setMethodCallHandler(null);
     _shade.dispose();
     _bar.dispose();
@@ -527,6 +540,33 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     // Nothing playing and nothing queued means no player bar at all, rather
     // than a permanent strip saying so.
     ref.listen(playerProvider.select((s) => s.hasTrack || s.hasQueue), (_, canPlay) => _syncBar(canPlay));
+
+    // A failed play used to leave nothing on screen at all -- the state
+    // carried an errorMessage, but nothing ever read it. Whoever pressed play
+    // deserves to see why the track they picked never made a sound, not just
+    // a log line they would not think to look for.
+    ref.listen(playerProvider.select((s) => (s.status, s.errorMessage)),
+        (_, next) {
+      final (status, message) = next;
+      if (status == PlaybackStatus.error && message != null) {
+        const shownFor = Duration(seconds: 8);
+        final controller = ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: shownFor,
+            backgroundColor: scheme.errorContainer,
+            content: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
+            action: SnackBarAction(
+              label: 'Details',
+              textColor: scheme.onErrorContainer,
+              onPressed: () => _showPlaybackErrorDetails(context, message),
+            ),
+          ),
+        );
+        // A new error replaces whatever the last one was waiting to close.
+        _errorSnackBarTimer?.cancel();
+        _errorSnackBarTimer = Timer(shownFor, controller.close);
+      }
+    });
 
     return CallbackShortcuts(
       bindings: {
@@ -894,6 +934,54 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     // provider, so there is nothing a dedicated widget would buy over this.
     LibrarySection.settings => const SectionTitle(icon: Icons.settings, label: 'Settings'),
   };
+}
+
+/// Everything worth knowing about the playback error just announced, in a
+/// dialog rather than a SnackBar that vanishes in a few seconds.
+///
+/// The SnackBar's own text is already the short, human version; this adds
+/// the recent log lines around it -- the resolved file, the codec, the raw
+/// exception and its stack -- which is exactly what actually diagnosing a
+/// failure needs and a SnackBar has no room for.
+void _showPlaybackErrorDetails(BuildContext context, String message) {
+  final logLines = AppLog.instance.recentLines(limit: 40).join('\n');
+  final fullText = '$message\n\n$logLines';
+
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Playback error'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: SelectableText(
+            fullText,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: fullText));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Copied'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          },
+          icon: const Icon(Icons.copy_all_outlined, size: 18),
+          label: const Text('Copy'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// The navigation rail: the app name at the top, Settings at the foot.

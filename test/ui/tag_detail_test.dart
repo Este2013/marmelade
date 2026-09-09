@@ -36,6 +36,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     List<ArtistCard> artists = const [],
+    List<ArtistCard> artistsByTracks = const [],
     List<AlbumCard> albums = const [],
     List<TrackRow> tracks = const [],
   }) async {
@@ -56,6 +57,8 @@ void main() {
           // cancelled, and a widget test tears the scope down after the last
           // pump, so the binding sees a timer pending after the tree is gone.
           tagArtistsProvider(10).overrideWith((ref) => Stream.value(artists)),
+          tagArtistsByTracksProvider(10)
+              .overrideWith((ref) => Stream.value(artistsByTracks)),
           tagAlbumsProvider(10).overrideWith((ref) => Stream.value(albums)),
         ],
         child: MaterialApp(
@@ -108,32 +111,11 @@ void main() {
     expect(find.text('Delete Hardcore?'), findsOneWidget);
   });
 
-  testWidgets('names the artists wearing the tag, above the songs',
-      (tester) async {
-    // A tag on a person is a statement about them, not about one recording,
-    // so the page that says what this tag means has to say who wears it --
-    // otherwise the only trace is several hundred tracks appearing below for
-    // no visible reason.
-    await pump(tester, artists: const [
-      ArtistCard(
-        id: 4,
-        name: 'Camellia',
-        kind: 'person',
-        trackCount: 12,
-        albumCount: 3,
-      ),
-    ]);
-
-    expect(find.text('1 artist with this tag'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'Camellia'), findsOneWidget);
-  });
-
-  testWidgets('says nothing about artists when none wear it', (tester) async {
+  testWidgets('says nothing about artists when none qualify', (tester) async {
     await pump(tester);
 
-    expect(find.textContaining('with this tag'), findsNothing);
+    expect(find.textContaining('artist'), findsNothing);
   });
-
 
   /// A track on an album, or a single when [albumId] is null.
   TrackRow track(int id, {int? albumId, String? albumTitle}) => TrackRow(
@@ -153,6 +135,68 @@ void main() {
     trackCount: 4,
     imagePath: null,
   );
+
+  group('the artists row', () {
+    testWidgets('names the artists wearing the tag, below the albums row',
+        (tester) async {
+      // A tag on a person is a statement about them, not about one
+      // recording, so the page that says what this tag means has to say who
+      // wears it -- otherwise the only trace is several hundred tracks
+      // appearing below for no visible reason.
+      await pump(
+        tester,
+        albums: const [album],
+        artists: const [
+          ArtistCard(
+            id: 4,
+            // Distinct from the album fixture's own artistName ("Camellia"):
+            // that name already appears once as the album tile's subtitle,
+            // and this test needs to find the artist tile unambiguously.
+            name: 'Ongomato',
+            kind: 'person',
+            trackCount: 12,
+            albumCount: 3,
+          ),
+        ],
+      );
+
+      expect(find.text('1 artist'), findsOneWidget);
+      expect(find.text('Ongomato'), findsOneWidget);
+
+      // Below the albums row, not above it.
+      expect(
+        tester.getTopLeft(find.text(album.title)).dy <
+            tester.getTopLeft(find.text('Ongomato')).dy,
+        isTrue,
+      );
+    });
+
+    testWidgets(
+        'artists wearing the tag directly come before those reached only '
+        'through every one of their tracks, each ordered by track count',
+        (tester) async {
+      await pump(
+        tester,
+        artists: const [
+          // Chosen so a naive "sort everyone by track count" would
+          // interleave the groups (Cascaded Big's 20 outranks Direct
+          // Small's 3) -- the test is only meaningful if that would show up
+          // as a different order than the one actually expected.
+          ArtistCard(id: 1, name: 'Direct Big', kind: 'person', trackCount: 50, albumCount: 4),
+          ArtistCard(id: 2, name: 'Direct Small', kind: 'person', trackCount: 3, albumCount: 1),
+        ],
+        artistsByTracks: const [
+          ArtistCard(id: 3, name: 'Cascaded Big', kind: 'person', trackCount: 20, albumCount: 2),
+          ArtistCard(id: 4, name: 'Cascaded Small', kind: 'person', trackCount: 1, albumCount: 1),
+        ],
+      );
+
+      double left(String name) => tester.getTopLeft(find.text(name)).dx;
+      expect(left('Direct Big'), lessThan(left('Direct Small')));
+      expect(left('Direct Small'), lessThan(left('Cascaded Big')));
+      expect(left('Cascaded Big'), lessThan(left('Cascaded Small')));
+    });
+  });
 
   group('what the tag reaches', () {
     testWidgets('lists the albums above the songs', (tester) async {

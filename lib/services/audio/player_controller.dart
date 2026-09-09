@@ -227,6 +227,16 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     QueueSource source = QueueSource.user,
     int? sourceRefId,
   }) async {
+    AppLog.instance.info(
+      'play requested',
+      tag: 'player',
+      fields: {
+        'trackCount': trackIds.length,
+        'startIndex': startIndex,
+        'source': source.name,
+        'sourceRefId': sourceRefId,
+      },
+    );
     if (trackIds.isEmpty) return;
     await queueRepository.replaceWith(
       trackIds,
@@ -247,10 +257,20 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     if (index < 0 || index >= queue.length) return;
 
     final entry = queue[index];
+    AppLog.instance.debug(
+      'resolving track to play',
+      tag: 'player',
+      fields: {'trackId': entry.trackId, 'title': entry.title, 'index': index},
+    );
     final playable = await libraryRepository.playable(entry.trackId);
     if (playable == null) {
       // Every file for this track is missing. Say so and move on rather than
       // failing silently or stalling the queue.
+      AppLog.instance.warn(
+        'no playable file for track',
+        tag: 'player',
+        fields: {'trackId': entry.trackId, 'title': entry.title},
+      );
       state = state.copyWith(
         currentIndex: index,
         status: PlaybackStatus.error,
@@ -262,6 +282,17 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     await _recordFinishedPlay();
 
     try {
+      AppLog.instance.debug(
+        'loading track file',
+        tag: 'player',
+        fields: {
+          'trackId': entry.trackId,
+          'path': playable.filePath,
+          'codec': playable.codec,
+          'bitrate': playable.bitrate,
+          'lossless': playable.lossless,
+        },
+      );
       final duration = await engine.load(playable.filePath);
       // ReplayGain is applied as a separate offset, so the user's volume
       // setting is not rewritten by per-track normalisation.
@@ -278,7 +309,23 @@ class PlayerController extends Notifier<PlayerSnapshot> {
         duration: duration == Duration.zero ? playable.duration : duration,
         clearError: true,
       );
-    } catch (e) {
+      AppLog.instance.info(
+        'playing',
+        tag: 'player',
+        fields: {
+          'trackId': entry.trackId,
+          'title': entry.title,
+          'durationMs': duration.inMilliseconds,
+        },
+      );
+    } catch (e, stack) {
+      AppLog.instance.error(
+        'could not play track',
+        tag: 'player',
+        error: e,
+        stack: stack,
+        fields: {'trackId': entry.trackId, 'title': entry.title, 'path': playable.filePath},
+      );
       state = state.copyWith(
         status: PlaybackStatus.error,
         currentIndex: index,
@@ -339,6 +386,13 @@ class PlayerController extends Notifier<PlayerSnapshot> {
 
   Future<void> _next({bool userInitiated = true}) async {
     final index = state.currentIndex;
+    if (userInitiated) {
+      AppLog.instance.info(
+        'next requested',
+        tag: 'player',
+        fields: {'fromIndex': index, 'queueLength': state.queue.length},
+      );
+    }
     if (state.repeat == QueueRepeat.one && !userInitiated) {
       engine.seek(Duration.zero);
       await engine.play();
@@ -377,6 +431,11 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   Future<void> _previous({
     Duration restartThreshold = const Duration(seconds: 3),
   }) async {
+    AppLog.instance.info(
+      'previous requested',
+      tag: 'player',
+      fields: {'fromIndex': state.currentIndex, 'position': engine.position.inMilliseconds},
+    );
     if (engine.position > restartThreshold) {
       engine.seek(Duration.zero);
       return;

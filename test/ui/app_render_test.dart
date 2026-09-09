@@ -2316,6 +2316,63 @@ void main() {
     });
   });
 
+  group('a playback error', () {
+    // Every fixture track here has no media_files row at all (see setUp),
+    // so playing any of them takes the real failure path in
+    // PlayerController._playAt without needing a track built specially for
+    // it.
+    Future<void> triggerError(WidgetTester tester) async {
+      await ProviderScope.containerOf(tester.element(find.byType(AppShell)))
+          .read(playerProvider.notifier)
+          .playTrack(_allTracks.first.id);
+      await settle(tester);
+    }
+
+    testWidgets('shows in the error colours from the theme, not the default',
+        (tester) async {
+      await open(tester);
+      await triggerError(tester);
+
+      final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+      final scheme = Theme.of(
+        tester.element(find.byType(AppShell)),
+      ).colorScheme;
+      expect(snackBar.backgroundColor, scheme.errorContainer);
+
+      final text = tester.widget<Text>(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.textContaining('No playable file'),
+        ),
+      );
+      expect(text.style?.color, scheme.onErrorContainer);
+    });
+
+    testWidgets('offers details, with a way to copy them', (tester) async {
+      await open(tester);
+      await triggerError(tester);
+
+      await tester.tap(find.text('Details'));
+      await settle(tester);
+
+      expect(find.text('Playback error'), findsOneWidget);
+      // The dialog's own content, not just the SnackBar's -- the short
+      // message plus whatever the log had around it.
+      expect(find.textContaining('No playable file'), findsWidgets);
+      expect(find.widgetWithText(TextButton, 'Copy'), findsOneWidget);
+
+      // Not asserting on the "Copied" confirmation that follows: it waits on
+      // a real Clipboard platform-channel round trip, which -- like real
+      // dart:io calls from a tap handler -- does not reliably resolve inside
+      // a widget test's event loop. Tapping without a crash is what is
+      // actually observable here; the copied text itself belongs in a plain,
+      // non-widget test if it is ever worth pinning down further.
+      await tester.tap(find.text('Copy'));
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('files that have gone missing', () {
     testWidgets('says so on launch, without being asked', (tester) async {
       // The alternative is finding out by clicking a song and hearing

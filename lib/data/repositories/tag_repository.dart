@@ -359,6 +359,52 @@ class TagRepository {
         .map((rows) => [for (final row in rows) row.read<int>('artist_id')]);
   }
 
+  /// Artists nobody tagged directly, but whose every track carries the tag
+  /// anyway -- every song they are credited on happens to be, say, a live
+  /// recording, without "live" ever having been put on them as a person.
+  ///
+  /// The tag's own reach excludes the artist cascade ('artist' <>
+  /// [source]): an artist here would otherwise trivially qualify -- their own
+  /// tag would reach every one of their tracks by definition -- which is
+  /// exactly the case [watchArtistIdsWithTag] already covers.
+  Stream<List<int>> watchArtistIdsWhollyTaggedByTracks(int tagId) {
+    return db
+        .customSelect(
+          '''
+      WITH reach AS (
+        SELECT DISTINCT track_id FROM v_track_effective_tags
+         WHERE tag_id = ?1 AND source <> 'artist'
+      ),
+      totals AS (
+        SELECT tc.artist_id AS artist_id,
+               COUNT(DISTINCT tc.track_id) AS total,
+               SUM(CASE WHEN tc.track_id IN (SELECT track_id FROM reach)
+                        THEN 1 ELSE 0 END) AS reached
+          FROM track_credits tc
+         GROUP BY tc.artist_id
+      )
+      SELECT totals.artist_id AS artist_id
+        FROM totals
+       WHERE totals.total > 0 AND totals.total = totals.reached
+         AND totals.artist_id NOT IN (
+           SELECT artist_id FROM artist_tags WHERE tag_id = ?1
+         )
+      ''',
+          variables: [Variable(tagId)],
+          readsFrom: {
+            db.trackCredits,
+            db.artistTags,
+            db.trackTags,
+            db.albumTags,
+            db.playlistTags,
+            db.playlistItems,
+            db.tracks,
+          },
+        )
+        .watch()
+        .map((rows) => [for (final row in rows) row.read<int>('artist_id')]);
+  }
+
   /// The albums represented among the tracks carrying a tag.
   ///
   /// Not "albums somebody tagged": a tag on a record and a tag on eight of

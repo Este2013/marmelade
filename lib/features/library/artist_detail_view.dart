@@ -13,6 +13,7 @@ import '../../widgets/expandable_artwork.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/title_with_actions.dart';
 import '../../widgets/track_list.dart';
+import 'bulk_actions.dart';
 import '../edit/artist_links_dialog.dart';
 import '../edit/link_icon_button.dart';
 import '../tags/tag_line.dart';
@@ -61,6 +62,14 @@ class ArtistDetailView extends ConsumerWidget {
             onOpenAlbum: onOpenAlbum,
             onOpenArtist: onOpenArtist,
             onEditTrack: onEditTrack,
+            menuFor: (track) => trackContextMenu(
+              context,
+              ref,
+              track,
+              onOpenAlbum: onOpenAlbum,
+              onOpenArtist: onOpenArtist,
+              onEditTrack: onEditTrack,
+            ),
             // Headed sections per release, which is also the play order: the
             // list is what gets queued, so scattering an album's running order
             // scatters playback too.

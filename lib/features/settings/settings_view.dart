@@ -70,6 +70,7 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
     final log = AppLog.instance;
     final file = log.file;
     final lines = _expanded ? log.recentLines(limit: 200) : const <String>[];
+    final level = LogLevel.of(ref.watch(logLevelProvider));
 
     return _Section(
       title: 'Diagnostics',
@@ -109,6 +110,29 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
                 icon: const Icon(Icons.folder_open_outlined),
               ),
             ],
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.tune),
+          title: const Text('Log level'),
+          subtitle: Text(
+            'What gets written from now on. Lower levels write more, and '
+            'grow the file faster.',
+          ),
+          trailing: DropdownButton<LogLevel>(
+            value: level,
+            items: [
+              for (final option in LogLevel.values)
+                DropdownMenuItem(value: option, child: Text(option.label)),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              // Applied immediately, not only on the next launch: someone
+              // turning this up is usually about to reproduce something right
+              // now, not next time they open the app.
+              log.minLevel = value;
+              ref.read(logLevelProvider.notifier).set(value.name);
+            },
           ),
         ),
         ListTile(

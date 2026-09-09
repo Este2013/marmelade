@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_soloud/flutter_soloud.dart' as sl;
@@ -115,8 +116,19 @@ class SoLoudEngine implements PlaybackEngine {
     _lastKnownPosition = Duration.zero;
 
     try {
-      final source = await _soloud.loadFile(
+      // Read the bytes ourselves and hand them to loadMem rather than
+      // pointing loadFile at the path: SoLoud's own file open is a native
+      // fopen/CreateFile call, capped at Windows' classic 260-character
+      // MAX_PATH regardless of what the OS or a manifest allows -- confirmed
+      // against this app's own library, where every track whose full path
+      // ran past that failed with SoLoudFileNotFoundException despite the
+      // file plainly existing (dart:io has no such limit on Windows). Handing
+      // over already-read bytes means the native side never opens the path
+      // at all, so the length of it stops being its problem.
+      final bytes = await File(filePath).readAsBytes();
+      final source = await _soloud.loadMem(
         filePath,
+        bytes,
         mode: (mode ?? defaultLoadMode) == AudioLoadMode.memory
             ? sl.LoadMode.memory
             : sl.LoadMode.disk,

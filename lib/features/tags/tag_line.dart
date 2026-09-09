@@ -18,15 +18,14 @@ Future<void> addTagTo(
   WidgetRef ref,
   TagTarget target,
   int id,
-) async {
-  final picked = await askForTag(context, ref, title: 'Add a tag');
-  if (picked == null) return;
-  await ref.read(tagRepositoryProvider).attachByName(
-        target,
-        id,
-        picked.name,
-        categoryId: picked.categoryId,
-      );
+) {
+  return askForTag(
+    context,
+    ref,
+    title: 'Add a tag',
+    target: target,
+    ids: {id},
+  );
 }
 
 /// One line of tags on a detail page, with a way to add another.

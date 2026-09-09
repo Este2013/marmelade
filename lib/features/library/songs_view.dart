@@ -143,64 +143,16 @@ class SongsView extends ConsumerWidget {
     final ids = selection.contains(track.id) && selection.isNotEmpty
         ? selection.ids.toList()
         : [track.id];
-    final many = ids.length > 1;
-    final player = ref.read(playerProvider.notifier);
-
-    return [
-      MenuAction(
-        label: many ? 'Play these ${ids.length}' : 'Play',
-        icon: Icons.play_arrow,
-        onSelected: () => player.playAll(ids),
-      ),
-      MenuAction(
-        label: 'Play next',
-        icon: Icons.playlist_play,
-        onSelected: () => player.playNext(ids),
-      ),
-      MenuAction(
-        label: 'Add to the queue',
-        icon: Icons.playlist_add,
-        onSelected: () => player.addToQueue(ids),
-      ),
-      const MenuAction.separator(),
-      MenuAction(
-        label: 'Add to a playlist',
-        icon: Icons.library_add_outlined,
-        onSelected: () => addTracksToPlaylist(context, ref, ids),
-      ),
-      MenuAction(
-        label: many ? 'Tag these ${ids.length} songs' : 'Add a tag',
-        icon: Icons.label_outline,
-        onSelected: () => tagSelection(
-          context,
-          ref,
-          target: TagTarget.track,
-          ids: ids.toSet(),
-          noun: 'song',
-        ),
-      ),
-      const MenuAction.separator(),
-      if (!many && track.albumId != null)
-        MenuAction(
-          label: 'Go to the album',
-          icon: Icons.album_outlined,
-          onSelected: () => onOpenAlbum(track.albumId!),
-        ),
-      if (!many && track.credits.isNotEmpty)
-        MenuAction(
-          label: 'Go to ${track.credits.first.name}',
-          icon: Icons.person_outline,
-          onSelected: () => onOpenArtist(track.credits.first.artistId),
-        ),
-      if (!many && onEditTrack != null)
-        MenuAction(
-          label: 'Edit',
-          icon: Icons.edit_outlined,
-          onSelected: () => onEditTrack!(track.id),
-        ),
-    ];
+    return trackContextMenu(
+      context,
+      ref,
+      track,
+      ids: ids,
+      onOpenAlbum: onOpenAlbum,
+      onOpenArtist: onOpenArtist,
+      onEditTrack: onEditTrack,
+    );
   }
-
 }
 
 /// Title, count, filter, shuffle and sort -- the songs section's own

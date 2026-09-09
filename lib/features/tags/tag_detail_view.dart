@@ -10,6 +10,7 @@ import '../../widgets/title_with_actions.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../library/bulk_actions.dart';
 import 'category_dialog.dart';
 import 'tag_visuals.dart';
 
@@ -76,6 +77,14 @@ class _TagDetailViewState extends ConsumerState<TagDetailView> {
           onOpenArtist: onOpenArtist,
           onOpenAlbum: onOpenAlbum,
           onEditTrack: onEditTrack,
+          menuFor: (track) => trackContextMenu(
+            context,
+            ref,
+            track,
+            onOpenAlbum: onOpenAlbum,
+            onOpenArtist: onOpenArtist,
+            onEditTrack: onEditTrack,
+          ),
           queueSource: QueueSource.tag,
           queueSourceId: tagId,
           header: _Header(
@@ -315,12 +324,12 @@ class _Header extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 20),
-          _TaggedArtists(tagId: tag.id, onOpen: onOpenArtist),
           _TaggedAlbums(
             tagId: tag.id,
             singles: tracks.where((t) => t.albumId == null).length,
             onOpen: onOpenAlbum,
           ),
+          _TaggedArtists(tagId: tag.id, onOpen: onOpenArtist),
           Text(
             'Tracks carrying this tag, including through an album, a playlist '
             'or someone credited on them',
@@ -335,53 +344,105 @@ class _Header extends ConsumerWidget {
 }
 
 
-/// The artists wearing this tag, above the songs.
+/// The artists this tag reaches, below the albums row.
 ///
 /// A tag on an artist is a statement about a person, not about a recording,
 /// so it deserves saying in its own right rather than being visible only as
-/// the reason several hundred tracks turned up below. Absent entirely when
-/// nobody wears it, which is most tags.
+/// the reason several hundred tracks turned up below. Artists who wear the
+/// tag themselves come first (most-tagged tracks first among them); after
+/// them, artists nobody tagged directly but whose entire output happens to
+/// carry it anyway -- same "most tracks first" rule, second group. No visual
+/// split between the two: the order already says which is which. Absent
+/// entirely when nobody qualifies, which is most tags.
 class _TaggedArtists extends ConsumerWidget {
   const _TaggedArtists({required this.tagId, this.onOpen});
 
   final int tagId;
   final void Function(int artistId)? onOpen;
 
+  static const _tile = 132.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final artists = ref.watch(tagArtistsProvider(tagId)).value ?? const [];
-    if (artists.isEmpty) return const SizedBox.shrink();
+    final direct = ref.watch(tagArtistsProvider(tagId)).value ?? const [];
+    final byTracks =
+        ref.watch(tagArtistsByTracksProvider(tagId)).value ?? const [];
+    if (direct.isEmpty && byTracks.isEmpty) return const SizedBox.shrink();
+    final artists = [...direct, ...byTracks];
 
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${pluralize(artists.length, 'artist')} with this tag',
+          pluralize(artists.length, 'artist'),
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final artist in artists)
-              ActionChip(
-                avatar: Artwork(
-                  storedPath: artist.imagePath,
-                  size: 24,
-                  borderRadius: 12,
-                  fallbackSeed: artist.name,
-                  fallbackIcon: Icons.person_outline,
+        SizedBox(
+          height: _tile + 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final artist in artists)
+                _ArtistSquare(
+                  artist: artist,
+                  onTap: onOpen == null ? null : () => onOpen!(artist.id),
                 ),
-                label: Text(artist.name),
-                onPressed: onOpen == null ? null : () => onOpen!(artist.id),
-              ),
-          ],
+            ],
+          ),
         ),
         const SizedBox(height: 20),
       ],
+    );
+  }
+}
+
+class _ArtistSquare extends StatelessWidget {
+  const _ArtistSquare({required this.artist, this.onTap});
+
+  final ArtistCard artist;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: SizedBox(
+        width: _TaggedArtists._tile,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Artwork(
+                storedPath: artist.imagePath,
+                size: _TaggedArtists._tile,
+                borderRadius: 10,
+                fallbackSeed: artist.name,
+                fallbackIcon: Icons.person_outline,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                artist.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+              Text(
+                pluralize(artist.trackCount, 'track'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

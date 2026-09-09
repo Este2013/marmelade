@@ -7,6 +7,7 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../library/bulk_actions.dart';
 
 /// A playlist's tracks: grouped, and arrangeable by hand.
 ///
@@ -582,6 +583,14 @@ class _Row extends ConsumerWidget {
             onEditTrack: onEditTrack,
             onRemove: onRemoveTrack,
             removeTooltip: removeTooltip,
+            menu: () => trackContextMenu(
+              context,
+              ref,
+              track,
+              onOpenAlbum: onOpenAlbum,
+              onOpenArtist: onOpenArtist,
+              onEditTrack: onEditTrack,
+            ),
           ),
         ),
         ReorderableDragStartListener(

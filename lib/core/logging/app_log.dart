@@ -35,6 +35,20 @@ enum LogLevel {
         LogLevel.warn => 'WARN ',
         LogLevel.error => 'ERROR',
       };
+
+  /// A short label for a settings dropdown.
+  String get label => switch (this) {
+        LogLevel.trace => 'Trace (everything, largest files)',
+        LogLevel.debug => 'Debug (recommended)',
+        LogLevel.info => 'Info (quieter)',
+        LogLevel.warn => 'Warnings and errors only',
+        LogLevel.error => 'Errors only',
+      };
+
+  /// Reads a stored [name] back, falling back to [fallback] when it does not
+  /// match a known level -- a setting written by a future version, say.
+  static LogLevel of(String name, {LogLevel fallback = LogLevel.debug}) =>
+      LogLevel.values.where((l) => l.name == name).firstOrNull ?? fallback;
 }
 
 /// Writes a crash-survivable log to disk.

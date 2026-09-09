@@ -15,6 +15,7 @@ import 'app/theme/theme_settings.dart';
 import 'core/debug/screenshotter.dart';
 import 'core/logging/app_log.dart';
 import 'core/logging/error_handlers.dart';
+import 'data/repositories/settings_repository.dart';
 
 /// How much decoded image data to keep.
 ///
@@ -103,6 +104,14 @@ Future<void> main() async {
     // present. A stall here shows as a blank window, so each step is logged.
     final services = await AppServices.start(databasePath: databasePath, artworkDirectory: artworkDirectory);
     log.info('services up', fields: {'rss': AppLog.formatBytes(AppLog.residentBytes())});
+
+    // The chosen level could not be known before the database existed to
+    // store it, so everything up to here logged at the built-in default
+    // regardless of what a past session set it to.
+    final storedLevel = await SettingsRepository(services.db)
+        .get(SettingKeys.logLevel, LogLevel.debug.name);
+    log.minLevel = LogLevel.of(storedLevel);
+    log.info('log level applied', fields: {'level': log.minLevel.name});
 
     // A window close is the normal way this app exits; without a marker there
     // is no way to tell a clean shutdown from a crash in the log.

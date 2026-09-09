@@ -357,4 +357,45 @@ void main() {
       expect(container.read(playerProvider).isPlaying, isTrue);
     });
   });
+
+  group('a track with no file to play', () {
+    /// A track with no `media_files` row at all -- the reader's own report
+    /// this covers: the button did nothing and nothing said why.
+    Future<int> unplayableTrack(String title) async {
+      return db.into(db.tracks).insert(
+            TracksCompanion.insert(title: title, nameKey: title.toLowerCase()),
+          );
+    }
+
+    test('sets an error rather than leaving the snapshot unchanged',
+        () async {
+      final missing = await unplayableTrack('Ghost');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([missing]);
+
+      final snapshot = container.read(playerProvider);
+      expect(snapshot.status, PlaybackStatus.error);
+      expect(snapshot.errorMessage, contains('Ghost'));
+      expect(engine.playCalls, 0);
+    });
+
+    test('next lands on the error, and previous plays the track behind it',
+        () async {
+      final one = await playableTrack('One');
+      final missing = await unplayableTrack('Ghost');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, missing]);
+      expect(container.read(playerProvider).status, PlaybackStatus.playing);
+
+      await controller.next();
+      expect(container.read(playerProvider).status, PlaybackStatus.error);
+      expect(container.read(playerProvider).currentIndex, 1);
+
+      // Stepping back from the error must not silently stay put: it should
+      // reach the track behind it, which does play.
+      await controller.previous();
+      expect(container.read(playerProvider).status, PlaybackStatus.playing);
+      expect(container.read(playerProvider).current?.trackId, one);
+    });
+  });
 }

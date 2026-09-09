@@ -956,7 +956,11 @@ final tagTrackListProvider =
       .asyncMap(library.tracksByIds);
 });
 
-/// The artists carrying a tag, for the tag's own page.
+/// The artists directly wearing a tag, for the row on the tag's own page.
+///
+/// Sorted by track count, most first: that row is ordered as a whole --
+/// these artists, then [tagArtistsByTracksProvider]'s -- and within each
+/// group the same "most reached first" rule applies.
 final tagArtistsProvider =
     StreamProvider.family<List<ArtistCard>, int>((ref, tagId) {
   final tags = ref.watch(tagRepositoryProvider);
@@ -967,7 +971,28 @@ final tagArtistsProvider =
             // withTracksOnly off: an artist can be tagged before anything of
             // theirs has been scanned, and hiding them from the page that
             // says who wears this tag would be its own puzzle.
-            : library.watchArtists(ids: ids, withTracksOnly: false),
+            : library.watchArtists(
+                ids: ids,
+                withTracksOnly: false,
+                sort: LibrarySort.trackCount,
+              ),
+      );
+});
+
+/// Artists nobody tagged directly, but whose every track carries the tag
+/// anyway. See [tagArtistsProvider]: shown after it, in the same row.
+final tagArtistsByTracksProvider =
+    StreamProvider.family<List<ArtistCard>, int>((ref, tagId) {
+  final tags = ref.watch(tagRepositoryProvider);
+  final library = ref.watch(libraryRepositoryProvider);
+  return tags.watchArtistIdsWhollyTaggedByTracks(tagId).asyncExpand(
+        (ids) => ids.isEmpty
+            ? Stream.value(const <ArtistCard>[])
+            : library.watchArtists(
+                ids: ids,
+                withTracksOnly: false,
+                sort: LibrarySort.trackCount,
+              ),
       );
 });
 
@@ -1023,6 +1048,15 @@ final missingSummaryProvider = StreamProvider<MissingSummary>(
 /// Whether to keep what cannot be played out of the lists.
 final hideMissingProvider = NotifierProvider<StoredFlag, bool>(
   () => StoredFlag(SettingKeys.hideMissing),
+);
+
+/// The session log's minimum level, as [LogLevel.name].
+///
+/// Backs the "Session log" setting: a general user does not need every trace
+/// line, but the level has to be changeable without a rebuild for anyone
+/// diagnosing something the moment it happens.
+final logLevelProvider = NotifierProvider<StoredString, String>(
+  () => StoredString(SettingKeys.logLevel, initial: LogLevel.debug.name),
 );
 
 // ------------------------------------------------------------------ transfer

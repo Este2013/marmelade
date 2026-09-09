@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value, Variable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,15 +9,24 @@ import 'package:marmelade/features/library/bulk_actions.dart';
 
 /// The "Add a tag" dialog shared by every tag line and the mass-tag menu.
 ///
-/// The category is picked from the text field's own leading icon rather than
-/// a separate dropdown -- there is only one thing to say ("which category"),
-/// and it used to take a whole extra field to say it.
+/// It writes to the database directly now rather than handing a single
+/// picked name back to its caller: every add and remove happens the moment
+/// it is asked for, and the dialog can stay open to do another. That is what
+/// makes the "existing tags" section meaningful -- it is a live view of what
+/// this item actually carries, not a snapshot taken when the dialog opened.
 void main() {
   late MarmeladeDatabase db;
+  late int trackId;
 
   setUp(() async {
     db = MarmeladeDatabase.memory();
     await db.customSelect('SELECT 1').get();
+    trackId = await db.into(db.tracks).insert(
+          const TracksCompanion(
+            title: Value('Song'),
+            nameKey: Value('song'),
+          ),
+        );
   });
 
   tearDown(() => db.close());
@@ -40,10 +50,7 @@ void main() {
     ),
   ];
 
-  ({String name, int? categoryId})? result;
-
   Future<void> pump(WidgetTester tester) async {
-    result = null;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -56,9 +63,13 @@ void main() {
           home: Scaffold(
             body: Consumer(
               builder: (context, ref, _) => ElevatedButton(
-                onPressed: () async {
-                  result = await askForTag(context, ref, title: 'Add a tag');
-                },
+                onPressed: () => askForTag(
+                  context,
+                  ref,
+                  title: 'Add a tag',
+                  target: TagTarget.track,
+                  ids: {trackId},
+                ),
                 child: const Text('open'),
               ),
             ),
@@ -70,16 +81,36 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('with no category picked, adding is categoryId: null',
+  /// The category actually stored against a tag by that name, straight from
+  /// the table -- the dialog no longer hands a value back to check.
+  Future<int?> storedCategoryOf(String name) async {
+    final row = await db.customSelect(
+      'SELECT category_id FROM tags WHERE name = ?1',
+      variables: [Variable(name)],
+    ).getSingleOrNull();
+    return row?.read<int?>('category_id');
+  }
+
+  testWidgets('typing a name and adding creates it uncategorised',
       (tester) async {
     await pump(tester);
 
     await tester.enterText(find.byType(TextField), 'chiptune');
     await tester.pump();
-    await tester.tap(find.text('Add'));
+    await tester.tap(find.byTooltip('Add'));
     await tester.pumpAndSettle();
 
-    expect(result, (name: 'chiptune', categoryId: null));
+    expect(await storedCategoryOf('chiptune'), isNull);
+    // The dialog stays open -- closing communicates "I am done", not
+    // "commit what I chose" -- so the add lands while it is still there.
+    expect(find.text('Add a tag'), findsOneWidget);
+
+    // A live attachedTagsProvider stream is the whole point of this test;
+    // cancelling one schedules a zero-duration cleanup timer the test
+    // binding's fake clock never drains on its own unless the tree is
+    // unmounted deliberately first -- see smart_query_field_test.dart.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('picking a category from the leading icon carries it through',
@@ -93,10 +124,17 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'chiptune');
     await tester.pump();
-    await tester.tap(find.text('Add'));
+    await tester.tap(find.byTooltip('Add'));
     await tester.pumpAndSettle();
 
-    expect(result, (name: 'chiptune', categoryId: 1));
+    expect(await storedCategoryOf('chiptune'), 1);
+
+    // A live attachedTagsProvider stream is the whole point of this test;
+    // cancelling one schedules a zero-duration cleanup timer the test
+    // binding's fake clock never drains on its own unless the tree is
+    // unmounted deliberately first -- see smart_query_field_test.dart.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('"None" clears a category once one has been picked',
@@ -120,9 +158,73 @@ void main() {
 
     await tester.enterText(find.byType(TextField), 'chill');
     await tester.pump();
-    await tester.tap(find.text('Add'));
+    await tester.tap(find.byTooltip('Add'));
     await tester.pumpAndSettle();
 
-    expect(result, (name: 'chill', categoryId: null));
+    expect(await storedCategoryOf('chill'), isNull);
+
+    // A live attachedTagsProvider stream is the whole point of this test;
+    // cancelling one schedules a zero-duration cleanup timer the test
+    // binding's fake clock never drains on its own unless the tree is
+    // unmounted deliberately first -- see smart_query_field_test.dart.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('an added tag shows up under "Existing tags" with a remove',
+      (tester) async {
+    await pump(tester);
+
+    expect(find.text('Existing tags'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'chiptune');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Existing tags'), findsOneWidget);
+    expect(find.text('chiptune'), findsOneWidget);
+    // The old wording this replaced must not still be here.
+    expect(find.text('Tags you already have'), findsNothing);
+
+    // A live attachedTagsProvider stream is the whole point of this test;
+    // cancelling one schedules a zero-duration cleanup timer the test
+    // binding's fake clock never drains on its own unless the tree is
+    // unmounted deliberately first -- see smart_query_field_test.dart.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('removing an existing tag detaches it, dialog stays open',
+      (tester) async {
+    await pump(tester);
+    await tester.enterText(find.byType(TextField), 'chiptune');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    expect(find.text('chiptune'), findsOneWidget);
+
+    // Chip's own delete icon.
+    await tester.tap(find.descendant(
+      of: find.widgetWithText(Chip, 'chiptune'),
+      matching: find.byIcon(Icons.close),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Existing tags'), findsNothing);
+    final tags = await db.customSelect(
+      'SELECT COUNT(*) AS c FROM track_tags WHERE track_id = ?1',
+      variables: [Variable(trackId)],
+    ).getSingle();
+    expect(tags.read<int>('c'), 0);
+    // Removing did not close the dialog.
+    expect(find.text('Add a tag'), findsOneWidget);
+
+    // A live attachedTagsProvider stream is the whole point of this test;
+    // cancelling one schedules a zero-duration cleanup timer the test
+    // binding's fake clock never drains on its own unless the tree is
+    // unmounted deliberately first -- see smart_query_field_test.dart.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
   });
 }

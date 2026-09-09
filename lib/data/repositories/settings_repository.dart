@@ -128,6 +128,11 @@ abstract final class SettingKeys {
   /// an unplugged drive and hiding it silently would be its own confusion.
   static const hideMissing = 'library.hideMissing';
 
+  /// Minimum [LogLevel] a line must meet to be written. Stored as the
+  /// enum's name (e.g. "debug"); an unset or unrecognised value falls back to
+  /// the same default `AppLog.initialize` already uses.
+  static const logLevel = 'diagnostics.logLevel';
+
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
 

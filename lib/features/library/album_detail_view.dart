@@ -14,6 +14,7 @@ import '../../widgets/time_text.dart';
 import '../../widgets/title_with_actions.dart';
 import '../../features/playlists/playlist_pickers.dart';
 import '../../widgets/track_list.dart';
+import 'bulk_actions.dart';
 
 /// One album: large artwork, its details, and its tracks.
 class AlbumDetailView extends ConsumerWidget {
@@ -91,6 +92,13 @@ class AlbumDetailView extends ConsumerWidget {
                   showTrackNumbers: true,
                   onOpenArtist: onOpenArtist,
                   onEditTrack: onEditTrack,
+                  menuFor: (track) => trackContextMenu(
+                    context,
+                    ref,
+                    track,
+                    onOpenArtist: onOpenArtist,
+                    onEditTrack: onEditTrack,
+                  ),
                   queueSource: QueueSource.album,
                   queueSourceId: albumId,
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
