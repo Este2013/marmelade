@@ -96,6 +96,16 @@ void main() {
           artistEditProvider.overrideWith((ref, id) => Stream.value(artist)),
           albumEditProvider.overrideWith((ref, id) => Stream.value(album)),
           trackEditProvider.overrideWith((ref, id) => Stream.value(track)),
+          trackArtworkChainProvider.overrideWith(
+            (ref, id) => Stream.value(
+              track == null
+                  ? null
+                  : TrackArtworkChain(
+                      albumId: track.albumId,
+                      albumTitle: track.albumTitle,
+                    ),
+            ),
+          ),
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,

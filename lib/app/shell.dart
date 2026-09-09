@@ -454,7 +454,13 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   void _editTrack(int trackId) {
     final saveState = EditorSaveState();
     _push(
-      TrackEditorView(trackId: trackId, onBack: _pop, saveState: saveState),
+      TrackEditorView(
+        trackId: trackId,
+        onBack: _pop,
+        saveState: saveState,
+        onOpenAlbum: _openAlbum,
+        onOpenArtist: _openArtist,
+      ),
       chrome: (_) => TrackEditorChrome(trackId: trackId, onBack: _pop, saveState: saveState),
     );
   }

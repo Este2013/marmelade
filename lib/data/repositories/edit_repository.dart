@@ -192,6 +192,51 @@ class TrackEdit {
   final String? imagePath;
 }
 
+/// Which stage actually supplies a track's picture.
+///
+/// Matches `v_track_artwork`'s own fallback order exactly (see
+/// database.dart): a track's own picture wins, then its album's, then
+/// whichever artist stands in for that step (see
+/// [TrackArtworkChain.artistImagePath]'s own doc).
+enum ArtworkStage { track, album, artist, none }
+
+/// Every stage of a track's own artwork fallback, raw -- each stage's own
+/// picture, not the one the track ends up showing -- so a UI can say which
+/// stage actually won rather than only what the result looks like.
+class TrackArtworkChain {
+  const TrackArtworkChain({
+    this.trackImagePath,
+    this.albumId,
+    this.albumTitle,
+    this.albumImagePath,
+    this.artistId,
+    this.artistName,
+    this.artistImagePath,
+  });
+
+  final String? trackImagePath;
+
+  final int? albumId;
+  final String? albumTitle;
+  final String? albumImagePath;
+
+  /// The artist behind the third and fourth links of the chain, collapsed
+  /// into one: the album's own assigned artist if it has a picture, else the
+  /// track's own main-credited artist. The two are the same person for an
+  /// ordinary single-artist album; they differ on a various-artists one,
+  /// where this follows whichever the app would actually fall back to.
+  final int? artistId;
+  final String? artistName;
+  final String? artistImagePath;
+
+  ArtworkStage get resolvedStage {
+    if (trackImagePath != null) return ArtworkStage.track;
+    if (albumImagePath != null) return ArtworkStage.album;
+    if (artistImagePath != null) return ArtworkStage.artist;
+    return ArtworkStage.none;
+  }
+}
+
 /// Reads and writes the corrections a person makes by hand.
 ///
 /// Every write here marks its row verified, which is what stops the next scan
@@ -565,6 +610,59 @@ class EditRepository {
         imagePath: row.read<String?>('image_path'),
         credits: await _creditsOf(trackId),
         aliases: await _aliasesFrom('track_aliases', 'track_id', trackId),
+      );
+    });
+  }
+
+  /// Every raw stage of a track's own artwork fallback. See
+  /// [TrackArtworkChain] and `v_track_artwork` in database.dart, whose
+  /// COALESCE order this mirrors exactly, one column per stage instead of
+  /// collapsing straight to the final picture.
+  Stream<TrackArtworkChain?> watchTrackArtworkChain(int trackId) {
+    return db
+        .customSelect(
+          '''
+      SELECT
+        ti.stored_path AS track_image_path,
+        alb.id AS album_id, alb.title AS album_title,
+        ali.stored_path AS album_image_path,
+        COALESCE(aa.id, ma.id) AS artist_id,
+        COALESCE(aa.name, ma.name) AS artist_name,
+        COALESCE(aai.stored_path, mai.stored_path) AS artist_image_path
+      FROM tracks t
+      LEFT JOIN images ti ON ti.id = t.image_id
+      LEFT JOIN albums alb ON alb.id = t.album_id
+      LEFT JOIN images ali ON ali.id = alb.image_id
+      LEFT JOIN artists aa ON aa.id = alb.album_artist_id
+      LEFT JOIN images aai ON aai.id = aa.image_id
+      LEFT JOIN artists ma ON ma.id = (
+        SELECT tc.artist_id FROM track_credits tc
+         WHERE tc.track_id = t.id AND tc.role = 'mainArtist'
+         ORDER BY tc.sort_order, tc.id LIMIT 1
+      )
+      LEFT JOIN images mai ON mai.id = ma.image_id
+      WHERE t.id = ?1
+      ''',
+          variables: [Variable(trackId)],
+          readsFrom: {
+            db.tracks,
+            db.albums,
+            db.artists,
+            db.images,
+            db.trackCredits,
+          },
+        )
+        .watchSingleOrNull()
+        .map((row) {
+      if (row == null) return null;
+      return TrackArtworkChain(
+        trackImagePath: row.read<String?>('track_image_path'),
+        albumId: row.read<int?>('album_id'),
+        albumTitle: row.read<String?>('album_title'),
+        albumImagePath: row.read<String?>('album_image_path'),
+        artistId: row.read<int?>('artist_id'),
+        artistName: row.read<String?>('artist_name'),
+        artistImagePath: row.read<String?>('artist_image_path'),
       );
     });
   }

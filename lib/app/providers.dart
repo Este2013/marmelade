@@ -108,6 +108,13 @@ final trackEditProvider =
   return ref.watch(editRepositoryProvider).watchTrack(trackId);
 });
 
+/// Every raw stage of a track's own artwork fallback, for the picture
+/// section's chain of cards.
+final trackArtworkChainProvider =
+    StreamProvider.family<TrackArtworkChain?, int>((ref, trackId) {
+  return ref.watch(editRepositoryProvider).watchTrackArtworkChain(trackId);
+});
+
 /// Resolves smart playlists.
 ///
 /// The type is written out rather than inferred, and so are its two neighbours:

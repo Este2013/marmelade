@@ -421,7 +421,8 @@ class _ArtistSquare extends StatelessWidget {
               Artwork(
                 storedPath: artist.imagePath,
                 size: _TaggedArtists._tile,
-                borderRadius: 10,
+                // Circular, matching every other artist portrait in the app.
+                borderRadius: _TaggedArtists._tile / 2,
                 fallbackSeed: artist.name,
                 fallbackIcon: Icons.person_outline,
               ),

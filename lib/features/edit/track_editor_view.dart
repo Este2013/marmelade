@@ -6,10 +6,11 @@ import '../../data/db/enums.dart';
 import '../../data/repositories/edit_repository.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
+import 'artwork_chain_section.dart';
 import 'edit_widgets.dart';
 import 'editor_save_state.dart';
 import 'lyrics_section.dart';
-import 'picture_section.dart';
+import 'picture_section.dart' show AliasSection;
 
 /// Everything about one track that a person can change, credits included.
 class TrackEditorView extends ConsumerWidget {
@@ -18,6 +19,8 @@ class TrackEditorView extends ConsumerWidget {
     required this.trackId,
     required this.onBack,
     required this.saveState,
+    this.onOpenAlbum,
+    this.onOpenArtist,
   });
 
   final int trackId;
@@ -26,6 +29,10 @@ class TrackEditorView extends ConsumerWidget {
   /// Bridges the form's dirty/saving state to [TrackEditorChrome], which is
   /// built outside this widget's own subtree -- see `AppShell._editTrack`.
   final EditorSaveState saveState;
+
+  /// Where the picture chain's album and artist cards go when tapped.
+  final void Function(int albumId)? onOpenAlbum;
+  final void Function(int artistId)? onOpenArtist;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,6 +58,8 @@ class TrackEditorView extends ConsumerWidget {
               edit: edit,
               onBack: onBack,
               saveState: saveState,
+              onOpenAlbum: onOpenAlbum,
+              onOpenArtist: onOpenArtist,
             ),
     );
   }
@@ -144,10 +153,14 @@ class _Editor extends ConsumerStatefulWidget {
     required this.edit,
     required this.onBack,
     required this.saveState,
+    this.onOpenAlbum,
+    this.onOpenArtist,
   });
 
   final TrackEdit edit;
   final VoidCallback onBack;
+  final void Function(int albumId)? onOpenAlbum;
+  final void Function(int artistId)? onOpenArtist;
   final EditorSaveState saveState;
 
   @override
@@ -336,18 +349,11 @@ class _EditorState extends ConsumerState<_Editor> {
                     ),
                   ),
                   _albumSection(),
-                  PictureSection(
-                    imagePath: edit.imagePath,
-                    fallbackSeed: edit.albumTitle ?? edit.title,
-                    fallbackIcon: Icons.music_note_outlined,
-                    subtitle: 'A picture for this one track, which wins over '
-                        'the album sleeve.',
-                    onPick: (file) => ref
-                        .read(editRepositoryProvider)
-                        .setTrackPicture(edit.id, file),
-                    onClear: () => ref
-                        .read(editRepositoryProvider)
-                        .clearTrackPicture(edit.id),
+                  TrackArtworkChainSection(
+                    trackId: edit.id,
+                    trackTitle: edit.title,
+                    onOpenAlbum: widget.onOpenAlbum,
+                    onOpenArtist: widget.onOpenArtist,
                   ),
                   AliasSection(
                     title: 'Other titles',

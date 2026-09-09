@@ -9,6 +9,25 @@ import '../../data/repositories/edit_repository.dart';
 import '../../widgets/artwork.dart';
 import 'edit_widgets.dart';
 
+/// Opens a picker restricted to image files, and returns the one chosen.
+///
+/// Shared by [PictureSection] and the track editor's own chain of cards: the
+/// filter is a convenience rather than a guarantee -- the store rejects
+/// anything it cannot decode, and that is what actually protects the
+/// library -- so both callers can point it at the same store-write path
+/// without duplicating the file-picker setup.
+Future<File?> pickImageFile() async {
+  final file = await openFile(
+    acceptedTypeGroups: const [
+      XTypeGroup(
+        label: 'Images',
+        extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+      ),
+    ],
+  );
+  return file == null ? null : File(file.path);
+}
+
 /// Picks a picture for an artist, album or track.
 ///
 /// The store is content-addressed, so choosing a file already in the library
@@ -53,22 +72,12 @@ class _PictureSectionState extends ConsumerState<PictureSection> {
   var _busy = false;
 
   Future<void> _pick() async {
-    // A picture chosen here is whatever the person points at, so the filter is
-    // a convenience rather than a guarantee -- the store rejects anything it
-    // cannot decode, and that is what actually protects the library.
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Images',
-          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
-        ),
-      ],
-    );
+    final file = await pickImageFile();
     if (file == null) return;
 
     setState(() => _busy = true);
     try {
-      final ok = await widget.onPick(File(file.path));
+      final ok = await widget.onPick(file);
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
