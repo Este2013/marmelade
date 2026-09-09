@@ -378,6 +378,24 @@ final nowPlayingSeedProvider = Provider<Color?>((ref) {
       ?.primary;
 });
 
+/// Bumped once per seek, for [playbackPositionProvider] to watch.
+///
+/// A seek while paused used to be invisible to the seek bar: the position
+/// stream only polls while playing, so dragging the thumb, releasing it and
+/// staying paused left the bar showing wherever the last poll had caught it
+/// -- often snapping right back to where the drag started, which is exactly
+/// what "the slider won't let me set where to resume" looks like from the
+/// outside. Watching this forces a fresh read of the engine's real position
+/// the moment a seek happens, whether or not anything is playing.
+final seekTickProvider = NotifierProvider<_SeekTick, int>(_SeekTick.new);
+
+class _SeekTick extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
 /// The playhead, ticking only while something is playing.
 ///
 /// Separate from [playerProvider] on purpose: the position changes constantly,
@@ -388,6 +406,9 @@ final playbackPositionProvider = StreamProvider<Duration>((ref) {
   // Watch the status so the timer starts and stops with playback rather than
   // running forever.
   final isPlaying = ref.watch(playerProvider.select((s) => s.isPlaying));
+  // Rebuilding on every seek is what makes one taken while paused actually
+  // show up -- see _SeekTick's own doc.
+  ref.watch(seekTickProvider);
 
   late StreamController<Duration> controller;
   Timer? timer;

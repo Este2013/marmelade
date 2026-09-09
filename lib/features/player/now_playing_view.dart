@@ -519,6 +519,37 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
     if (next != _playing && mounted) setState(() => _playing = next);
   }
 
+  /// Reacts to the viewport itself changing shape -- the window being
+  /// resized, principally -- rather than to a scroll or a track change.
+  ///
+  /// [_scroll]'s own listener only fires on an offset change, so a resize
+  /// that left the offset untouched but moved the playing row relative to
+  /// the (now different-sized) viewport went unnoticed entirely: the "jump
+  /// to playing" button could point the wrong way, or fail to appear for a
+  /// row the resize had actually pushed off screen. If the row was visible
+  /// before the resize, it is nudged back into view rather than left behind
+  /// for the button to fix; if it already was not, only the button's own
+  /// direction is corrected.
+  void _syncAfterResize() {
+    if (!_scroll.hasClients) return;
+    final index = ref.read(playerProvider).currentIndex;
+    final wasVisible = _playing == _Playing.visible;
+    var next = _whereIs(index);
+
+    if (wasVisible && next != _Playing.visible && index >= 0) {
+      final top = index * _QueuePane.rowExtent;
+      final viewport = _scroll.position.viewportDimension;
+      final target = (next == _Playing.above
+              ? top
+              : top + _QueuePane.rowExtent - viewport)
+          .clamp(0.0, _scroll.position.maxScrollExtent);
+      _scroll.jumpTo(target);
+      next = _whereIs(index);
+    }
+
+    if (next != _playing && mounted) setState(() => _playing = next);
+  }
+
   /// Keeps the playing row where it is on screen as the queue moves under it.
   ///
   /// Only for a step to the next or previous track, and only when the row that
@@ -631,7 +662,19 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
                 )
               : Stack(
                   children: [
-                    Positioned.fill(child: _queueList(player, controller)),
+                    Positioned.fill(
+                      child: NotificationListener<ScrollMetricsNotification>(
+                        // Fires when the viewport's own dimensions change --
+                        // a window resize, chiefly -- without a scroll
+                        // offset change to trigger _scroll's own listener.
+                        onNotification: (_) {
+                          WidgetsBinding.instance
+                              .addPostFrameCallback((_) => _syncAfterResize());
+                          return false;
+                        },
+                        child: _queueList(player, controller),
+                      ),
+                    ),
                     // At the end it went off, pointing the way back, so the
                     // button says which direction it is without reading it.
                     if (_playing != _Playing.visible && player.currentIndex >= 0)

@@ -15,7 +15,7 @@ import 'playback_engine.dart';
 class SoLoudEngine implements PlaybackEngine {
   SoLoudEngine({
     this.defaultLoadMode = AudioLoadMode.memory,
-    this.bufferSize = 1024,
+    this.bufferSize = 2048,
   });
 
   /// How files are loaded unless a call overrides it.
@@ -26,8 +26,13 @@ class SoLoudEngine implements PlaybackEngine {
 
   /// Mixer buffer size.
   ///
-  /// 1024 rather than SoLoud's 2048 default: it gives visibly better FFT
-  /// resolution, which the visualiser needs, at no audible cost here.
+  /// SoLoud's own default. A smaller buffer was tried for sharper FFT
+  /// resolution, but the visualiser (see [setSpectrumEnabled]) runs its
+  /// transform on the mixing thread itself and is mounted as ambience
+  /// whenever anything plays, not just while a visualiser view is open --
+  /// with a 1024 buffer that left too little headroom per callback and the
+  /// mix would occasionally miss its deadline, audible as crackling/muffled
+  /// distortion. 2048 trades a little FFT sharpness back for that headroom.
   final int bufferSize;
 
   sl.SoLoud get _soloud => sl.SoLoud.instance;

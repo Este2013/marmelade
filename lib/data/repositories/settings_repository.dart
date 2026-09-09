@@ -136,6 +136,11 @@ abstract final class SettingKeys {
   static const changelogCache = 'changelog.cache';
   static const lastSeenVersion = 'changelog.lastSeenVersion';
 
+  /// `queue_items.id` of the track that was playing when the app last closed,
+  /// so pressing play after a restart resumes there instead of at the top of
+  /// the restored queue.
+  static const lastQueueItemId = 'player.lastQueueItemId';
+
   /// This installation's random, stable id, so a shared folder can hold one
   /// bundle per computer without them writing over each other.
   static const machineId = 'transfer.machineId';

@@ -98,8 +98,9 @@ class _EndingEngine implements PlaybackEngine {
   Object? get lastError => null;
   @override
   String? get loadedPath => null;
+  Duration _position = Duration.zero;
   @override
-  Duration get position => Duration.zero;
+  Duration get position => _position;
   @override
   Duration get duration => const Duration(minutes: 3);
   @override
@@ -118,7 +119,7 @@ class _EndingEngine implements PlaybackEngine {
   @override
   Future<void> shutdown() async {}
   @override
-  void seek(Duration position) {}
+  void seek(Duration position) => _position = position;
   @override
   void setVolume(double value) {}
   @override
@@ -396,6 +397,108 @@ void main() {
       await controller.previous();
       expect(container.read(playerProvider).status, PlaybackStatus.playing);
       expect(container.read(playerProvider).current?.trackId, one);
+    });
+  });
+
+  group('the seek bar', () {
+    test('a seek made while paused updates the position right away',
+        () async {
+      // The report this covers: dragging the seek bar to set up where to
+      // resume, releasing, and the bar snapping right back -- because the
+      // position stream only polls while playing, so a seek made while
+      // paused had nothing to make an already-open bar notice it.
+      final one = await playableTrack('One');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one]);
+      await controller.pause();
+
+      // A live subscription established before the seek, the same as the
+      // seek bar's own ref.watch -- and, paused, with nothing polling it.
+      final seen = <Duration>[];
+      container.listen(
+        playbackPositionProvider,
+        (_, next) {
+          final value = next.value;
+          if (value != null) seen.add(value);
+        },
+        fireImmediately: true,
+      );
+      await pumpEventQueue();
+
+      controller.seek(const Duration(seconds: 42));
+      await pumpEventQueue();
+
+      expect(seen.last, const Duration(seconds: 42));
+    });
+
+    test('a restart-to-zero (repeat one, previous) also updates it',
+        () async {
+      final one = await playableTrack('One');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one]);
+      engine.seek(const Duration(seconds: 90));
+      await controller.pause();
+
+      final seen = <Duration>[];
+      container.listen(
+        playbackPositionProvider,
+        (_, next) {
+          final value = next.value;
+          if (value != null) seen.add(value);
+        },
+        fireImmediately: true,
+      );
+      await pumpEventQueue();
+
+      // Within the restart threshold check inside _previous: past three
+      // seconds in restarts the current track rather than moving back a
+      // queue slot -- either way it is a seek to zero the bar has to show.
+      await controller.previous();
+      await pumpEventQueue();
+
+      expect(seen.last, Duration.zero);
+    });
+  });
+
+  group('resuming after a restart', () {
+    test(
+        'pressing play after a restart resumes at the item that was '
+        'actually playing, not the top of the queue', () async {
+      final one = await playableTrack('One');
+      final two = await playableTrack('Two');
+      final three = await playableTrack('Three');
+      final controller = container.read(playerProvider.notifier);
+      await controller.playAll([one, two, three]);
+      await controller.playAt(2);
+      expect(controller.state.current?.title, 'Three');
+
+      // A fresh container reading the same (persisted) database, the way a
+      // relaunched app would: the queue survives, but nothing has been
+      // loaded into the engine yet.
+      final restartEngine = _EndingEngine();
+      final restartContainer = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          playbackEngineProvider.overrideWithValue(restartEngine),
+          playerProvider.overrideWith(
+            () => PlayerController(
+              engine: restartEngine,
+              queueRepository: QueueRepository(db),
+              libraryRepository: LibraryRepository(db),
+              db: db,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        restartContainer.dispose();
+        await restartEngine.dispose();
+      });
+
+      final restarted = restartContainer.read(playerProvider.notifier);
+      await restarted.togglePlayPause();
+
+      expect(restarted.state.current?.title, 'Three');
     });
   });
 }

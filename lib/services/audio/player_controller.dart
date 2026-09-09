@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/providers.dart' show seekTickProvider;
 import '../../core/logging/app_log.dart';
 import '../../data/db/database.dart';
 import '../../data/db/sqlite_diagnostics.dart';
 import '../../data/repositories/library_repository.dart';
 import '../../data/repositories/queue_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../domain/models/library_views.dart';
 import 'playback_engine.dart';
 
@@ -119,12 +121,13 @@ class PlayerController extends Notifier<PlayerSnapshot> {
     required this.libraryRepository,
     required this.db,
     this.commandTimeout = const Duration(seconds: 10),
-  });
+  }) : _settings = SettingsRepository(db);
 
   final PlaybackEngine engine;
   final QueueRepository queueRepository;
   final LibraryRepository libraryRepository;
   final MarmeladeDatabase db;
+  final SettingsRepository _settings;
 
   /// How long one command may hold the queue before the next one goes anyway.
   ///
@@ -184,6 +187,15 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   /// Completes once the persisted queue has been read back.
   Future<void>? _restored;
 
+  /// Where a bare "play" after restart should start.
+  ///
+  /// The queue survives a restart, but nothing was actually loaded into the
+  /// engine yet, so there is no [PlayerSnapshot.currentIndex] to resume from --
+  /// it defaults to -1. This remembers the queue entry that was actually
+  /// playing when the app last closed, so pressing play picks up there
+  /// instead of restarting the whole queue from the top.
+  int _resumeIndex = 0;
+
   @override
   PlayerSnapshot build() {
     _completionSubscription = engine.onCompleted.listen((_) => _onCompleted());
@@ -200,6 +212,13 @@ class PlayerController extends Notifier<PlayerSnapshot> {
   Future<void> _restoreQueue() async {
     final queue = await queueRepository.load();
     final shuffled = await queueRepository.isShuffled();
+    final lastItemId = await _settings.get<int>(SettingKeys.lastQueueItemId, -1);
+    // Three awaits deep, this provider can outlive its own container -- a
+    // test tearing down right after, or the app closing before the read-back
+    // finishes. Writing to a disposed ref throws.
+    if (!ref.mounted) return;
+    final index = queue.indexWhere((entry) => entry.itemId == lastItemId);
+    _resumeIndex = index >= 0 ? index : 0;
     state = state.copyWith(queue: queue, isShuffled: shuffled);
   }
 
@@ -309,6 +328,7 @@ class PlayerController extends Notifier<PlayerSnapshot> {
         duration: duration == Duration.zero ? playable.duration : duration,
         clearError: true,
       );
+      await _settings.set(SettingKeys.lastQueueItemId, entry.itemId);
       AppLog.instance.info(
         'playing',
         tag: 'player',
@@ -344,7 +364,7 @@ class PlayerController extends Notifier<PlayerSnapshot> {
       // silent no-op: the queue is still being read out of the database, so
       // there is nothing yet to start.
       if (!state.hasQueue) await _restored;
-      if (state.hasQueue) await playAt(0);
+      if (state.hasQueue) await playAt(_resumeIndex.clamp(0, state.queue.length - 1));
       return;
     }
     if (state.isPlaying) {
@@ -394,7 +414,7 @@ class PlayerController extends Notifier<PlayerSnapshot> {
       );
     }
     if (state.repeat == QueueRepeat.one && !userInitiated) {
-      engine.seek(Duration.zero);
+      _seek(Duration.zero);
       await engine.play();
       return;
     }
@@ -437,22 +457,32 @@ class PlayerController extends Notifier<PlayerSnapshot> {
       fields: {'fromIndex': state.currentIndex, 'position': engine.position.inMilliseconds},
     );
     if (engine.position > restartThreshold) {
-      engine.seek(Duration.zero);
+      _seek(Duration.zero);
       return;
     }
     if (state.currentIndex > 0) {
       await _playAt(state.currentIndex - 1);
     } else {
-      engine.seek(Duration.zero);
+      _seek(Duration.zero);
     }
   }
 
-  void seek(Duration position) => engine.seek(position);
+  void seek(Duration position) => _seek(position);
 
   /// Seeks by a relative amount, clamped to the track.
   void seekBy(Duration delta) {
     final target = engine.position + delta;
-    engine.seek(target < Duration.zero ? Duration.zero : target);
+    _seek(target < Duration.zero ? Duration.zero : target);
+  }
+
+  /// Every seek goes through here, restarts included -- not just the public
+  /// [seek]. A seek made while paused otherwise has nothing to make the seek
+  /// bar notice it: the position stream only polls while playing, so it
+  /// keeps showing wherever the last poll caught it, often snapping right
+  /// back to where a drag started once released.
+  void _seek(Duration position) {
+    engine.seek(position);
+    ref.read(seekTickProvider.notifier).bump();
   }
 
   void setVolume(double value) {

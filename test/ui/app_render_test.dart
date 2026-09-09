@@ -1095,6 +1095,21 @@ void main() {
       )
       .position;
 
+  /// The same rule _QueuePaneState._whereIs applies, checked directly
+  /// against the live scroll position rather than through the "jump to
+  /// playing" button -- which, read on its own, cannot tell "correctly
+  /// still visible" apart from "the state just never got recomputed".
+  bool queueRowVisible(WidgetTester tester, int index) {
+    final position = queueScroll(tester);
+    const rowExtent = 56.0;
+    final top = index * rowExtent;
+    final viewTop = position.pixels;
+    final viewBottom = viewTop + position.viewportDimension;
+    if (top + rowExtent / 2 <= viewTop) return false;
+    if (top + rowExtent / 2 >= viewBottom) return false;
+    return true;
+  }
+
   testWidgets('the queue opens with the current track at the top',
       (tester) async {
     // A queue of forty otherwise opens at track one, which is nowhere near
@@ -1185,6 +1200,67 @@ void main() {
     await settle(tester);
 
     expect(find.byIcon(Icons.arrow_upward), findsOne);
+  });
+
+  testWidgets(
+      'a resize that would push a visible playing row off screen scrolls '
+      'to keep it in view', (tester) async {
+    // The window resizing is what this covers: the scroll offset never
+    // changes, so _scroll's own listener -- everything else here relies on
+    // -- has nothing to fire on. Only a viewport-aware recompute catches it.
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+
+    // Opening always pins the row to the very top of the viewport, which no
+    // shrink could dislodge it from. Nudged down first so it sits mid-view,
+    // where an actual shrink can push past it -- and the window's own
+    // overhead (everything in it besides the queue list) worked out so the
+    // shrink below is sized relative to the queue's own viewport rather than
+    // a guess at the whole window.
+    final overhead = 900 - queueScroll(tester).viewportDimension;
+    final nudge = queueScroll(tester).viewportDimension / 2;
+    queueScroll(tester).jumpTo(queueScroll(tester).pixels - nudge);
+    await settle(tester);
+    expect(find.text('Jump to playing'), findsNothing,
+        reason: 'still on screen, just not pinned to the very top');
+
+    // Shrunk to comfortably less than the nudge, so the row would fall
+    // below the new viewport if nothing here corrected for it.
+    await tester.binding
+        .setSurfaceSize(Size(1400, overhead + nudge - 80));
+    await settle(tester);
+
+    // Checked directly against the scroll position, not the button: the
+    // button staying hidden is also what the bug itself looks like when
+    // _playing is simply never recomputed and is left stuck on "visible"
+    // from before the resize, while the row has actually scrolled out from
+    // under it unnoticed.
+    expect(queueRowVisible(tester, 20), isTrue,
+        reason:
+            'it was visible before the resize, so it should stay that way');
+    expect(find.text('Jump to playing'), findsNothing);
+  });
+
+  testWidgets(
+      'a resize also corrects the button when the row was already off '
+      'screen', (tester) async {
+    await open(tester, app: buildApp(longQueue: (index: 20, length: 40)));
+    await tester.tap(find.byTooltip('Open now playing'));
+    await settle(tester);
+    queueScroll(tester).jumpTo(0);
+    await settle(tester);
+    expect(find.text('Jump to playing'), findsOne);
+    expect(find.byIcon(Icons.arrow_downward), findsOne);
+
+    // Grown tall enough that the still-scrolled-to-the-top viewport now
+    // reaches the playing row on its own -- nothing here scrolled to cause
+    // that, so this only works if the resize itself is noticed.
+    await tester.binding.setSurfaceSize(const Size(1400, 3000));
+    await settle(tester);
+
+    expect(find.text('Jump to playing'), findsNothing,
+        reason: 'the bigger viewport now reaches the playing row unaided');
   });
 
   testWidgets('a track near the end scrolls only as far as the queue goes',

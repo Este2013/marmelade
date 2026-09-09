@@ -98,6 +98,43 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.3.2',
+    date: '2026-09-09',
+    headline: 'A player that remembers its place, seeks where it is told, '
+        'and stops crackling.',
+    changes: [
+      Change.fixed(
+        'Playback could crackle and sound muffled, on and off, for no '
+        'obvious reason. The mixer buffer had been sized down for a sharper '
+        'visualiser, which left the visualiser -- always running as the '
+        "player bar's ambience, not only while a visualiser view is open -- "
+        'too little headroom on the mixing thread, and it would '
+        'occasionally miss a callback deadline.',
+      ),
+      Change.fixed(
+        'Dragging the seek bar to set up where to resume, then pausing, '
+        'sometimes snapped back to wherever playback last was. A seek made '
+        'while paused had nothing to make the bar notice it, since its '
+        'position only polls while playing.',
+      ),
+      Change.fixed(
+        "The seek bar's knob could clip against the player above it when "
+        'hovered.',
+      ),
+      Change.fixed(
+        'Resizing the window could leave the play queue no longer showing '
+        'the now-playing row, or showing the wrong "Jump to playing" pill '
+        '-- nothing was watching for the viewport itself changing size, '
+        'only scrolling and track changes.',
+      ),
+      Change.fixed(
+        'Pressing play after relaunching the app always restarted the '
+        'restored queue from the top. It now resumes at the track that was '
+        'actually playing when the app closed.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.3.1',
     date: '2026-09-09',
     headline: 'The real reason some tracks silently refused to play, found '

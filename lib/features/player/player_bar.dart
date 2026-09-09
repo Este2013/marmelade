@@ -537,31 +537,41 @@ class _SeekBarState extends ConsumerState<_SeekBar> {
       onIncrease: loaded ? () => _seekTo(position + _seekStep, duration) : null,
       onDecrease: loaded ? () => _seekTo(position - _seekStep, duration) : null,
       child: ExcludeSemantics(
-        child: SizedBox(
-          height: 12,
-          child: SliderTheme(
-            data: SliderThemeData(
-              trackHeight: 3,
-              thumbShape: RoundSliderThumbShape(
-                enabledThumbRadius: _dragValue == null ? 0 : 7,
-                disabledThumbRadius: 0,
+        child: Padding(
+          // The hover/focus overlay reaches a 10px radius around the thumb,
+          // taller than the 12px track box below gives it room for. Nothing
+          // clips it while dragging or from the sides, but the bar itself is
+          // wrapped in a SizeTransition that clips to its own reported
+          // height, which above this row is the top of the window's content
+          // -- so, without this, hovering right at the top of the bar cut
+          // the overlay's own top edge off.
+          padding: const EdgeInsets.only(top: 8),
+          child: SizedBox(
+            height: 12,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3,
+                thumbShape: RoundSliderThumbShape(
+                  enabledThumbRadius: _dragValue == null ? 0 : 7,
+                  disabledThumbRadius: 0,
+                ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: scheme.primary,
+                inactiveTrackColor: scheme.surfaceContainerHighest,
+                padding: EdgeInsets.zero,
               ),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-              activeTrackColor: scheme.primary,
-              inactiveTrackColor: scheme.surfaceContainerHighest,
-              padding: EdgeInsets.zero,
-            ),
-            child: Slider(
-              value: value,
-              onChanged: totalMs == 0
-                  ? null
-                  : (next) => setState(() => _dragValue = next),
-              onChangeEnd: (next) {
-                ref
-                    .read(playerProvider.notifier)
-                    .seek(Duration(milliseconds: (next * totalMs).round()));
-                setState(() => _dragValue = null);
-              },
+              child: Slider(
+                value: value,
+                onChanged: totalMs == 0
+                    ? null
+                    : (next) => setState(() => _dragValue = next),
+                onChangeEnd: (next) {
+                  ref
+                      .read(playerProvider.notifier)
+                      .seek(Duration(milliseconds: (next * totalMs).round()));
+                  setState(() => _dragValue = null);
+                },
+              ),
             ),
           ),
         ),
