@@ -326,24 +326,11 @@ class _ArtistHeader extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 itemCount: albums.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 16),
-                itemBuilder: (context, index) {
-                  final album = albums[index];
-                  return SizedBox(
-                    width: 128,
-                    child: GestureDetector(
-                      onTap: () => onOpenAlbum(album.id),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Artwork(storedPath: album.imagePath, size: 128, borderRadius: 8, fallbackSeed: album.title),
-                          const SizedBox(height: 8),
-                          Text(album.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
-                          if (album.releaseYear != null) Text('${album.releaseYear}', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (context, index) => _ReleaseTile(
+                  key: ValueKey('release-${albums[index].id}'),
+                  album: albums[index],
+                  onTap: () => onOpenAlbum(albums[index].id),
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -366,6 +353,133 @@ class _ArtistHeader extends ConsumerWidget {
             const SizedBox(height: 4),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// One cover in the "Releases" strip: grows a touch on hover, the same as
+/// every other artwork tile in the app, and offers a play button once it
+/// does -- one click to play the album instead of one to open it and a
+/// second to press Play there.
+class _ReleaseTile extends ConsumerStatefulWidget {
+  const _ReleaseTile({super.key, required this.album, required this.onTap});
+
+  final AlbumCard album;
+  final VoidCallback onTap;
+
+  @override
+  ConsumerState<_ReleaseTile> createState() => _ReleaseTileState();
+}
+
+class _ReleaseTileState extends ConsumerState<_ReleaseTile> {
+  var _hovering = false;
+
+  Future<void> _play() async {
+    final tracks = await BulkActions(ref).tracksOfAlbums([widget.album.id]);
+    if (tracks.isEmpty) return;
+    await ref.read(playerProvider.notifier).playAll(
+          tracks,
+          source: QueueSource.album,
+          sourceRefId: widget.album.id,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final album = widget.album;
+
+    return SizedBox(
+      width: 128,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 128,
+                height: 128,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Scaled alone, not the whole tile -- the play button
+                    // sitting inside a transform that runs every hover
+                    // frame is what floods the Windows accessibility
+                    // bridge. The cover has no semantics of its own.
+                    AnimatedScale(
+                      scale: _hovering ? 1.04 : 1,
+                      duration: const Duration(milliseconds: 160),
+                      curve: Curves.easeOutCubic,
+                      child: Artwork(
+                        storedPath: album.imagePath,
+                        size: 128,
+                        borderRadius: 8,
+                        fallbackSeed: album.title,
+                      ),
+                    ),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: AnimatedOpacity(
+                        opacity: _hovering ? 1 : 0,
+                        duration: const Duration(milliseconds: 140),
+                        // Kept in the semantics tree at every opacity, so
+                        // hovering does not add and remove a node every
+                        // frame -- see the album grid's own play button.
+                        alwaysIncludeSemantics: true,
+                        child: _ReleasePlayButton(onPressed: _play),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                album.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
+              ),
+              if (album.releaseYear != null)
+                Text(
+                  '${album.releaseYear}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The small circular play button revealed over a hovered release cover.
+class _ReleasePlayButton extends StatelessWidget {
+  const _ReleasePlayButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.primary,
+      shape: const CircleBorder(),
+      elevation: 4,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(Icons.play_arrow, color: scheme.onPrimary, size: 20),
+        ),
       ),
     );
   }

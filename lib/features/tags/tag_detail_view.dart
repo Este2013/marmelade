@@ -399,48 +399,104 @@ class _TaggedArtists extends ConsumerWidget {
   }
 }
 
-class _ArtistSquare extends StatelessWidget {
+class _ArtistSquare extends ConsumerStatefulWidget {
   const _ArtistSquare({required this.artist, this.onTap});
 
   final ArtistCard artist;
   final VoidCallback? onTap;
 
   @override
+  ConsumerState<_ArtistSquare> createState() => _ArtistSquareState();
+}
+
+class _ArtistSquareState extends ConsumerState<_ArtistSquare> {
+  var _hovering = false;
+
+  Future<void> _play() async {
+    final tracks =
+        await BulkActions(ref).tracksOfArtists([widget.artist.id]);
+    if (tracks.isEmpty) return;
+    await ref.read(playerProvider.notifier).playAll(
+          tracks,
+          source: QueueSource.artist,
+          sourceRefId: widget.artist.id,
+        );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final artist = widget.artist;
+
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: SizedBox(
         width: _TaggedArtists._tile,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Artwork(
-                storedPath: artist.imagePath,
-                size: _TaggedArtists._tile,
-                // Circular, matching every other artist portrait in the app.
-                borderRadius: _TaggedArtists._tile / 2,
-                fallbackSeed: artist.name,
-                fallbackIcon: Icons.person_outline,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                artist.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
-              ),
-              Text(
-                pluralize(artist.trackCount, 'track'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ],
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovering = true),
+          onExit: (_) => setState(() => _hovering = false),
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: _TaggedArtists._tile,
+                  height: _TaggedArtists._tile,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Scaled alone, same as every other grid tile in the
+                      // app: the artwork has no semantics of its own, so
+                      // transforming it does not churn the accessibility
+                      // tree the way scaling the whole tile (play button
+                      // included) would.
+                      AnimatedScale(
+                        scale: _hovering ? 1.04 : 1,
+                        duration: const Duration(milliseconds: 160),
+                        curve: Curves.easeOutCubic,
+                        child: Artwork(
+                          storedPath: artist.imagePath,
+                          size: _TaggedArtists._tile,
+                          // Circular, matching every other artist portrait
+                          // in the app.
+                          borderRadius: _TaggedArtists._tile / 2,
+                          fallbackSeed: artist.name,
+                          fallbackIcon: Icons.person_outline,
+                        ),
+                      ),
+                      Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: AnimatedOpacity(
+                          opacity: _hovering ? 1 : 0,
+                          duration: const Duration(milliseconds: 140),
+                          // Kept in the semantics tree at every opacity --
+                          // see the album grid's own play button for why.
+                          alwaysIncludeSemantics: true,
+                          child: _SquarePlayButton(onPressed: _play),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  artist.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Text(
+                  pluralize(artist.trackCount, 'track'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -513,47 +569,122 @@ class _TaggedAlbums extends ConsumerWidget {
   }
 }
 
-class _AlbumSquare extends StatelessWidget {
+class _AlbumSquare extends ConsumerStatefulWidget {
   const _AlbumSquare({required this.album, this.onTap});
 
   final AlbumCard album;
   final VoidCallback? onTap;
 
   @override
+  ConsumerState<_AlbumSquare> createState() => _AlbumSquareState();
+}
+
+class _AlbumSquareState extends ConsumerState<_AlbumSquare> {
+  var _hovering = false;
+
+  Future<void> _play() async {
+    final tracks = await BulkActions(ref).tracksOfAlbums([widget.album.id]);
+    if (tracks.isEmpty) return;
+    await ref.read(playerProvider.notifier).playAll(
+          tracks,
+          source: QueueSource.album,
+          sourceRefId: widget.album.id,
+        );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final album = widget.album;
+
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: SizedBox(
         width: _TaggedAlbums._tile,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Artwork(
-                storedPath: album.imagePath,
-                size: _TaggedAlbums._tile,
-                borderRadius: 10,
-                fallbackSeed: album.title,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                album.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
-              ),
-              Text(
-                album.artistName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-            ],
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _hovering = true),
+          onExit: (_) => setState(() => _hovering = false),
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: _TaggedAlbums._tile,
+                  height: _TaggedAlbums._tile,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AnimatedScale(
+                        scale: _hovering ? 1.04 : 1,
+                        duration: const Duration(milliseconds: 160),
+                        curve: Curves.easeOutCubic,
+                        child: Artwork(
+                          storedPath: album.imagePath,
+                          size: _TaggedAlbums._tile,
+                          borderRadius: 10,
+                          fallbackSeed: album.title,
+                        ),
+                      ),
+                      Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: AnimatedOpacity(
+                          opacity: _hovering ? 1 : 0,
+                          duration: const Duration(milliseconds: 140),
+                          alwaysIncludeSemantics: true,
+                          child: _SquarePlayButton(onPressed: _play),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  album.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Text(
+                  album.artistName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The small circular play button revealed over a hovered artist or album
+/// square. Its own tap target, nested inside the square's -- tapping it
+/// plays instead of opening the page underneath.
+class _SquarePlayButton extends StatelessWidget {
+  const _SquarePlayButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.primary,
+      shape: const CircleBorder(),
+      elevation: 4,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(Icons.play_arrow, color: scheme.onPrimary, size: 20),
         ),
       ),
     );

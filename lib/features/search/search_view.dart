@@ -13,6 +13,7 @@ import '../../widgets/artwork.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/time_text.dart';
 import '../../widgets/track_list.dart';
+import '../library/bulk_actions.dart';
 import '../tags/category_icons.dart';
 
 /// Everything in the library a query could mean.
@@ -528,6 +529,16 @@ class _Results extends ConsumerWidget {
                 onTap: onOpenArtist == null
                     ? null
                     : () => onOpenArtist!(artist.id),
+                onPlay: () async {
+                  final tracks =
+                      await BulkActions(ref).tracksOfArtists([artist.id]);
+                  if (tracks.isEmpty) return;
+                  await ref.read(playerProvider.notifier).playAll(
+                        tracks,
+                        source: QueueSource.artist,
+                        sourceRefId: artist.id,
+                      );
+                },
               ),
           ],
         ),
@@ -551,6 +562,16 @@ class _Results extends ConsumerWidget {
                 ].join(' · '),
                 onTap:
                     onOpenAlbum == null ? null : () => onOpenAlbum!(album.id),
+                onPlay: () async {
+                  final tracks =
+                      await BulkActions(ref).tracksOfAlbums([album.id]);
+                  if (tracks.isEmpty) return;
+                  await ref.read(playerProvider.notifier).playAll(
+                        tracks,
+                        source: QueueSource.album,
+                        sourceRefId: album.id,
+                      );
+                },
               ),
           ],
         ),
@@ -913,7 +934,7 @@ class _Section extends StatelessWidget {
 }
 
 /// One result: art, a name, a line of context.
-class _ResultRow extends StatelessWidget {
+class _ResultRow extends StatefulWidget {
   const _ResultRow({
     required this.imagePath,
     required this.title,
@@ -923,6 +944,7 @@ class _ResultRow extends StatelessWidget {
     this.rounded = false,
     this.colour,
     this.onTap,
+    this.onPlay,
   });
 
   final String? imagePath;
@@ -938,62 +960,92 @@ class _ResultRow extends StatelessWidget {
   final Color? colour;
   final VoidCallback? onTap;
 
+  /// Plays this result directly, without opening its page first. Null for
+  /// kinds a search row cannot play on its own (tags, playlists).
+  final Future<void> Function()? onPlay;
+
+  @override
+  State<_ResultRow> createState() => _ResultRowState();
+}
+
+class _ResultRowState extends State<_ResultRow> {
+  var _hovering = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        child: Row(
-          children: [
-            if (colour != null)
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: colour!.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(
+            children: [
+              if (widget.colour != null)
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: widget.colour!.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(widget.fallbackIcon, size: 22, color: widget.colour),
+                )
+              else
+                Artwork(
+                  storedPath: widget.imagePath,
+                  size: 44,
+                  borderRadius: widget.rounded ? 22 : 8,
+                  fallbackSeed: widget.fallbackSeed,
+                  fallbackIcon: widget.fallbackIcon,
                 ),
-                child: Icon(fallbackIcon, size: 22, color: colour),
-              )
-            else
-              Artwork(
-                storedPath: imagePath,
-                size: 44,
-                borderRadius: rounded ? 22 : 8,
-                fallbackSeed: fallbackSeed,
-                fallbackIcon: fallbackIcon,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge,
+              if (widget.onPlay != null) ...[
+                // Revealed on hover, same as a track row's own actions, so a
+                // long results list stays quiet until the mouse is over it.
+                AnimatedOpacity(
+                  opacity: _hovering ? 1 : 0,
+                  duration: const Duration(milliseconds: 120),
+                  alwaysIncludeSemantics: true,
+                  child: IconButton(
+                    tooltip: 'Play',
+                    onPressed: () => widget.onPlay!(),
+                    icon: const Icon(Icons.play_arrow),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            if (onTap != null)
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-          ],
+                ),
+                const SizedBox(width: 4),
+              ],
+              if (widget.onTap != null)
+                Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );

@@ -1812,6 +1812,67 @@ void main() {
     await capture(tester, 'artist');
   });
 
+  testWidgets(
+      'a release in the Releases strip grows on hover and offers a direct '
+      'play button', (tester) async {
+    await open(tester, app: buildApp());
+    await tester.tap(railItem('Artists'));
+    await settle(tester);
+    await tester.tap(find.text('PinocchioP').first);
+    await settle(tester);
+
+    // "Antenna" appears twice on this page: once as the release tile's own
+    // title, and again as the track list's per-album section header once it
+    // groups by release. The tile carries its own key precisely so a test
+    // can tell the two apart.
+    final tileFinder = find.byKey(const ValueKey('release-1'));
+    // The play button is a plain circular Material/InkWell, the same as the
+    // album grid's own hover play button -- no tooltip, just the icon.
+    final playIcon =
+        find.descendant(of: tileFinder, matching: find.byIcon(Icons.play_arrow));
+    AnimatedOpacity opacityOf(Finder finder) => tester.widget<AnimatedOpacity>(
+          find.ancestor(of: finder, matching: find.byType(AnimatedOpacity)).first,
+        );
+
+    // At rest: no lift, and the button sits at zero opacity.
+    expect(opacityOf(playIcon).opacity, 0);
+    var scale = tester
+        .widget<AnimatedScale>(
+          find.descendant(of: tileFinder, matching: find.byType(AnimatedScale))
+              .first,
+        )
+        .scale;
+    expect(scale, 1);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(tileFinder));
+    await tester.pumpAndSettle();
+
+    scale = tester
+        .widget<AnimatedScale>(
+          find.descendant(of: tileFinder, matching: find.byType(AnimatedScale))
+              .first,
+        )
+        .scale;
+    expect(scale, greaterThan(1));
+    expect(opacityOf(playIcon).opacity, 1);
+
+    final playButton = find.ancestor(
+      of: playIcon,
+      matching: find.byType(InkWell),
+    ).first;
+
+    // Playing it does not open the album -- it is a shortcut around that,
+    // not a way to get there.
+    await tester.tap(playButton);
+    await settle(tester);
+    expect(find.byType(AlbumDetailView), findsNothing);
+    expect(find.text('PinocchioP'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   group('an artist page keeps its actions next to the name', () {
     const bandcamp = LinkRow(
       id: 1,
@@ -2089,6 +2150,46 @@ void main() {
     expect(find.text('Top result'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await capture(tester, '09-search-narrow');
+  });
+
+  testWidgets(
+      'an album result offers a play button on hover, without leaving '
+      'search', (tester) async {
+    await open(tester, app: buildApp(searchResults: _searchResults));
+    await tester.tap(railItem('Search'));
+    await settle(tester);
+
+    final rowFinder = find.ancestor(
+      of: find.text('Comic and Cosmic'),
+      matching: find.byType(InkWell),
+    ).first;
+
+    final playButton =
+        find.descendant(of: rowFinder, matching: find.byTooltip('Play'));
+    AnimatedOpacity opacityOf(Finder finder) => tester.widget<AnimatedOpacity>(
+          find.ancestor(of: finder, matching: find.byType(AnimatedOpacity)).first,
+        );
+
+    // Built (so a screen reader can always reach it), but invisible at rest.
+    expect(playButton, findsOneWidget);
+    expect(opacityOf(playButton).opacity, 0);
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(rowFinder));
+    await tester.pumpAndSettle();
+
+    expect(opacityOf(playButton).opacity, 1);
+
+    await tester.tap(playButton);
+    await settle(tester);
+
+    // Still on search -- Play is a shortcut around opening the album, not a
+    // way to get there.
+    expect(find.byType(SearchView, skipOffstage: false), findsOneWidget);
+    expect(find.byType(AlbumDetailView), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   group('filtering a list', () {

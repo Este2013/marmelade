@@ -98,6 +98,24 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.4.0',
+    date: '2026-09-14',
+    headline: 'A cover you can play from, wherever it shows up.',
+    changes: [
+      Change.added(
+        "A play button on hover, on a tag's artist and album cards, an "
+        "artist's own Releases strip, and an artist or album result in "
+        'search -- one click to play instead of one to open the page and a '
+        'second to press Play there.',
+      ),
+      Change.changed(
+        "Those same cards -- a tag's artists and albums, an artist's "
+        'releases -- now grow a touch on hover, the same lift every other '
+        'cover in the app already had. They were the last ones missing it.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.3.2',
     date: '2026-09-09',
     headline: 'A player that remembers its place, seeks where it is told, '
