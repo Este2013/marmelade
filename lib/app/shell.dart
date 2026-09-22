@@ -375,6 +375,16 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
     }
   }
 
+  /// Opens settings on the Library tab, where "add a folder" actually is.
+  ///
+  /// The button that offers this reaches settings the same way the rail
+  /// does, so it has to say which tab it means rather than land on whatever
+  /// settings opens on by default.
+  void _openSettingsToAddAFolder() {
+    ref.read(settingsTabRequestProvider.notifier).set(SettingsTab.library);
+    _select(LibrarySection.settings);
+  }
+
   void _push(Widget page, {Widget? Function(BuildContext)? chrome, bool bleed = false, bool retry = true}) {
     final navigator = _navigatorKeys[_section]!.currentState;
     if (navigator == null) {
@@ -913,8 +923,8 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
 
   Widget _rootFor(LibrarySection section) => switch (section) {
     LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack, onSeeMore: _seeMoreFromSearch),
-    LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId), onOpenSettings: () => _select(LibrarySection.settings)),
-    LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack, onOpenSettings: () => _select(LibrarySection.settings)),
+    LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId), onOpenSettings: _openSettingsToAddAFolder),
+    LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack, onOpenSettings: _openSettingsToAddAFolder),
     LibrarySection.artists => ArtistsView(onOpenArtist: _openArtist, onOpenReview: _openCreditReview),
     LibrarySection.tags => TagsView(onOpenTag: _openTag),
     LibrarySection.playlists => PlaylistsView(onOpenPlaylist: _openPlaylist),

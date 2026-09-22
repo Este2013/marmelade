@@ -42,6 +42,7 @@ import '../domain/models/library_views.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
+import '../widgets/artwork.dart' show ArtworkFilterQuality, ArtworkRenderSettings;
 import '../services/art/link_artwork_service.dart';
 import '../core/changelog/changelog.dart';
 import '../services/updates/changelog_service.dart';
@@ -305,6 +306,58 @@ final artworkFileProvider = Provider.family<File?, String?>((ref, storedPath) {
   final file = store.fileFor(storedPath);
   return file.existsSync() ? file : null;
 });
+
+/// What the artwork-rendering settings currently say.
+///
+/// Same shape as [ThemeSettings]: the default is returned immediately so a
+/// cover can be drawn on the first frame, and the stored values replace it a
+/// moment later once they have been read back.
+class ArtworkRenderSettingsNotifier extends Notifier<ArtworkRenderSettings> {
+  @override
+  ArtworkRenderSettings build() {
+    Future.microtask(_load);
+    return const ArtworkRenderSettings();
+  }
+
+  SettingsRepository get _settings => ref.read(settingsRepositoryProvider);
+
+  Future<void> _load() async {
+    try {
+      final quality = await _settings.get(
+        SettingKeys.artworkFilterQuality,
+        ArtworkFilterQuality.medium.name,
+      );
+      final fullResolution =
+          await _settings.get(SettingKeys.artworkFullResolution, false);
+      // This provider is read from every [Artwork], including in widget
+      // tests that mount one without a real database behind it -- there is
+      // nothing to persist a setting to there, and the default this already
+      // returned is the right answer.
+      if (!ref.mounted) return;
+      state = ArtworkRenderSettings(
+        filterQuality: ArtworkFilterQuality.of(quality),
+        decodeAtFullResolution: fullResolution,
+      );
+    } catch (_) {
+      // Same reasoning: no database means no settings to load, not a crash.
+    }
+  }
+
+  Future<void> setFilterQuality(ArtworkFilterQuality quality) async {
+    state = state.copyWith(filterQuality: quality);
+    await _settings.set(SettingKeys.artworkFilterQuality, quality.name);
+  }
+
+  Future<void> setFullResolution(bool value) async {
+    state = state.copyWith(decodeAtFullResolution: value);
+    await _settings.set(SettingKeys.artworkFullResolution, value);
+  }
+}
+
+final artworkRenderSettingsProvider = NotifierProvider<
+    ArtworkRenderSettingsNotifier, ArtworkRenderSettings>(
+  ArtworkRenderSettingsNotifier.new,
+);
 
 /// A colour scheme drawn out of one piece of artwork.
 ///

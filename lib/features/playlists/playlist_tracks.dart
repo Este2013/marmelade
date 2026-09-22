@@ -484,47 +484,58 @@ class _GroupHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return InkWell(
-      // The whole heading folds the group: it is the biggest target on the row
-      // and there is nothing else clicking a heading could mean.
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
-        child: Row(
-        children: [
-          Icon(
-            collapsed ? Icons.chevron_right : Icons.expand_more,
-            size: 18,
-            color: scheme.onSurfaceVariant,
+    return Padding(
+      // The gap from the previous group sits outside the tappable area, not
+      // baked into its padding -- an 18/6 top/bottom split inside the InkWell
+      // left its own hover highlight taller on top than on the bottom, which
+      // pushed the artwork below the highlight's true centre.
+      padding: const EdgeInsets.only(top: 12),
+      child: InkWell(
+        // The whole heading folds the group: it is the biggest target on the
+        // row and there is nothing else clicking a heading could mean.
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Row(
+            children: [
+              Icon(
+                collapsed ? Icons.chevron_right : Icons.expand_more,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              if (imagePath != null) ...[
+                Artwork(storedPath: imagePath, size: 34, borderRadius: 6),
+                const SizedBox(width: 12),
+              ] else ...[
+                Icon(Icons.folder_outlined, size: 18, color: scheme.primary),
+                const SizedBox(width: 10),
+              ],
+              Text(
+                label,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(color: scheme.primary),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                pluralize(count, 'track'),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+              const Spacer(),
+              ReorderableDragStartListener(
+                index: index,
+                child: Tooltip(
+                  message: 'Drag to move this whole group',
+                  child: Icon(
+                    Icons.drag_handle,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          if (imagePath != null) ...[
-            Artwork(storedPath: imagePath, size: 34, borderRadius: 6),
-            const SizedBox(width: 12),
-          ] else ...[
-            Icon(Icons.folder_outlined, size: 18, color: scheme.primary),
-            const SizedBox(width: 10),
-          ],
-          Text(
-            label,
-            style: theme.textTheme.titleSmall?.copyWith(color: scheme.primary),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            pluralize(count, 'track'),
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-          const Spacer(),
-          ReorderableDragStartListener(
-            index: index,
-            child: Tooltip(
-              message: 'Drag to move this whole group',
-              child: Icon(Icons.drag_handle, color: scheme.onSurfaceVariant),
-            ),
-          ),
-        ],
         ),
       ),
     );

@@ -248,9 +248,29 @@ class AppLog {
   }
 
   /// The most recent lines, oldest first.
+  ///
+  /// Backed by the in-memory ring buffer, capped at [_recentLimit] --
+  /// cheap to hand out, but it cannot hold more than that regardless of
+  /// [limit]. See [readAllLines] for the file itself, unbounded.
   List<String> recentLines({int limit = _recentLimit}) {
     final start = _recent.length > limit ? _recent.length - limit : 0;
     return _recent.sublist(start);
+  }
+
+  /// Every line this session has written, oldest first, read straight off
+  /// disk rather than from the capped in-memory buffer.
+  ///
+  /// Every line is flushed as it is written (see the class comment), so this
+  /// is always current up to the moment it is called -- it just costs an
+  /// actual file read, which recentLines does not.
+  List<String> readAllLines() {
+    final target = file;
+    if (target == null) return const [];
+    try {
+      return target.readAsLinesSync();
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Resident memory in bytes, or null when unavailable.

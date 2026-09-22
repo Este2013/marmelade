@@ -541,9 +541,11 @@ class _PlayOverlayButton extends ConsumerWidget {
     }
     // Read the album's tracks in playing order and queue the lot, so pressing
     // play on a cover means "play this album" rather than "play one track".
+    // Without an explicit sort this defaults to alphabetical by title, which
+    // is not the running order the album's own page plays it in.
     final tracks = await ref
         .read(libraryRepositoryProvider)
-        .watchTracks(albumId: album.id)
+        .watchTracks(albumId: album.id, sort: LibrarySort.trackNumber)
         .first;
     if (tracks.isEmpty) return;
     await player.playAll(

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:marmelade/app/providers.dart';
+import 'package:marmelade/core/logging/app_log.dart';
 import 'package:marmelade/data/repositories/missing_files_repository.dart';
 import 'package:marmelade/app/shell.dart';
 import 'package:marmelade/app/window_chrome.dart';
@@ -730,23 +731,30 @@ void main() {
     await capture(tester, '04-album');
   });
 
-  testWidgets('settings shows the folder controls and the repo link',
-      (tester) async {
+  testWidgets(
+      'settings is organised into tabs, so the folder controls and the '
+      'repo link are each a click away', (tester) async {
     await open(tester);
     await tester.tap(settingsRailItem());
     await settle(tester);
     expect(tester.takeException(), isNull);
 
-    // The theme controls are what the page opens on.
-    expect(find.text('Appearance'), findsOneWidget);
+    // Appearance is what the page opens on: it is the tab most people touch
+    // first and most often.
     expect(find.text('Match Windows'), findsWidgets);
+    expect(find.text('Music folders'), findsNothing);
+    await capture(tester, 'settings-appearance');
 
+    // Library is its own tab, reached by name rather than by scrolling
+    // through everything else to find it -- folders, and anything waiting
+    // on the user, are the most likely reason to be here.
+    await tester.tap(find.text('Library'));
+    await settle(tester);
     expect(find.text('Music folders'), findsWidgets);
     expect(find.text('Add folder'), findsOneWidget);
     expect(find.text('No folders yet'), findsOneWidget);
-
-    // Anything waiting on the user is surfaced rather than hidden -- but the
-    // page is a lazy list, so it has to be reached rather than looked for.
+    // Same tab, further down its own scroll -- it is a lazy list, so it has
+    // to be reached rather than merely looked for.
     await tester.dragUntilVisible(
       find.textContaining('to review'),
       find.text('Add folder'),
@@ -755,17 +763,71 @@ void main() {
     await settle(tester);
     expect(find.textContaining('to review'), findsOneWidget);
 
-    // Further down the page, and the list is lazy, so it has to be reached
-    // rather than merely looked for.
-    await tester.dragUntilVisible(
-      find.text('Source code'),
-      find.text('Add folder'),
-      const Offset(0, -200),
-    );
+    // Nothing from another tab bleeds in -- there is only one scroll here.
+    expect(find.text('Match Windows'), findsNothing);
+    expect(find.text('Source code'), findsNothing);
+    await capture(tester, '05-settings');
+
+    await tester.tap(find.text('About'));
     await settle(tester);
     expect(find.text('Source code'), findsOneWidget);
+    await capture(tester, 'settings-about');
+  });
 
-    await capture(tester, '05-settings');
+  testWidgets(
+      "the diagnostics log colours its lines, and an info line and an "
+      'error line get different colours', (tester) async {
+    // Real file I/O, which -- like the screenshot encode above -- has to run
+    // inside runAsync: the test zone fakes time, and awaiting a real
+    // Directory/File operation directly in it never resolves.
+    final logDir = Directory.systemTemp.createTempSync('marmelade_log_test_');
+    addTearDown(() => logDir.deleteSync(recursive: true));
+    // Registered after the delete above, so it runs first (tearDowns run
+    // last-registered-first): the file has to be closed before its
+    // directory can be removed, or Windows refuses the delete.
+    addTearDown(() => AppLog.instance.sessionEnd('test'));
+    await tester.runAsync(() async {
+      await AppLog.initialize(directory: logDir, mode: 'test');
+      AppLog.instance.info('an info line', tag: 'test');
+      AppLog.instance.error('an error line', tag: 'test');
+    });
+
+    await open(tester);
+    await tester.tap(settingsRailItem());
+    await settle(tester);
+    await tester.tap(find.text('Diagnostics'));
+    await settle(tester);
+    await tester.tap(find.text("This session's log"));
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+
+    // Every visible log line renders as a rich span, not a plain string --
+    // that is what makes colouring possible at all.
+    final richLines = tester
+        .widgetList<Text>(find.byType(Text))
+        .where((t) => t.textSpan != null)
+        .toList();
+    expect(richLines, isNotEmpty);
+
+    Color? levelColourOf(String needle) {
+      for (final text in richLines) {
+        final span = text.textSpan!;
+        if (!span.toPlainText().contains(needle)) continue;
+        // children: [timestamp, "  ", level, "  ", tag?, rest] -- the level
+        // is the third child, after the timestamp and one separator.
+        final children = span is TextSpan ? span.children : null;
+        final levelSpan =
+            children != null && children.length > 2 ? children[2] : null;
+        return levelSpan is TextSpan ? levelSpan.style?.color : null;
+      }
+      return null;
+    }
+
+    final infoColour = levelColourOf('an info line');
+    final errorColour = levelColourOf('an error line');
+    expect(infoColour, isNotNull);
+    expect(errorColour, isNotNull);
+    expect(infoColour, isNot(equals(errorColour)));
   });
 
   testWidgets('an empty library shows an empty state, not a blank panel',
@@ -775,6 +837,21 @@ void main() {
     expect(find.text('No music yet'), findsOneWidget);
 
     await capture(tester, '06-empty');
+  });
+
+  testWidgets(
+      "the empty library's \"Open settings\" lands on Library, not "
+      'wherever settings last opened on', (tester) async {
+    // Appearance is settings' own default tab now that it opens on that
+    // rather than Library -- so this button has to say which tab it means,
+    // not just get you to settings somewhere.
+    await open(tester, app: buildApp(albums: const [], tracks: const []));
+    await tester.tap(find.text('Open settings'));
+    await settle(tester);
+
+    expect(find.text('Music folders'), findsWidgets);
+    expect(find.text('Match Windows'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the review queue is offered where the damage shows',
@@ -2491,6 +2568,61 @@ void main() {
       expect(find.text('Add to the queue'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets(
+      "an album tile's play button queues in track-number order, not "
+      'alphabetical', (tester) async {
+    // The report this covers: pressing the hover play button on a cover
+    // queued its tracks alphabetically by title -- Motivation is Dead
+    // before Tokyo Mannequin -- rather than the running order the album's
+    // own page plays it in.
+    await db.into(db.albums).insert(
+          AlbumsCompanion.insert(
+            id: const Value(1),
+            title: 'Antenna',
+            nameKey: 'antenna',
+          ),
+        );
+    await (db.update(db.tracks)..where((t) => t.id.equals(1))).write(
+      const TracksCompanion(
+        albumId: Value(1),
+        discNo: Value(1),
+        trackNo: Value(1),
+      ),
+    );
+    await (db.update(db.tracks)..where((t) => t.id.equals(2))).write(
+      const TracksCompanion(
+        albumId: Value(1),
+        discNo: Value(1),
+        trackNo: Value(2),
+      ),
+    );
+
+    await open(tester);
+
+    final tileFinder =
+        find.ancestor(of: find.text('Antenna'), matching: find.byType(GestureDetector)).first;
+    final playIcon =
+        find.descendant(of: tileFinder, matching: find.byIcon(Icons.play_arrow));
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(tileFinder));
+    await tester.pumpAndSettle();
+
+    final playButton =
+        find.ancestor(of: playIcon, matching: find.byType(InkWell)).first;
+    await tester.tap(playButton);
+    await settle(tester);
+
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(AppShell)));
+    final queued =
+        container.read(playerProvider).queue.map((e) => e.trackId).toList();
+    expect(queued, [1, 2]);
+    expect(tester.takeException(), isNull);
   });
 
   group('a playback error', () {

@@ -426,6 +426,31 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets(
+        'a heading keeps its icon centred in its own highlight, not below '
+        'it', (tester) async {
+      // The report this covers: hovering a heading showed its icon and
+      // cover sitting below the middle of the highlighted row. The 18/6
+      // top/bottom padding split inside the tappable area was baked in to
+      // also serve as the gap from the previous group, which put more
+      // padding above the icon than below it.
+      await pump(tester, grouping: PlaylistGrouping.album);
+
+      final headingFinder = find
+          .ancestor(of: find.text('Alpha'), matching: find.byType(InkWell))
+          .first;
+      final icon = find.descendant(
+        of: headingFinder,
+        matching: find.byIcon(Icons.folder_outlined),
+      );
+
+      final headingRect = tester.getRect(headingFinder);
+      final iconRect = tester.getRect(icon);
+
+      expect(iconRect.center.dy, moreOrLessEquals(headingRect.center.dy, epsilon: 1));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('dragging a track stores an arrangement', (tester) async {
       // What the drag has to do: hand a complete order to the repository. Which
       // order depends on where it landed, and that is the rules' business.

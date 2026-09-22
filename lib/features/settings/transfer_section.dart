@@ -171,33 +171,10 @@ class TransferSection extends ConsumerWidget {
     WidgetRef ref,
     String current,
   ) async {
-    final controller = TextEditingController(text: current);
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Name this computer'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            helperText: 'Only used to tell the computers apart.',
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Rename'),
-          ),
-        ],
-      ),
+      builder: (context) => _RenameDialog(initialName: current),
     );
-    controller.dispose();
     if (name == null || name.trim().isEmpty) return;
 
     await ref.read(librarySyncProvider).rename(name);
@@ -323,6 +300,61 @@ class TransferSection extends ConsumerWidget {
           ],
         ),
       );
+}
+
+/// Asks for this computer's name.
+///
+/// Its own [StatefulWidget] rather than a bare [TextEditingController] built
+/// beside the `showDialog` call: a dialog's exit transition keeps its content
+/// mounted (and painting) for the length of the animation after `pop`, and
+/// disposing the controller the moment `showDialog`'s future resolves --
+/// which is before that animation finishes -- used to reach a `TextField`
+/// still using it, which is exactly the "used after dispose()" this fixes.
+/// Owning the controller here instead means Flutter disposes it when the
+/// widget is actually unmounted, not a guess at when that might be.
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _controller = TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Name this computer'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          helperText: 'Only used to tell the computers apart.',
+        ),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Rename'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Another computer in the shared folder.

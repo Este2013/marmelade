@@ -98,6 +98,50 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.4.1',
+    date: '2026-09-22',
+    headline: 'Settings, reorganised and put back together.',
+    changes: [
+      Change.changed(
+        "Settings is tabs now -- Appearance, Library, Transfer, "
+        'Diagnostics, About -- instead of one long scroll. The tab bar '
+        'fills the width, and "Choose a music folder" on an empty library '
+        'now actually opens on the Library tab rather than wherever '
+        'settings last happened to be.',
+      ),
+      Change.added(
+        "The diagnostics log reads the whole session's file instead of "
+        'the last 200 lines held in memory, and colours it: green '
+        'timestamps, a level coloured by severity, grey tags -- with its '
+        'own colours for light and dark, so both stay legible.',
+      ),
+      Change.added(
+        'Two testing switches under Appearance, for artwork that looks '
+        'softer than it should on some screens: how hard a cover gets '
+        'resharpened when drawn at a different size than it decoded at, '
+        'and an option to decode every cover at full resolution instead of '
+        'downscaling while decoding.',
+      ),
+      Change.fixed(
+        'Renaming this computer in Transfer and pressing Cancel could '
+        'throw "Once you have called dispose() on a TextEditingController, '
+        'it can no longer be used." The dialog now owns its own controller '
+        'properly instead of disposing it before its closing animation was '
+        'done with it.',
+      ),
+      Change.fixed(
+        "An album cover's play button, on hover in the grid, queued its "
+        'tracks alphabetically by title instead of in the running order '
+        'the album itself plays in -- the only place left that did.',
+      ),
+      Change.fixed(
+        "A playlist's album heading looked shifted down against its own "
+        'hover highlight -- the highlight was taller above the icon than '
+        'below it, not actually centred on it.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.4.0',
     date: '2026-09-14',
     headline: 'A cover you can play from, wherever it shows up.',

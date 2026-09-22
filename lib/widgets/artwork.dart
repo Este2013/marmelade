@@ -24,6 +24,62 @@ const maxDecodeWidth = 1200;
 /// full-resolution.
 const _fallbackDecodeWidth = 256.0;
 
+/// How aggressively artwork is resampled when it is drawn at a different
+/// size than it was decoded at.
+///
+/// A setting rather than a constant: reports of soft-looking covers have come
+/// from one monitor and not others on the same machine, and there is no way
+/// to try higher-quality resampling on somebody else's screen except letting
+/// them turn it up and look.
+enum ArtworkFilterQuality {
+  low('Low', FilterQuality.low),
+  medium('Medium (default)', FilterQuality.medium),
+  high('High', FilterQuality.high);
+
+  const ArtworkFilterQuality(this.label, this.value);
+
+  final String label;
+  final FilterQuality value;
+
+  static ArtworkFilterQuality of(String name) =>
+      ArtworkFilterQuality.values.where((v) => v.name == name).firstOrNull ??
+      ArtworkFilterQuality.medium;
+}
+
+/// Everything the artwork-rendering settings decide.
+///
+/// Separate from [ThemePreference]: that is about colour, this is about how
+/// the pixels themselves get resampled, and the two have never needed to
+/// change together.
+class ArtworkRenderSettings {
+  const ArtworkRenderSettings({
+    this.filterQuality = ArtworkFilterQuality.medium,
+    this.decodeAtFullResolution = false,
+  });
+
+  final ArtworkFilterQuality filterQuality;
+
+  /// Skips the [Image.file] `cacheWidth`/`cacheHeight` decode-time downscale
+  /// entirely, so every cover decodes at its full stored resolution and
+  /// whatever downscaling it needs happens at paint time instead, under
+  /// [filterQuality]. That paint-time resize is a different code path from
+  /// the codec's own decode-time one, and reports of blur have pointed at the
+  /// decode-time path specifically -- this is how to tell whether that
+  /// theory is right on a given machine. Costs real memory (a grid of covers
+  /// at full resolution instead of tile-sized), which is why it defaults off.
+  final bool decodeAtFullResolution;
+
+  ArtworkRenderSettings copyWith({
+    ArtworkFilterQuality? filterQuality,
+    bool? decodeAtFullResolution,
+  }) =>
+      ArtworkRenderSettings(
+        filterQuality: filterQuality ?? this.filterQuality,
+        decodeAtFullResolution:
+            decodeAtFullResolution ?? this.decodeAtFullResolution,
+      );
+}
+
 /// Decoded a little larger than the box it is drawn in.
 ///
 /// Both grids lift a cover on hover -- 1.03 in Albums, 1.04 in Artists -- and
@@ -77,6 +133,7 @@ class Artwork extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final file = ref.watch(artworkFileProvider(storedPath));
+    final renderSettings = ref.watch(artworkRenderSettingsProvider);
     final radius = BorderRadius.circular(borderRadius);
 
     Widget content = file == null
@@ -95,6 +152,10 @@ class Artwork extends ConsumerWidget {
             // size is given the real constraints have to be measured, because
             // guessing wrong in that direction is the difference between a
             // smooth grid and an unusable one.
+            //
+            // [ArtworkRenderSettings.decodeAtFullResolution] skips this
+            // entirely, trading that memory budget for ruling the decode-time
+            // resize in or out as the cause of a soft-looking cover.
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final devicePixelRatio =
@@ -113,8 +174,9 @@ class Artwork extends ConsumerWidget {
                   fit: fit,
                   width: size,
                   height: size,
-                  cacheWidth: decodeWidth,
-                  filterQuality: FilterQuality.medium,
+                  cacheWidth:
+                      renderSettings.decodeAtFullResolution ? null : decodeWidth,
+                  filterQuality: renderSettings.filterQuality.value,
                   errorBuilder: (context, _, _) => _Placeholder(
                     seed: fallbackSeed,
                     icon: Icons.broken_image_outlined,

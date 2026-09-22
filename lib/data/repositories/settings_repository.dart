@@ -119,6 +119,14 @@ abstract final class SettingKeys {
   /// Whether blurred artwork behind a page turns with the palette style.
   static const backdropFollowsPalette = 'appearance.backdropFollowsPalette';
 
+  /// How aggressively artwork is resampled when drawn at a different size
+  /// than it decoded at. A testing knob for reports of soft-looking covers.
+  static const artworkFilterQuality = 'appearance.artworkFilterQuality';
+
+  /// Skips the decode-time downscale and decodes every cover at its full
+  /// stored resolution instead. Also a testing knob, for the same reports.
+  static const artworkFullResolution = 'appearance.artworkFullResolution';
+
   static const updateChannel = 'updates.channel';
   static const checkForUpdates = 'updates.checkOnStartup';
   static const lastUpdateCheck = 'updates.lastCheck';

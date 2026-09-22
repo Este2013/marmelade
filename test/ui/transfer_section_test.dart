@@ -96,6 +96,34 @@ void main() {
     expect(find.textContaining('Work PC'), findsOneWidget);
   });
 
+  testWidgets(
+      'cancelling the rename dialog does not touch a disposed controller',
+      (tester) async {
+    // The report this covers: the dialog's own TextEditingController was
+    // disposed the instant showDialog's future resolved, which is before
+    // the dialog's exit transition finishes animating the still-mounted
+    // TextField away -- "Once you have called dispose() ... it can no
+    // longer be used." Pumping through that transition after Cancel is what
+    // would have surfaced it.
+    await pump(tester);
+
+    await tester.tap(find.byTooltip('Rename this computer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Name this computer'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    // Pumped in steps, not settled in one call, so the exit transition is
+    // still mid-flight when later frames are asked for -- exactly the
+    // window the real bug lived in.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Name this computer'), findsNothing);
+  });
+
   testWidgets('the music files are off until asked for', (tester) async {
     // The user's own caution: a shared folder is often metered, so metadata
     // travels by default and gigabytes do not.

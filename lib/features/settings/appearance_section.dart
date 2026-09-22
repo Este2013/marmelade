@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/theme_settings.dart';
+import '../../widgets/artwork.dart' show ArtworkFilterQuality;
 
 /// Light or dark, and what colour the app is.
 ///
@@ -180,6 +181,64 @@ class AppearanceSection extends ConsumerWidget {
                 ),
             ],
           ),
+        ),
+        const Divider(height: 1),
+        const _ArtworkRenderingTile(),
+      ],
+    );
+  }
+}
+
+/// Testing knobs for a cover that looks softer than it should.
+///
+/// Not a fix in itself -- both of these trade something (CPU, memory) for a
+/// chance at a sharper picture -- but a report of blurry artwork on one
+/// monitor and not another cannot be chased from here, and these are the two
+/// places a monitor-dependent resampling difference could actually live: how
+/// hard the resample tries, and whether it runs at all before the codec's
+/// own decode-time downscale gets there first.
+class _ArtworkRenderingTile extends ConsumerWidget {
+  const _ArtworkRenderingTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(artworkRenderSettingsProvider);
+    final notifier = ref.read(artworkRenderSettingsProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          leading: const Icon(Icons.deblur_outlined),
+          title: const Text('Artwork resampling'),
+          subtitle: const Text(
+            'How hard covers are resharpened when drawn at a size other '
+            'than they decoded at. Worth raising if artwork looks soft -- '
+            'costs a little more CPU per frame.',
+          ),
+          trailing: SegmentedButton<ArtworkFilterQuality>(
+            showSelectedIcon: false,
+            segments: [
+              for (final quality in ArtworkFilterQuality.values)
+                ButtonSegment(value: quality, label: Text(quality.label)),
+            ],
+            selected: {settings.filterQuality},
+            onSelectionChanged: (selection) =>
+                notifier.setFilterQuality(selection.first),
+          ),
+        ),
+        SwitchListTile(
+          secondary: const Icon(Icons.hd_outlined),
+          title: const Text('Decode artwork at full resolution'),
+          subtitle: const Text(
+            'Skips the resize that normally happens while a cover is '
+            'still being decoded, so every cover uses far more memory -- '
+            'a whole grid of them, at full size, instead of tile-sized. '
+            'Worth trying only to check whether that resize is what is '
+            'making a cover look soft.',
+          ),
+          value: settings.decodeAtFullResolution,
+          onChanged: notifier.setFullResolution,
         ),
       ],
     );
