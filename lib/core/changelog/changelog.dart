@@ -148,7 +148,7 @@ const changelog = <ReleaseNotes>[
     ],
   ),
   ReleaseNotes(
-    version: '0.4.2',
+    version: '0.4.0',
     date: '2026-09-14',
     headline: 'A cover you can play from, wherever it shows up.',
     changes: [

@@ -185,16 +185,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
   });
 
-  testWidgets('says what it will do, including where it falls back',
-      (tester) async {
+  testWidgets('says what it will do', (tester) async {
     // "Adaptive" says nothing on its own, and an app that changes colour on
     // its own needs to explain itself.
     await pump(tester);
     await tester.tap(find.text(AccentSource.adaptive.label));
     await tester.pump();
 
-    expect(find.textContaining('artwork of whatever is playing'), findsOne);
-    expect(find.textContaining('when nothing is loaded'), findsOne);
+    expect(find.textContaining('Match the currently playing song'), findsOne);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 1));
