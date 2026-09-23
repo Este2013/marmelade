@@ -98,6 +98,12 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.4.2',
+    date: '2026-09-23',
+    headline: 'Better settings copy and about dialog',
+    changes: [Change.changed("Improved copy of settings with more user-oriented labels."), Change.changed("Added about dialog and licenses page.")],
+  ),
+  ReleaseNotes(
     version: '0.4.1',
     date: '2026-09-22',
     headline: 'Settings, reorganised and put back together.',
@@ -142,7 +148,7 @@ const changelog = <ReleaseNotes>[
     ],
   ),
   ReleaseNotes(
-    version: '0.4.0',
+    version: '0.4.2',
     date: '2026-09-14',
     headline: 'A cover you can play from, wherever it shows up.',
     changes: [
@@ -162,7 +168,8 @@ const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.3.2',
     date: '2026-09-09',
-    headline: 'A player that remembers its place, seeks where it is told, '
+    headline:
+        'A player that remembers its place, seeks where it is told, '
         'and stops crackling.',
     changes: [
       Change.fixed(
@@ -199,7 +206,8 @@ const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.3.1',
     date: '2026-09-09',
-    headline: 'The real reason some tracks silently refused to play, found '
+    headline:
+        'The real reason some tracks silently refused to play, found '
         'and fixed.',
     changes: [
       Change.fixed(
@@ -247,7 +255,8 @@ const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.3.0',
     date: '2026-09-08',
-    headline: 'A detail page keeps its name in reach, and a playlist tree '
+    headline:
+        'A detail page keeps its name in reach, and a playlist tree '
         'finally looks like one.',
     changes: [
       Change.added(
@@ -294,7 +303,8 @@ const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.2.4',
     date: '2026-09-07',
-    headline: 'Colours that follow the music, and a player that plays what '
+    headline:
+        'Colours that follow the music, and a player that plays what '
         'you clicked.',
     changes: [
       Change.added(
@@ -441,7 +451,8 @@ const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.2.0',
     date: '2026-09-04',
-    headline: 'Lists you can work through, metadata you can fix in place, and '
+    headline:
+        'Lists you can work through, metadata you can fix in place, and '
         'a library that can move between computers.',
     changes: [
       Change.added(
@@ -461,9 +472,7 @@ const changelog = <ReleaseNotes>[
         'Artists and albums can be created from the pickers, so a credit can '
         'be corrected without leaving the editor to go and make one first.',
       ),
-      Change.added(
-        "A track's album can be changed or cleared from its editor.",
-      ),
+      Change.added("A track's album can be changed or cleared from its editor."),
       Change.added(
         'Tags can be dragged between categories, and a category can be given '
         'an icon and a colour, which every one of its tags then wears '
@@ -563,12 +572,7 @@ const changelog = <ReleaseNotes>[
       ),
     ],
   ),
-  ReleaseNotes(
-    version: '0.2.0-beta.1',
-    date: '2026-08-31',
-    headline: 'Testing our updates',
-    changes: [Change.added('Changelogs')],
-  ),
+  ReleaseNotes(version: '0.2.0-beta.1', date: '2026-08-31', headline: 'Testing our updates', changes: [Change.added('Changelogs')]),
   ReleaseNotes(
     version: '0.1.0',
     headline: 'The first build worth handing to someone else.',

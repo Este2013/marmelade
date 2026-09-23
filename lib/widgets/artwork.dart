@@ -33,7 +33,7 @@ const _fallbackDecodeWidth = 256.0;
 /// them turn it up and look.
 enum ArtworkFilterQuality {
   low('Low', FilterQuality.low),
-  medium('Medium (default)', FilterQuality.medium),
+  medium('Default', FilterQuality.medium),
   high('High', FilterQuality.high);
 
   const ArtworkFilterQuality(this.label, this.value);
@@ -41,9 +41,7 @@ enum ArtworkFilterQuality {
   final String label;
   final FilterQuality value;
 
-  static ArtworkFilterQuality of(String name) =>
-      ArtworkFilterQuality.values.where((v) => v.name == name).firstOrNull ??
-      ArtworkFilterQuality.medium;
+  static ArtworkFilterQuality of(String name) => ArtworkFilterQuality.values.where((v) => v.name == name).firstOrNull ?? ArtworkFilterQuality.medium;
 }
 
 /// Everything the artwork-rendering settings decide.
@@ -52,10 +50,7 @@ enum ArtworkFilterQuality {
 /// the pixels themselves get resampled, and the two have never needed to
 /// change together.
 class ArtworkRenderSettings {
-  const ArtworkRenderSettings({
-    this.filterQuality = ArtworkFilterQuality.medium,
-    this.decodeAtFullResolution = false,
-  });
+  const ArtworkRenderSettings({this.filterQuality = ArtworkFilterQuality.medium, this.decodeAtFullResolution = false});
 
   final ArtworkFilterQuality filterQuality;
 
@@ -69,15 +64,8 @@ class ArtworkRenderSettings {
   /// at full resolution instead of tile-sized), which is why it defaults off.
   final bool decodeAtFullResolution;
 
-  ArtworkRenderSettings copyWith({
-    ArtworkFilterQuality? filterQuality,
-    bool? decodeAtFullResolution,
-  }) =>
-      ArtworkRenderSettings(
-        filterQuality: filterQuality ?? this.filterQuality,
-        decodeAtFullResolution:
-            decodeAtFullResolution ?? this.decodeAtFullResolution,
-      );
+  ArtworkRenderSettings copyWith({ArtworkFilterQuality? filterQuality, bool? decodeAtFullResolution}) =>
+      ArtworkRenderSettings(filterQuality: filterQuality ?? this.filterQuality, decodeAtFullResolution: decodeAtFullResolution ?? this.decodeAtFullResolution);
 }
 
 /// Decoded a little larger than the box it is drawn in.
@@ -98,16 +86,7 @@ const _scaleHeadroom = 1.05;
 /// resort: something that still looks deliberate when a release simply has no
 /// art.
 class Artwork extends ConsumerWidget {
-  const Artwork({
-    super.key,
-    required this.storedPath,
-    this.size,
-    this.borderRadius = 8,
-    this.fallbackSeed,
-    this.fallbackIcon = Icons.album_outlined,
-    this.fit = BoxFit.cover,
-    this.heroTag,
-  });
+  const Artwork({super.key, required this.storedPath, this.size, this.borderRadius = 8, this.fallbackSeed, this.fallbackIcon = Icons.album_outlined, this.fit = BoxFit.cover, this.heroTag});
 
   /// Path within the artwork store, or null for none.
   final String? storedPath;
@@ -137,11 +116,7 @@ class Artwork extends ConsumerWidget {
     final radius = BorderRadius.circular(borderRadius);
 
     Widget content = file == null
-        ? _Placeholder(
-            seed: fallbackSeed,
-            icon: fallbackIcon,
-            borderRadius: radius,
-          )
+        ? _Placeholder(seed: fallbackSeed, icon: fallbackIcon, borderRadius: radius)
         : ClipRRect(
             borderRadius: radius,
             // Every cover must be decoded at roughly the size it is drawn.
@@ -158,30 +133,18 @@ class Artwork extends ConsumerWidget {
             // resize in or out as the cause of a soft-looking cover.
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final devicePixelRatio =
-                    MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
-                final logicalWidth = size ??
-                    (constraints.hasBoundedWidth
-                        ? constraints.maxWidth
-                        : _fallbackDecodeWidth);
-                final decodeWidth =
-                    (logicalWidth * devicePixelRatio * _scaleHeadroom)
-                        .round()
-                        .clamp(32, maxDecodeWidth);
+                final devicePixelRatio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
+                final logicalWidth = size ?? (constraints.hasBoundedWidth ? constraints.maxWidth : _fallbackDecodeWidth);
+                final decodeWidth = (logicalWidth * devicePixelRatio * _scaleHeadroom).round().clamp(32, maxDecodeWidth);
 
                 return Image.file(
                   file,
                   fit: fit,
                   width: size,
                   height: size,
-                  cacheWidth:
-                      renderSettings.decodeAtFullResolution ? null : decodeWidth,
+                  cacheWidth: renderSettings.decodeAtFullResolution ? null : decodeWidth,
                   filterQuality: renderSettings.filterQuality.value,
-                  errorBuilder: (context, _, _) => _Placeholder(
-                    seed: fallbackSeed,
-                    icon: Icons.broken_image_outlined,
-                    borderRadius: radius,
-                  ),
+                  errorBuilder: (context, _, _) => _Placeholder(seed: fallbackSeed, icon: Icons.broken_image_outlined, borderRadius: radius),
                 );
               },
             ),
@@ -195,19 +158,13 @@ class Artwork extends ConsumerWidget {
       content = Hero(tag: heroTag!, child: content);
     }
 
-    return size == null
-        ? content
-        : SizedBox(width: size, height: size, child: content);
+    return size == null ? content : SizedBox(width: size, height: size, child: content);
   }
 }
 
 /// A coloured tile standing in for missing artwork.
 class _Placeholder extends StatelessWidget {
-  const _Placeholder({
-    required this.seed,
-    required this.icon,
-    required this.borderRadius,
-  });
+  const _Placeholder({required this.seed, required this.icon, required this.borderRadius});
 
   final String? seed;
   final IconData icon;
@@ -217,36 +174,18 @@ class _Placeholder extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final hue = seed == null ? null : _hueFor(seed!);
-    final base = hue == null
-        ? scheme.surfaceContainerHighest
-        : HSLColor.fromAHSL(
-            1,
-            hue,
-            0.30,
-            scheme.brightness == Brightness.dark ? 0.22 : 0.86,
-          ).toColor();
+    final base = hue == null ? scheme.surfaceContainerHighest : HSLColor.fromAHSL(1, hue, 0.30, scheme.brightness == Brightness.dark ? 0.22 : 0.86).toColor();
 
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: borderRadius,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [base, Color.alphaBlend(scheme.surface.withValues(alpha: 0.45), base)],
-        ),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [base, Color.alphaBlend(scheme.surface.withValues(alpha: 0.45), base)]),
       ),
       child: Center(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final shortest = math.min(
-              constraints.hasBoundedWidth ? constraints.maxWidth : 48,
-              constraints.hasBoundedHeight ? constraints.maxHeight : 48,
-            );
-            return Icon(
-              icon,
-              size: (shortest * 0.32).clamp(14.0, 64.0),
-              color: scheme.onSurfaceVariant.withValues(alpha: 0.55),
-            );
+            final shortest = math.min(constraints.hasBoundedWidth ? constraints.maxWidth : 48, constraints.hasBoundedHeight ? constraints.maxHeight : 48);
+            return Icon(icon, size: (shortest * 0.32).clamp(14.0, 64.0), color: scheme.onSurfaceVariant.withValues(alpha: 0.55));
           },
         ),
       ),
@@ -270,13 +209,7 @@ class _Placeholder extends StatelessWidget {
 /// blurred past recognition, so the whole screen takes on the release's palette
 /// rather than sitting in a grey box.
 class ArtworkBackdrop extends ConsumerWidget {
-  const ArtworkBackdrop({
-    super.key,
-    required this.storedPath,
-    this.blur = 64,
-    this.overlayOpacity = 0.55,
-    this.child,
-  });
+  const ArtworkBackdrop({super.key, required this.storedPath, this.blur = 64, this.overlayOpacity = 0.55, this.child});
 
   final String? storedPath;
   final double blur;
@@ -292,9 +225,7 @@ class ArtworkBackdrop extends ConsumerWidget {
     final file = ref.watch(artworkFileProvider(storedPath));
     final scheme = Theme.of(context).colorScheme;
 
-    final shift = ref.watch(backdropFollowsPaletteProvider)
-        ? _shiftFor(ref, context)
-        : 0.0;
+    final shift = ref.watch(backdropFollowsPaletteProvider) ? _shiftFor(ref, context) : 0.0;
 
     Widget picture(File image) {
       final decoded = Image.file(
@@ -307,29 +238,19 @@ class ArtworkBackdrop extends ConsumerWidget {
         errorBuilder: (_, _, _) => const SizedBox.shrink(),
       );
       if (shift == 0) return decoded;
-      return ColorFiltered(
-        colorFilter: ColorFilter.matrix(hueRotation(shift)),
-        child: decoded,
-      );
+      return ColorFiltered(colorFilter: ColorFilter.matrix(hueRotation(shift)), child: decoded);
     }
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (file != null)
-          picture(file)
-        else
-          DecoratedBox(
-            decoration: BoxDecoration(color: scheme.surfaceContainerHigh),
-          ),
+        if (file != null) picture(file) else DecoratedBox(decoration: BoxDecoration(color: scheme.surfaceContainerHigh)),
         // A blur plus a scrim, rather than one heavy overlay: the blur carries
         // the colour, the scrim carries the contrast.
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.surface.withValues(alpha: overlayOpacity),
-            ),
+            decoration: BoxDecoration(color: scheme.surface.withValues(alpha: overlayOpacity)),
           ),
         ),
         // Breaks up the banding a blur this heavy leaves in a mostly

@@ -25,12 +25,7 @@ const repositoryUrl = 'https://github.com/Este2013/marmelade';
 enum SettingsTab { appearance, library, transfer, diagnostics, about }
 
 /// One tab of the settings page.
-typedef _SettingsTabInfo = ({
-  SettingsTab id,
-  IconData icon,
-  String label,
-  List<Widget> sections,
-});
+typedef _SettingsTabInfo = ({SettingsTab id, IconData icon, String label, List<Widget> sections});
 
 /// Grouped so each tab answers one question -- how does it look, what is in
 /// my library, how do I move it, is anything wrong, what version is this --
@@ -39,36 +34,11 @@ typedef _SettingsTabInfo = ({
 /// Appearance leads because it is what most people touch first and most
 /// often; the order otherwise follows [SettingsTab]'s own.
 final _tabs = <_SettingsTabInfo>[
-  (
-    id: SettingsTab.appearance,
-    icon: Icons.palette_outlined,
-    label: 'Appearance',
-    sections: const [AppearanceSection()],
-  ),
-  (
-    id: SettingsTab.library,
-    icon: Icons.library_music_outlined,
-    label: 'Library',
-    sections: const [_LibrarySection(), _StatisticsSection()],
-  ),
-  (
-    id: SettingsTab.transfer,
-    icon: Icons.sync_outlined,
-    label: 'Transfer',
-    sections: const [TransferSection()],
-  ),
-  (
-    id: SettingsTab.diagnostics,
-    icon: Icons.bug_report_outlined,
-    label: 'Diagnostics',
-    sections: const [_DiagnosticsSection()],
-  ),
-  (
-    id: SettingsTab.about,
-    icon: Icons.info_outline,
-    label: 'About',
-    sections: const [_AboutSection()],
-  ),
+  (id: SettingsTab.appearance, icon: Icons.palette_outlined, label: 'Appearance', sections: const [AppearanceSection()]),
+  (id: SettingsTab.library, icon: Icons.library_music_outlined, label: 'Library', sections: const [_LibrarySection(), _StatisticsSection()]),
+  (id: SettingsTab.transfer, icon: Icons.sync_outlined, label: 'Transfer', sections: const [TransferSection()]),
+  (id: SettingsTab.diagnostics, icon: Icons.bug_report_outlined, label: 'Diagnostics', sections: const [_DiagnosticsSection()]),
+  (id: SettingsTab.about, icon: Icons.info_outline, label: 'About', sections: const [_AboutSection()]),
 ];
 
 /// A one-shot request to open settings on a particular tab, next time it is
@@ -82,13 +52,9 @@ final _tabs = <_SettingsTabInfo>[
 /// already mounted: something that wants a specific tab (the "add a folder"
 /// empty state, wanting Library) sets this immediately before selecting the
 /// settings section, and the page consumes it and puts itself back to null.
-final settingsTabRequestProvider =
-    NotifierProvider<ViewSetting<SettingsTab?>, SettingsTab?>(
-  () => ViewSetting(null),
-);
+final settingsTabRequestProvider = NotifierProvider<ViewSetting<SettingsTab?>, SettingsTab?>(() => ViewSetting(null));
 
-int _indexOf(SettingsTab? tab) =>
-    tab == null ? 0 : _tabs.indexWhere((t) => t.id == tab).clamp(0, _tabs.length - 1);
+int _indexOf(SettingsTab? tab) => tab == null ? 0 : _tabs.indexWhere((t) => t.id == tab).clamp(0, _tabs.length - 1);
 
 /// Settings, organised into tabs so a section is a click away rather than a
 /// scroll -- the alternative this replaced was one column holding folders,
@@ -101,8 +67,7 @@ class SettingsView extends ConsumerStatefulWidget {
   ConsumerState<SettingsView> createState() => _SettingsViewState();
 }
 
-class _SettingsViewState extends ConsumerState<SettingsView>
-    with SingleTickerProviderStateMixin {
+class _SettingsViewState extends ConsumerState<SettingsView> with SingleTickerProviderStateMixin {
   late final TabController _controller;
 
   @override
@@ -113,15 +78,9 @@ class _SettingsViewState extends ConsumerState<SettingsView>
     // shown again. Consumed either way, so a later plain visit does not
     // keep jumping back to a tab that was only ever asked for once.
     final requested = ref.read(settingsTabRequestProvider);
-    _controller = TabController(
-      length: _tabs.length,
-      vsync: this,
-      initialIndex: _indexOf(requested),
-    );
+    _controller = TabController(length: _tabs.length, vsync: this, initialIndex: _indexOf(requested));
     if (requested != null) {
-      Future.microtask(
-        () => ref.read(settingsTabRequestProvider.notifier).set(null),
-      );
+      Future.microtask(() => ref.read(settingsTabRequestProvider.notifier).set(null));
     }
   }
 
@@ -145,10 +104,7 @@ class _SettingsViewState extends ConsumerState<SettingsView>
         // lost files is the one thing here a person needs to act on rather
         // than merely configure, and it should not depend on which tab
         // happens to be open when that happens.
-        const Padding(
-          padding: EdgeInsets.fromLTRB(24, 16, 24, 0),
-          child: MissingFilesSection(),
-        ),
+        const Padding(padding: EdgeInsets.fromLTRB(24, 16, 24, 0), child: MissingFilesSection()),
         TabBar(
           controller: _controller,
           // Filling the width rather than shrinking to each label -- five
@@ -156,16 +112,11 @@ class _SettingsViewState extends ConsumerState<SettingsView>
           // dead space, and one whose target is however wide its own name
           // happens to be is a smaller, less consistent target than its
           // neighbours.
-          tabs: [
-            for (final tab in _tabs) Tab(icon: Icon(tab.icon), text: tab.label),
-          ],
+          tabs: [for (final tab in _tabs) Tab(icon: Icon(tab.icon), text: tab.label)],
         ),
         const Divider(height: 1),
         Expanded(
-          child: TabBarView(
-            controller: _controller,
-            children: [for (final tab in _tabs) _TabBody(tab.sections)],
-          ),
+          child: TabBarView(controller: _controller, children: [for (final tab in _tabs) _TabBody(tab.sections)]),
         ),
       ],
     );
@@ -180,21 +131,17 @@ class _TabBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        children: [
-          for (final (index, section) in sections.indexed) ...[
-            if (index > 0) const SizedBox(height: 28),
-            section,
-          ],
-        ],
-      );
+    padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+    children: [
+      for (final (index, section) in sections.indexed) ...[if (index > 0) const SizedBox(height: 28), section],
+    ],
+  );
 }
 
 /// Matches one of [AppLog]'s own lines: `HH:MM:SS.mmm  LEVEL  [tag] message`.
 /// Whitespace is matched loosely rather than assuming the exact column
 /// widths the writer pads to, so this survives a formatting tweak there.
-final _logLinePattern =
-    RegExp(r'^(\d{2}:\d{2}:\d{2}\.\d{3})\s+(\S+)\s+(?:\[(\w+)\]\s+)?(.*)$');
+final _logLinePattern = RegExp(r'^(\d{2}:\d{2}:\d{2}\.\d{3})\s+(\S+)\s+(?:\[(\w+)\]\s+)?(.*)$');
 
 /// Colours one already-formatted log line for display: the timestamp in
 /// green, the level in a colour keyed to its severity, a `[tag]` in grey,
@@ -212,7 +159,10 @@ final _logLinePattern =
 TextSpan _colourLogLine(String line, ColorScheme scheme) {
   final match = _logLinePattern.firstMatch(line);
   if (match == null) {
-    return TextSpan(text: line, style: TextStyle(color: scheme.onSurfaceVariant));
+    return TextSpan(
+      text: line,
+      style: TextStyle(color: scheme.onSurfaceVariant),
+    );
   }
 
   final dark = scheme.brightness == Brightness.dark;
@@ -220,11 +170,9 @@ TextSpan _colourLogLine(String line, ColorScheme scheme) {
   final levelTag = match.group(2)!;
   final tag = match.group(3);
   final rest = match.group(4) ?? '';
-  final level =
-      LogLevel.values.where((l) => l.tag.trim() == levelTag.trim()).firstOrNull;
+  final level = LogLevel.values.where((l) => l.tag.trim() == levelTag.trim()).firstOrNull;
 
-  final timestampColor =
-      dark ? const Color(0xFF7EE2A0) : const Color(0xFF1B7A38);
+  final timestampColor = dark ? const Color(0xFF7EE2A0) : const Color(0xFF1B7A38);
   final levelColor = switch (level) {
     LogLevel.trace => dark ? const Color(0xFF98A5B3) : const Color(0xFF5B6472),
     LogLevel.debug => dark ? const Color(0xFFBFC8D2) : const Color(0xFF3F4750),
@@ -248,7 +196,11 @@ TextSpan _colourLogLine(String line, ColorScheme scheme) {
         style: TextStyle(color: levelColor, fontWeight: FontWeight.w600),
       ),
       const TextSpan(text: '  '),
-      if (tag != null) TextSpan(text: '[$tag] ', style: TextStyle(color: tagColor)),
+      if (tag != null)
+        TextSpan(
+          text: '[$tag] ',
+          style: TextStyle(color: tagColor),
+        ),
       TextSpan(text: rest),
     ],
   );
@@ -263,8 +215,7 @@ class _DiagnosticsSection extends ConsumerStatefulWidget {
   const _DiagnosticsSection();
 
   @override
-  ConsumerState<_DiagnosticsSection> createState() =>
-      _DiagnosticsSectionState();
+  ConsumerState<_DiagnosticsSection> createState() => _DiagnosticsSectionState();
 }
 
 class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
@@ -287,17 +238,14 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
 
     return _Section(
       title: 'Diagnostics',
-      subtitle: 'Every session writes a log, flushed line by line so it '
+      subtitle:
+          'Every session writes a log, flushed line by line so it '
           'survives a crash.',
       children: [
         ListTile(
           leading: const Icon(Icons.description_outlined),
           title: Text(file == null ? 'Logging to nowhere' : 'Session log'),
-          subtitle: Text(
-            file?.path ?? 'A log file could not be opened.',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          subtitle: Text(file?.path ?? 'A log file could not be opened.', maxLines: 2, overflow: TextOverflow.ellipsis),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -306,22 +254,13 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
                 onPressed: file == null
                     ? null
                     : () async {
-                        await Clipboard.setData(
-                            ClipboardData(text: file.path));
+                        await Clipboard.setData(ClipboardData(text: file.path));
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Log path copied')),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Log path copied')));
                       },
                 icon: const Icon(Icons.copy_all_outlined),
               ),
-              IconButton(
-                tooltip: 'Show in folder',
-                onPressed: file == null
-                    ? null
-                    : () => launchUrl(Uri.file(file.parent.path)),
-                icon: const Icon(Icons.folder_open_outlined),
-              ),
+              IconButton(tooltip: 'Show in folder', onPressed: file == null ? null : () => launchUrl(Uri.file(file.parent.path)), icon: const Icon(Icons.folder_open_outlined)),
             ],
           ),
         ),
@@ -334,10 +273,7 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
           ),
           trailing: DropdownButton<LogLevel>(
             value: level,
-            items: [
-              for (final option in LogLevel.values)
-                DropdownMenuItem(value: option, child: Text(option.label)),
-            ],
+            items: [for (final option in LogLevel.values) DropdownMenuItem(value: option, child: Text(option.label))],
             onChanged: (value) {
               if (value == null) return;
               // Applied immediately, not only on the next launch: someone
@@ -355,17 +291,12 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
             _expanded
                 ? '${pluralize(lines.length, 'line')} · newest last'
                 : 'Read straight from the file -- not just what fits in '
-                    'memory',
+                      'memory',
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_expanded)
-                IconButton(
-                  tooltip: 'Reload from disk',
-                  onPressed: _reload,
-                  icon: const Icon(Icons.refresh),
-                ),
+              if (_expanded) IconButton(tooltip: 'Reload from disk', onPressed: _reload, icon: const Icon(Icons.refresh)),
               Icon(_expanded ? Icons.expand_less : Icons.expand_more),
             ],
           ),
@@ -386,27 +317,13 @@ class _DiagnosticsSectionState extends ConsumerState<_DiagnosticsSection> {
               border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: lines.isEmpty
-                ? Center(
-                    child: Text(
-                      'Nothing logged yet.',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  )
+                ? Center(child: Text('Nothing logged yet.', style: theme.textTheme.bodySmall))
                 : SelectionArea(
                     child: ListView.builder(
                       reverse: true,
                       itemCount: lines.length,
-                      itemBuilder: (context, index) => Text.rich(
-                        _colourLogLine(
-                          lines[lines.length - 1 - index],
-                          theme.colorScheme,
-                        ),
-                        style: const TextStyle(
-                          fontFamily: 'Consolas',
-                          fontSize: 11,
-                          height: 1.45,
-                        ),
-                      ),
+                      itemBuilder: (context, index) =>
+                          Text.rich(_colourLogLine(lines[lines.length - 1 - index], theme.colorScheme), style: const TextStyle(fontFamily: 'Consolas', fontSize: 11, height: 1.45)),
                     ),
                   ),
           ),
@@ -430,14 +347,7 @@ class _Section extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: theme.textTheme.titleMedium),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
+        if (subtitle != null) ...[const SizedBox(height: 4), Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))],
         const SizedBox(height: 12),
         Card(
           color: theme.colorScheme.surfaceContainer,
@@ -460,35 +370,20 @@ class _LibrarySection extends ConsumerWidget {
 
     return _Section(
       title: 'Music folders',
-      subtitle: 'marmelade indexes these folders and watches them for changes.',
+      subtitle: 'Marmelade indexes these folders and watches them for changes.',
       children: [
-        ...?folders.value?.map(
-          (folder) => _FolderTile(folder: folder),
-        ),
-        if (folders.value?.isEmpty ?? true)
-          const ListTile(
-            leading: Icon(Icons.folder_off_outlined),
-            title: Text('No folders yet'),
-            subtitle: Text('Add one to start building your library.'),
-          ),
+        ...?folders.value?.map((folder) => _FolderTile(folder: folder)),
+        if (folders.value?.isEmpty ?? true) const ListTile(leading: Icon(Icons.folder_off_outlined), title: Text('No folders yet'), subtitle: Text('Add one to start building your library.')),
         if (progress != null) _ScanProgressTile(progress: progress),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              FilledButton.icon(
-                onPressed: progress != null
-                    ? null
-                    : () => pickAndAddMusicFolder(context, ref),
-                icon: const Icon(Icons.create_new_folder_outlined),
-                label: const Text('Add folder'),
-              ),
+              FilledButton.icon(onPressed: progress != null ? null : () => pickAndAddMusicFolder(context, ref), icon: const Icon(Icons.create_new_folder_outlined), label: const Text('Add folder')),
               const SizedBox(width: 10),
               OutlinedButton.icon(
-                onPressed: progress != null || (folders.value?.isEmpty ?? true)
-                    ? null
-                    : () => _refresh(context, jobs),
+                onPressed: progress != null || (folders.value?.isEmpty ?? true) ? null : () => _refresh(context, jobs),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refresh library'),
               ),
@@ -499,16 +394,11 @@ class _LibrarySection extends ConsumerWidget {
     );
   }
 
-
-  Future<void> _refresh(
-    BuildContext context,
-    IndexJobController jobs,
-  ) async {
+  Future<void> _refresh(BuildContext context, IndexJobController jobs) async {
     final outcomes = await jobs.refreshAll();
     if (!context.mounted) return;
     showScanOutcome(context, outcomes);
   }
-
 }
 
 class _FolderTile extends ConsumerWidget {
@@ -522,48 +412,24 @@ class _FolderTile extends ConsumerWidget {
     final db = ref.watch(databaseProvider);
 
     return ListTile(
-      leading: Icon(
-        folder.enabled ? Icons.folder_outlined : Icons.folder_off_outlined,
-        color: folder.enabled ? null : theme.disabledColor,
-      ),
-      title: Text(
-        folder.displayName ?? folder.path,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        [
-          pluralize(folder.trackedFileCount, 'file'),
-          if (folder.lastScanDurationMs != null)
-            'scanned in ${folder.lastScanDurationMs} ms',
-          if (!folder.enabled) 'disabled',
-        ].join(' · '),
-      ),
+      leading: Icon(folder.enabled ? Icons.folder_outlined : Icons.folder_off_outlined, color: folder.enabled ? null : theme.disabledColor),
+      title: Text(folder.displayName ?? folder.path, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text([pluralize(folder.trackedFileCount, 'file'), if (folder.lastScanDurationMs != null) 'scanned in ${folder.lastScanDurationMs} ms', if (!folder.enabled) 'disabled'].join(' · ')),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Switch(
             value: folder.enabled,
-            onChanged: (value) => (db.update(db.libraryFolders)
-                  ..where((t) => t.id.equals(folder.id)))
-                .write(LibraryFoldersCompanion(enabled: Value(value))),
+            onChanged: (value) => (db.update(db.libraryFolders)..where((t) => t.id.equals(folder.id))).write(LibraryFoldersCompanion(enabled: Value(value))),
           ),
-          IconButton(
-            tooltip: 'Remove from library',
-            onPressed: () => _confirmRemove(context, ref, db),
-            icon: const Icon(Icons.delete_outline),
-          ),
+          IconButton(tooltip: 'Remove from library', onPressed: () => _confirmRemove(context, ref, db), icon: const Icon(Icons.delete_outline)),
         ],
       ),
     );
   }
 
   /// Removing a folder discards its tracks, so it asks first.
-  Future<void> _confirmRemove(
-    BuildContext context,
-    WidgetRef ref,
-    MarmeladeDatabase db,
-  ) async {
+  Future<void> _confirmRemove(BuildContext context, WidgetRef ref, MarmeladeDatabase db) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -575,20 +441,13 @@ class _FolderTile extends ConsumerWidget {
           'Disabling the folder instead keeps all of that.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
-          ),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
         ],
       ),
     );
     if (confirmed != true) return;
-    await (db.delete(db.libraryFolders)..where((t) => t.id.equals(folder.id)))
-        .go();
+    await (db.delete(db.libraryFolders)..where((t) => t.id.equals(folder.id))).go();
   }
 }
 
@@ -612,11 +471,7 @@ class _ScanProgressTile extends StatelessWidget {
     };
 
     return ListTile(
-      leading: const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2.5),
-      ),
+      leading: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
       title: Text(label),
       subtitle: progress.total == 0
           ? (progress.detail == null ? null : Text(progress.detail!))
@@ -662,10 +517,7 @@ class _StatisticsSection extends ConsumerWidget {
           ),
           if (data.missingFiles > 0)
             ListTile(
-              leading: Icon(
-                Icons.link_off,
-                color: Theme.of(context).colorScheme.error,
-              ),
+              leading: Icon(Icons.link_off, color: Theme.of(context).colorScheme.error),
               title: Text(pluralize(data.missingFiles, 'missing file')),
               subtitle: const Text(
                 'Kept, along with their ratings and play counts, in case the '
@@ -675,12 +527,8 @@ class _StatisticsSection extends ConsumerWidget {
           if (data.pendingCredits > 0)
             ListTile(
               leading: const Icon(Icons.help_outline),
-              title: Text(
-                '${pluralize(data.pendingCredits, 'credit')} to review',
-              ),
-              subtitle: const Text(
-                'Artist names marmelade would rather ask about than guess at.',
-              ),
+              title: Text('${pluralize(data.pendingCredits, 'credit')} to review'),
+              subtitle: const Text('Artist names marmelade would rather ask about than guess at.'),
             ),
         ],
         const _SearchIndexTile(),
@@ -716,42 +564,25 @@ class _SearchIndexTileState extends ConsumerState<_SearchIndexTile> {
       await ref.read(searchIndexerProvider).rebuildAll();
       ref.invalidate(searchIndexCountsProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Search index rebuilt')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Search index rebuilt')));
     } catch (error, stack) {
-      AppLog.instance.error(
-        'search index rebuild failed',
-        tag: 'search',
-        error: error,
-        stack: stack,
-        fields: describeDatabaseError(error),
-      );
+      AppLog.instance.error('search index rebuild failed', tag: 'search', error: error, stack: stack, fields: describeDatabaseError(error));
       if (!mounted) return;
       final corrupt = isDatabaseCorruption(error);
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(
-            corrupt
-                ? 'The search index could not be repaired'
-                : 'Rebuild failed',
-          ),
+          title: Text(corrupt ? 'The search index could not be repaired' : 'Rebuild failed'),
           content: Text(
             corrupt
                 ? 'The search index is corrupted on disk, and recreating it '
-                    'from scratch just now did not fix it. Your library '
-                    'itself is untouched -- this is only the search index. '
-                    'Closing and reopening marmelade may help; check the '
-                    'log if it keeps happening.'
+                      'from scratch just now did not fix it. Your library '
+                      'itself is untouched -- this is only the search index. '
+                      'Closing and reopening marmelade may help; check the '
+                      'log if it keeps happening.'
                 : '$error',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
+          actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
         ),
       );
     } finally {
@@ -766,27 +597,18 @@ class _SearchIndexTileState extends ConsumerState<_SearchIndexTile> {
     return ListTile(
       leading: const Icon(Icons.manage_search),
       title: const Text('Search index'),
-      subtitle: Text(
-        switch (counts) {
-          null => 'Counting...',
-          final c when c.trigrams == 0 =>
-            '${pluralize(c.tokens, 'entry', 'entries')} · no substring index, '
-                'so mid-word and Japanese search are unavailable',
-          final c => '${pluralize(c.tokens, 'entry', 'entries')} · '
+      subtitle: Text(switch (counts) {
+        null => 'Counting...',
+        final c when c.trigrams == 0 =>
+          '${pluralize(c.tokens, 'entry', 'entries')} · no substring index, '
+              'so mid-word and Japanese search are unavailable',
+        final c =>
+          '${pluralize(c.tokens, 'entry', 'entries')} · '
               '${pluralize(c.trigrams, 'substring entry', 'substring entries')}',
-        },
-      ),
+      }),
       trailing: _rebuilding
-          ? const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : IconButton(
-              tooltip: 'Rebuild from the library',
-              onPressed: _rebuild,
-              icon: const Icon(Icons.refresh),
-            ),
+          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+          : IconButton(tooltip: 'Rebuild from the library', onPressed: _rebuild, icon: const Icon(Icons.refresh)),
     );
   }
 }
@@ -824,7 +646,7 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
           cleared == 0
               ? 'Nothing was cached'
               : 'Cleared ${pluralize(cleared, 'cached image')} -- reopen a '
-                  'page to see it redecode',
+                    'page to see it redecode',
         ),
       ),
     );
@@ -834,22 +656,11 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
   Widget build(BuildContext context) {
     return ListTile(
       leading: const Icon(Icons.image_not_supported_outlined),
-      title: const Text('Image cache'),
-      subtitle: const Text(
-        'Worth a try if a cover looks softer than it should. Will not help '
-        'if the picture on disk is itself low-resolution.',
-      ),
+      title: const Text('Delete image cache'),
+      subtitle: const Text('Worth a try if a cover looks softer than it should, but won\'t help if the picture on disk is itself low-resolution.'),
       trailing: _clearing
-          ? const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : IconButton(
-              tooltip: 'Clear',
-              onPressed: _clear,
-              icon: const Icon(Icons.delete_outline),
-            ),
+          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+          : IconButton(tooltip: 'Clear', onPressed: _clear, icon: const Icon(Icons.delete_outline)),
     );
   }
 }
@@ -863,10 +674,18 @@ class _AboutSection extends ConsumerWidget {
     return _Section(
       title: 'About',
       children: [
-        const ListTile(
+        ListTile(
           leading: Icon(Icons.emoji_food_beverage_outlined),
-          title: Text('marmelade'),
-          subtitle: Text('we be jamming to the tunes'),
+          title: Text('Marmelade'),
+          subtitle: Text('we do be jamming'),
+          trailing: Icon(Icons.info_outline),
+          onTap: () => showAboutDialog(
+            context: context,
+            applicationVersion: ref.watch(appVersionProvider).value,
+            applicationName: 'Marmelade',
+            applicationIcon: Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Icon(Icons.music_note, size: 40)),
+            children: [Text('A practical (and pretty!) music player to jam to.')],
+          ),
         ),
         const UpdatesTile(),
         ListTile(

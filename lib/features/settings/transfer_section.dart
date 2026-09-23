@@ -43,49 +43,27 @@ class TransferSection extends ConsumerWidget {
 
     return _Section(
       title: 'Another computer',
-      subtitle: 'Carry tags, credits, ratings and playlists between the '
+      subtitle:
+          'Carry tags, credits, ratings and playlists between the '
           'computers you use, so the same work is never done twice.',
       children: [
         ListTile(
           leading: const Icon(Icons.computer_outlined),
           title: const Text('This computer'),
-          subtitle: Text(
-            identity == null
-                ? 'Working it out...'
-                : 'Shared as "${identity.machineName}"',
-          ),
-          trailing: IconButton(
-            tooltip: 'Rename this computer',
-            onPressed: identity == null || busy
-                ? null
-                : () => _rename(context, ref, identity.machineName),
-            icon: const Icon(Icons.edit_outlined),
-          ),
+          subtitle: Text(identity == null ? 'Working it out...' : 'Shared as "${identity.machineName}"'),
+          trailing: IconButton(tooltip: 'Rename this computer', onPressed: identity == null || busy ? null : () => _rename(context, ref, identity.machineName), icon: const Icon(Icons.edit_outlined)),
         ),
         const Divider(height: 1),
         ListTile(
           leading: const Icon(Icons.folder_shared_outlined),
           title: const Text('Shared folder'),
-          subtitle: Text(
-            folder.isEmpty
-                ? 'Not sharing. Pick a folder both computers can see -- one '
-                    'inside Google Drive, Dropbox or OneDrive works, and their '
-                    'own app does the syncing.'
-                : folder,
-          ),
+          subtitle: Text(folder.isEmpty ? 'Not sharing. Pick a folder both computers can see, like in Google Drive, Dropbox or OneDrive.' : folder),
           trailing: folder.isEmpty
               ? null
-              : IconButton(
-                  tooltip: 'Stop sharing through this folder',
-                  onPressed: busy
-                      ? null
-                      : () => ref.read(syncFolderProvider.notifier).set(''),
-                  icon: const Icon(Icons.link_off),
-                ),
+              : IconButton(tooltip: 'Stop sharing through this folder', onPressed: busy ? null : () => ref.read(syncFolderProvider.notifier).set(''), icon: const Icon(Icons.link_off)),
         ),
         if (folder.isNotEmpty) ...[
-          for (final peer in peers.where((p) => !p.isSelf))
-            _PeerTile(peer: peer),
+          for (final peer in peers.where((p) => !p.isSelf)) _PeerTile(peer: peer),
           if (peers.where((p) => !p.isSelf).isEmpty)
             const ListTile(
               leading: Icon(Icons.hourglass_empty),
@@ -107,22 +85,14 @@ class TransferSection extends ConsumerWidget {
             'library.',
           ),
           value: ref.watch(syncArtworkProvider),
-          onChanged: busy
-              ? null
-              : (value) => ref.read(syncArtworkProvider.notifier).set(value),
+          onChanged: busy ? null : (value) => ref.read(syncArtworkProvider.notifier).set(value),
         ),
         SwitchListTile(
           secondary: const Icon(Icons.audio_file_outlined),
           title: const Text('Include the music files'),
-          subtitle: const Text(
-            'Off by default: this makes a bundle as big as the music itself. '
-            'Turn it on to move new songs as well as their tags -- then turn '
-            'it off again if the folder is on a metered connection.',
-          ),
+          subtitle: const Text('The exported bundle will be as big as the musics themselves. Beware of data usage!'),
           value: ref.watch(syncAudioProvider),
-          onChanged: busy
-              ? null
-              : (value) => ref.read(syncAudioProvider.notifier).set(value),
+          onChanged: busy ? null : (value) => ref.read(syncAudioProvider.notifier).set(value),
         ),
         const Divider(height: 1),
         Padding(
@@ -132,33 +102,12 @@ class TransferSection extends ConsumerWidget {
             runSpacing: 10,
             children: [
               if (folder.isEmpty)
-                FilledButton.icon(
-                  onPressed: busy ? null : () => _pickFolder(context, ref),
-                  icon: const Icon(Icons.folder_shared_outlined),
-                  label: const Text('Share through a folder'),
-                )
+                FilledButton.icon(onPressed: busy ? null : () => _pickFolder(context, ref), icon: const Icon(Icons.folder_shared_outlined), label: const Text('Share through a folder'))
               else
-                FilledButton.icon(
-                  onPressed: busy ? null : () => _shareNow(context, ref),
-                  icon: const Icon(Icons.sync),
-                  label: const Text('Share now'),
-                ),
-              OutlinedButton.icon(
-                onPressed: busy ? null : () => _exportOnce(context, ref),
-                icon: const Icon(Icons.drive_file_move_outline),
-                label: const Text('Export to a folder'),
-              ),
-              OutlinedButton.icon(
-                onPressed: busy ? null : () => _importOnce(context, ref),
-                icon: const Icon(Icons.file_download_outlined),
-                label: const Text('Import from a folder'),
-              ),
-              if (folder.isNotEmpty)
-                TextButton.icon(
-                  onPressed: busy ? null : () => _pickFolder(context, ref),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Change folder'),
-                ),
+                FilledButton.icon(onPressed: busy ? null : () => _shareNow(context, ref), icon: const Icon(Icons.sync), label: const Text('Share now')),
+              OutlinedButton.icon(onPressed: busy ? null : () => _exportOnce(context, ref), icon: const Icon(Icons.drive_file_move_outline), label: const Text('Export to a folder')),
+              OutlinedButton.icon(onPressed: busy ? null : () => _importOnce(context, ref), icon: const Icon(Icons.file_download_outlined), label: const Text('Import from a folder')),
+              if (folder.isNotEmpty) TextButton.icon(onPressed: busy ? null : () => _pickFolder(context, ref), icon: const Icon(Icons.edit_outlined), label: const Text('Change folder')),
             ],
           ),
         ),
@@ -166,11 +115,7 @@ class TransferSection extends ConsumerWidget {
     );
   }
 
-  Future<void> _rename(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) async {
+  Future<void> _rename(BuildContext context, WidgetRef ref, String current) async {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => _RenameDialog(initialName: current),
@@ -182,9 +127,7 @@ class TransferSection extends ConsumerWidget {
   }
 
   Future<void> _pickFolder(BuildContext context, WidgetRef ref) async {
-    final path = await getDirectoryPath(
-      confirmButtonText: 'Share through this folder',
-    );
+    final path = await getDirectoryPath(confirmButtonText: 'Share through this folder');
     if (path == null) return;
     await ref.read(syncFolderProvider.notifier).set(path);
     ref.invalidate(syncPeersProvider);
@@ -206,8 +149,7 @@ class TransferSection extends ConsumerWidget {
     if (path == null) return;
 
     try {
-      final report =
-          await ref.read(transferProgressProvider.notifier).exportTo(path);
+      final report = await ref.read(transferProgressProvider.notifier).exportTo(path);
       if (!context.mounted || report == null) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -248,58 +190,34 @@ class TransferSection extends ConsumerWidget {
     ref.invalidate(syncPeersProvider);
   }
 
-  Future<void> _showOutcome(BuildContext context, SyncOutcome outcome) =>
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Shared'),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(outcome.summarize()),
-                if (outcome.problems.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  for (final problem in outcome.problems)
-                    Text(
-                      problem,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                ],
-                if (outcome.missingTracks.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _MissingTracks(missing: outcome.missingTracks),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Done'),
-            ),
+  Future<void> _showOutcome(BuildContext context, SyncOutcome outcome) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Shared'),
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(outcome.summarize()),
+            if (outcome.problems.isNotEmpty) ...[const SizedBox(height: 14), for (final problem in outcome.problems) Text(problem, style: TextStyle(color: Theme.of(context).colorScheme.error))],
+            if (outcome.missingTracks.isNotEmpty) ...[const SizedBox(height: 14), _MissingTracks(missing: outcome.missingTracks)],
           ],
         ),
-      );
+      ),
+      actions: [FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done'))],
+    ),
+  );
 
-  Future<void> _showFailure(BuildContext context, Object error) =>
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('That did not work'),
-          content: Text('$error'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+  Future<void> _showFailure(BuildContext context, Object error) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('That did not work'),
+      content: Text('$error'),
+      actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+    ),
+  );
 }
 
 /// Asks for this computer's name.
@@ -337,21 +255,12 @@ class _RenameDialogState extends State<_RenameDialog> {
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          helperText: 'Only used to tell the computers apart.',
-        ),
+        decoration: const InputDecoration(border: OutlineInputBorder(), helperText: 'Only used to tell the computers apart.'),
         onSubmitted: (value) => Navigator.of(context).pop(value),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Rename'),
-        ),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.of(context).pop(_controller.text), child: const Text('Rename')),
       ],
     );
   }
@@ -368,16 +277,12 @@ class _PeerTile extends ConsumerWidget {
     final counts = peer.counts;
     final parts = [
       pluralize((counts['tracks'] as int?) ?? 0, 'track'),
-      if (((counts['playlists'] as int?) ?? 0) > 0)
-        pluralize(counts['playlists'] as int, 'playlist'),
+      if (((counts['playlists'] as int?) ?? 0) > 0) pluralize(counts['playlists'] as int, 'playlist'),
       if (peer.hasAudio) 'with music files',
     ];
 
     return ListTile(
-      leading: Icon(
-        peer.isUpToDate ? Icons.cloud_done_outlined : Icons.cloud_download_outlined,
-        color: peer.isUpToDate ? null : Theme.of(context).colorScheme.primary,
-      ),
+      leading: Icon(peer.isUpToDate ? Icons.cloud_done_outlined : Icons.cloud_download_outlined, color: peer.isUpToDate ? null : Theme.of(context).colorScheme.primary),
       title: Text(peer.origin.machineName),
       subtitle: Text(
         '${parts.join(' · ')} · shared ${_when(peer.exportedAt)}'
@@ -398,11 +303,7 @@ class _LastSharedTile extends ConsumerWidget {
     final when = DateTime.tryParse(stored);
     if (when == null) return const SizedBox.shrink();
 
-    return ListTile(
-      leading: const Icon(Icons.history),
-      dense: true,
-      title: Text('Last shared ${_when(when)}'),
-    );
+    return ListTile(leading: const Icon(Icons.history), dense: true, title: Text('Last shared ${_when(when)}'));
   }
 }
 
@@ -427,11 +328,7 @@ class _TransferProgressTile extends StatelessWidget {
     };
 
     return ListTile(
-      leading: const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2.5),
-      ),
+      leading: const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
       title: Text(label),
       subtitle: progress.total == 0
           ? (progress.detail == null ? null : Text(progress.detail!))
@@ -506,11 +403,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
       _error = null;
     });
     try {
-      final report = await ref.read(transferProgressProvider.notifier).importFrom(
-            widget.path,
-            options: _options,
-            preview: true,
-          );
+      final report = await ref.read(transferProgressProvider.notifier).importFrom(widget.path, options: _options, preview: true);
       if (!mounted) return;
       setState(() {
         _preview = report;
@@ -533,16 +426,11 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
   Future<void> _apply() async {
     setState(() => _applying = true);
     try {
-      final report = await ref.read(transferProgressProvider.notifier).importFrom(
-            widget.path,
-            options: _options,
-          );
+      final report = await ref.read(transferProgressProvider.notifier).importFrom(widget.path, options: _options);
       if (!mounted) return;
       Navigator.of(context).pop();
       if (report == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(report.summarize())),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(report.summarize())));
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -565,42 +453,26 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (preview != null)
-                Text(
-                  'From ${preview.origin}, exported ${_when(preview.exportedAt)}.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+              if (preview != null) Text('From ${preview.origin}, exported ${_when(preview.exportedAt)}.', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 12),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Row(
                     children: [
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                      SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                       SizedBox(width: 12),
                       Text('Working out what would change...'),
                     ],
                   ),
                 )
               else if (_error != null)
-                Text(
-                  '$_error',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                )
+                Text('$_error', style: TextStyle(color: Theme.of(context).colorScheme.error))
               else if (preview != null)
                 _PreviewSummary(report: preview),
               const SizedBox(height: 8),
               const Divider(),
-              _MusicFiles(
-                audio: _audio,
-                options: _options,
-                enabled: !_loading && !_applying,
-                onChanged: _change,
-              ),
+              _MusicFiles(audio: _audio, options: _options, enabled: !_loading && !_applying, onChanged: _change),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Let the other computer win'),
@@ -609,13 +481,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                   'filled. On, the incoming values replace them.',
                 ),
                 value: _options.conflicts == TransferConflictPolicy.preferTheirs,
-                onChanged: _loading || _applying
-                    ? null
-                    : (value) => _change(_options.copyWith(
-                          conflicts: value
-                              ? TransferConflictPolicy.preferTheirs
-                              : TransferConflictPolicy.keepMine,
-                        )),
+                onChanged: _loading || _applying ? null : (value) => _change(_options.copyWith(conflicts: value ? TransferConflictPolicy.preferTheirs : TransferConflictPolicy.keepMine)),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -626,37 +492,21 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                   'the audio itself.',
                 ),
                 value: _options.matching == TransferMatchMode.alsoByTags,
-                onChanged: _loading || _applying
-                    ? null
-                    : (value) => _change(_options.copyWith(
-                          matching: value
-                              ? TransferMatchMode.alsoByTags
-                              : TransferMatchMode.sameFiles,
-                        )),
+                onChanged: _loading || _applying ? null : (value) => _change(_options.copyWith(matching: value ? TransferMatchMode.alsoByTags : TransferMatchMode.sameFiles)),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Include playlists'),
                 value: _options.importPlaylists,
-                onChanged: _loading || _applying
-                    ? null
-                    : (value) => _change(_options.copyWith(importPlaylists: value)),
+                onChanged: _loading || _applying ? null : (value) => _change(_options.copyWith(importPlaylists: value)),
               ),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _applying ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _loading || _applying || preview == null || _error != null
-              ? null
-              : _apply,
-          child: Text(_applying ? 'Bringing it in...' : 'Bring it over'),
-        ),
+        TextButton(onPressed: _applying ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(onPressed: _loading || _applying || preview == null || _error != null ? null : _apply, child: Text(_applying ? 'Bringing it in...' : 'Bring it over')),
       ],
     );
   }
@@ -698,25 +548,17 @@ class _PreviewSummary extends StatelessWidget {
             style: theme.textTheme.bodyMedium,
           )
         else
-          for (final (label, count) in lines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text('$count $label'),
-            ),
+          for (final (label, count) in lines) Padding(padding: const EdgeInsets.only(bottom: 2), child: Text('$count $label')),
         if (report.conflictsKept > 0) ...[
           const SizedBox(height: 10),
           Text(
             '${report.conflictsKept} values differ and this computer\'s are '
             'kept. Turn on "let the other computer win" to take theirs '
             'instead.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
-        if (report.missingTracks.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _MissingTracks(missing: report.missingTracks),
-        ],
+        if (report.missingTracks.isNotEmpty) ...[const SizedBox(height: 12), _MissingTracks(missing: report.missingTracks)],
       ],
     );
   }
@@ -739,32 +581,17 @@ class _MissingTracks extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '${pluralize(missing.length, 'track')} not on this computer yet',
-          style: theme.textTheme.titleSmall,
-        ),
+        Text('${pluralize(missing.length, 'track')} not on this computer yet', style: theme.textTheme.titleSmall),
         const SizedBox(height: 4),
         Text(
           'Their tags are waiting. Copy the music across -- turning on '
           '"include the music files" over there does it for you -- then import '
           'again.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 6),
-        for (final track in shown)
-          Text(
-            '· ${track.describe()}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
-          ),
-        if (missing.length > shown.length)
-          Text(
-            '· and ${missing.length - shown.length} more',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
+        for (final track in shown) Text('· ${track.describe()}', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+        if (missing.length > shown.length) Text('· and ${missing.length - shown.length} more', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
   }
@@ -785,14 +612,7 @@ class _Section extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: theme.textTheme.titleMedium),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
+        if (subtitle != null) ...[const SizedBox(height: 4), Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant))],
         const SizedBox(height: 12),
         Card(
           color: theme.colorScheme.surfaceContainer,
@@ -824,7 +644,6 @@ String _bytes(int bytes) {
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
 }
 
-
 /// The music a bundle is carrying, and where it should go.
 ///
 /// The half of a transfer that used to be left to the person: the importer
@@ -834,12 +653,7 @@ String _bytes(int bytes) {
 /// files in a bundle is already the deliberate step, and being handed them
 /// and left to drag them into place is not a second choice worth offering.
 class _MusicFiles extends ConsumerWidget {
-  const _MusicFiles({
-    required this.audio,
-    required this.options,
-    required this.enabled,
-    required this.onChanged,
-  });
+  const _MusicFiles({required this.audio, required this.options, required this.enabled, required this.onChanged});
 
   /// Null while it is still being measured.
   final BundleAudioSize? audio;
@@ -861,16 +675,14 @@ class _MusicFiles extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Icon(Icons.music_off_outlined,
-                size: 18, color: theme.colorScheme.onSurfaceVariant),
+            Icon(Icons.music_off_outlined, size: 18, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'This bundle carries no music, only what is known about it. '
                 'To bring the songs as well, turn on "Include the music '
                 'files" before exporting.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             ),
           ],
@@ -887,14 +699,16 @@ class _MusicFiles extends ConsumerWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           secondary: const Icon(Icons.library_add_outlined),
-          title: Text('Copy ${audio.files} music '
-              '${audio.files == 1 ? 'file' : 'files'} into the library'),
-          subtitle: Text('$size, and they are indexed straight away so what '
-              'arrives with them has something to attach to.'),
+          title: Text(
+            'Copy ${audio.files} music '
+            '${audio.files == 1 ? 'file' : 'files'} into the library',
+          ),
+          subtitle: Text(
+            '$size, and they are indexed straight away so what '
+            'arrives with them has something to attach to.',
+          ),
           value: options.importAudio && folders.isNotEmpty,
-          onChanged: !enabled || folders.isEmpty
-              ? null
-              : (value) => onChanged(options.copyWith(importAudio: value)),
+          onChanged: !enabled || folders.isEmpty ? null : (value) => onChanged(options.copyWith(importAudio: value)),
         ),
         if (folders.isEmpty)
           // The case worth catching before the import runs rather than after:
@@ -915,9 +729,7 @@ class _MusicFiles extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   FilledButton.tonalIcon(
-                    onPressed: enabled
-                        ? () => pickAndAddMusicFolder(context, ref)
-                        : null,
+                    onPressed: enabled ? () => pickAndAddMusicFolder(context, ref) : null,
                     icon: const Icon(Icons.create_new_folder_outlined),
                     label: const Text('Choose a music folder'),
                   ),
@@ -928,11 +740,7 @@ class _MusicFiles extends ConsumerWidget {
         else if (folders.length == 1)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              'Into ${folders.single.path}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+            child: Text('Into ${folders.single.path}', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           )
         else
           // Several folders and no obvious winner: which one grows by a few
@@ -941,10 +749,7 @@ class _MusicFiles extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 8),
             child: DropdownButtonFormField<String>(
               initialValue: options.audioDestination ?? folders.first.path,
-              decoration: const InputDecoration(
-                labelText: 'Put them in',
-                isDense: true,
-              ),
+              decoration: const InputDecoration(labelText: 'Put them in', isDense: true),
               items: [
                 for (final folder in folders)
                   DropdownMenuItem(
@@ -952,11 +757,7 @@ class _MusicFiles extends ConsumerWidget {
                     child: Text(folder.path, overflow: TextOverflow.ellipsis),
                   ),
               ],
-              onChanged: !enabled
-                  ? null
-                  : (value) => onChanged(
-                        options.copyWith(audioDestination: value),
-                      ),
+              onChanged: !enabled ? null : (value) => onChanged(options.copyWith(audioDestination: value)),
             ),
           ),
       ],

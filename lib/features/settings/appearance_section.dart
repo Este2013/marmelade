@@ -26,12 +26,7 @@ class AppearanceSection extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.brightness_6_outlined),
           title: const Text('Theme'),
-          subtitle: Text(
-            preference.mode == ThemeMode.system
-                ? 'Follows the Windows light and dark setting.'
-                : 'Always ${themeModeLabel(preference.mode).toLowerCase()}, '
-                      'whatever Windows is doing.',
-          ),
+
           trailing: SegmentedButton<ThemeMode>(
             showSelectedIcon: false,
             segments: [
@@ -53,48 +48,27 @@ class AppearanceSection extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.contrast_outlined),
           title: const Text('Contrast'),
-          subtitle: Text(switch (preference.contrast) {
-            ContrastLevel.muted =>
-              'Softer than the default, for a dim room.',
-            ContrastLevel.normal => "Material's normal contrast.",
-            ContrastLevel.high => 'A wider gap between text and what is '
-                'behind it.',
-            ContrastLevel.highest => 'As far apart as the palette goes: '
-                'near-black on near-white, or the reverse.',
-          }),
+
           trailing: SegmentedButton<ContrastLevel>(
             showSelectedIcon: false,
-            segments: [
-              for (final level in ContrastLevel.values)
-                ButtonSegment(value: level, label: Text(level.label)),
-            ],
+            segments: [for (final level in ContrastLevel.values) ButtonSegment(value: level, label: Text(level.label))],
             selected: {preference.contrast},
-            onSelectionChanged: (selection) =>
-                settings.setContrast(selection.first),
+            onSelectionChanged: (selection) => settings.setContrast(selection.first),
           ),
         ),
         ListTile(
           leading: const Icon(Icons.gradient_outlined),
           title: const Text('Palette style'),
           subtitle: Text(switch (preference.variant) {
-            PaletteVariant.tonalSpot =>
-              "Material's default: gentle palettes at a fixed saturation, "
-                  'whatever the accent.',
-            PaletteVariant.fidelity =>
-              "Keeps the accent's own saturation, so a muted colour gives a "
-                  'muted theme. Third colour is its complement.',
-            PaletteVariant.vibrant => 'Saturation at maximum. Loud.',
-            PaletteVariant.expressive =>
-              'Medium saturation, with the main hue shifted off the accent '
-                  'for variety.',
+            PaletteVariant.tonalSpot => "Gentle palettes at a fixed saturation.",
+            PaletteVariant.fidelity => "Keeps the accent's own saturation through the palette.",
+            PaletteVariant.vibrant => 'Maximum saturation!',
+            PaletteVariant.expressive => 'Medium saturation, with the main hue shifted off the accent for variety.',
             PaletteVariant.neutral => 'Barely coloured at all.',
             PaletteVariant.monochrome => 'Grey. No colour anywhere.',
-            PaletteVariant.rainbow =>
-              "Playful: the accent's hue does not appear in the theme.",
-            PaletteVariant.fruitSalad => 'The other playful one.',
-            PaletteVariant.swapped =>
-              "Built from the accent's opposite: the colour half a turn "
-                  'round the wheel leads the whole interface.',
+            PaletteVariant.rainbow => "Playful: the accent's hue does not appear in the theme.",
+            PaletteVariant.fruitSalad => 'What even is happening here?',
+            PaletteVariant.swapped => "Inverting the hues to complement the accent color.",
           }),
           // Material 3's dropdown, not the older DropdownButton: this one is
           // a menu anchored to a field, sized rather than sized-to-content,
@@ -108,14 +82,8 @@ class AppearanceSection extends ConsumerWidget {
               initialSelection: preference.variant,
               requestFocusOnTap: false,
               enableSearch: false,
-              inputDecorationTheme: const InputDecorationTheme(
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              dropdownMenuEntries: [
-                for (final variant in PaletteVariant.values)
-                  DropdownMenuEntry(value: variant, label: variant.label),
-              ],
+              inputDecorationTheme: const InputDecorationTheme(isDense: true, border: OutlineInputBorder()),
+              dropdownMenuEntries: [for (final variant in PaletteVariant.values) DropdownMenuEntry(value: variant, label: variant.label)],
               onSelected: (variant) {
                 if (variant != null) settings.setVariant(variant);
               },
@@ -128,38 +96,27 @@ class AppearanceSection extends ConsumerWidget {
         // measurable but only when the palette came from the artwork in the
         // first place. Anywhere else this would be a control with nothing on
         // the other end of it.
-        if (preference.variant.hueShift != 0 ||
-            (preference.variant.movesHueItself &&
-                preference.accent == AccentSource.adaptive))
+        if (preference.variant.hueShift != 0 || (preference.variant.movesHueItself && preference.accent == AccentSource.adaptive))
           SwitchListTile(
             secondary: const Icon(Icons.blur_on_outlined),
             title: const Text('Turn artwork with the palette'),
             subtitle: Text(
               preference.variant.hueShift != 0
-                  ? 'The blurred cover behind the now-playing view, and '
-                      'behind album and artist pages, turns '
-                      '${preference.variant.hueShift.round()} degrees with '
-                      'it, so the ambiance and the interface agree.'
+                  ? 'Shift the artwork\'s hue ${preference.variant.hueShift.round()} degrees to match the palette style.'
                   : 'This style lands on its own hue, so the blurred cover '
-                      'turns to meet it -- by however far it moved, which '
-                      'depends on the record.',
+                        'turns to meet it -- by however far it moved, which '
+                        'depends on the record.',
             ),
             value: ref.watch(backdropFollowsPaletteProvider),
-            onChanged: (value) =>
-                ref.read(backdropFollowsPaletteProvider.notifier).set(value),
+            onChanged: (value) => ref.read(backdropFollowsPaletteProvider.notifier).set(value),
           ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
           title: const Text('Accent colour'),
           subtitle: Text(switch (preference.accent) {
-            AccentSource.system =>
-              'Taken from the Windows accent colour, so the app matches the '
-                  'desktop around it.',
-            AccentSource.adaptive =>
-              'Taken from the artwork of whatever is playing -- the whole '
-                  'interface, player included. Falls back to the Windows '
-                  'accent when nothing is loaded.',
-            AccentSource.custom => 'A colour picked below.',
+            AccentSource.system => 'Match your desktop environment.',
+            AccentSource.adaptive => 'Match the currently playing song.',
+            AccentSource.custom => 'Pick your own color.',
           }),
         ),
         Padding(
@@ -211,32 +168,18 @@ class _ArtworkRenderingTile extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.deblur_outlined),
           title: const Text('Artwork resampling'),
-          subtitle: const Text(
-            'How hard covers are resharpened when drawn at a size other '
-            'than they decoded at. Worth raising if artwork looks soft -- '
-            'costs a little more CPU per frame.',
-          ),
+          subtitle: const Text('How much resharpening is applied to images when resized.\nImages will look sharper at the cost of more computing.'),
           trailing: SegmentedButton<ArtworkFilterQuality>(
             showSelectedIcon: false,
-            segments: [
-              for (final quality in ArtworkFilterQuality.values)
-                ButtonSegment(value: quality, label: Text(quality.label)),
-            ],
+            segments: [for (final quality in ArtworkFilterQuality.values) ButtonSegment(value: quality, label: Text(quality.label))],
             selected: {settings.filterQuality},
-            onSelectionChanged: (selection) =>
-                notifier.setFilterQuality(selection.first),
+            onSelectionChanged: (selection) => notifier.setFilterQuality(selection.first),
           ),
         ),
         SwitchListTile(
           secondary: const Icon(Icons.hd_outlined),
           title: const Text('Decode artwork at full resolution'),
-          subtitle: const Text(
-            'Skips the resize that normally happens while a cover is '
-            'still being decoded, so every cover uses far more memory -- '
-            'a whole grid of them, at full size, instead of tile-sized. '
-            'Worth trying only to check whether that resize is what is '
-            'making a cover look soft.',
-          ),
+          subtitle: const Text('Images will look sharper at the cost of using more memory.'),
           value: settings.decodeAtFullResolution,
           onChanged: notifier.setFullResolution,
         ),
