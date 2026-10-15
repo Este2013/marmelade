@@ -106,16 +106,30 @@ class EditField extends StatelessWidget {
 /// The outcome of picking an artist.
 typedef PickedArtist = ({int id, String name, ArtistKind kind, int trackCount});
 
+/// An artist worth offering before anything is typed, and how much of the
+/// thing being edited they are already on.
+typedef ArtistSuggestion = ({PickedArtist artist, int appearances});
+
 /// Asks for an artist by name, searching names and aliases.
 ///
 /// Returns null when dismissed. [exclude] keeps an artist from being offered
 /// where it would make no sense -- a group as its own member, or an artist as
 /// the thing it is being merged into.
+///
+/// [suggestions] fills the dialog before a key is pressed, for the callers
+/// that can narrow the answer down themselves: the artists already credited
+/// on an album's tracks are almost always where its album artist comes from,
+/// so making it typed out from scratch is work the library did not need to
+/// ask for. Loaded when the dialog opens rather than before it, so offering
+/// them never delays it appearing. Searching replaces them -- once a query is
+/// typed, it is the question being asked.
 Future<PickedArtist?> pickArtist(
   BuildContext context,
   WidgetRef ref, {
   required String title,
   Set<int> exclude = const {},
+  Future<List<ArtistSuggestion>> Function()? suggestions,
+  String suggestionsLabel = 'Already on this release',
 }) {
   return showDialog<PickedArtist>(
     context: context,
@@ -123,6 +137,8 @@ Future<PickedArtist?> pickArtist(
       title: title,
       exclude: exclude,
       ref: ref,
+      suggestions: suggestions,
+      suggestionsLabel: suggestionsLabel,
     ),
   );
 }
@@ -132,11 +148,15 @@ class _ArtistPickerDialog extends StatefulWidget {
     required this.title,
     required this.exclude,
     required this.ref,
+    this.suggestions,
+    required this.suggestionsLabel,
   });
 
   final String title;
   final Set<int> exclude;
   final WidgetRef ref;
+  final Future<List<ArtistSuggestion>> Function()? suggestions;
+  final String suggestionsLabel;
 
   @override
   State<_ArtistPickerDialog> createState() => _ArtistPickerDialogState();
@@ -145,13 +165,28 @@ class _ArtistPickerDialog extends StatefulWidget {
 class _ArtistPickerDialogState extends State<_ArtistPickerDialog> {
   final _controller = TextEditingController();
   List<PickedArtist> _results = const [];
+  List<ArtistSuggestion> _suggestions = const [];
   var _searching = false;
   var _creating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuggestions();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSuggestions() async {
+    final load = widget.suggestions;
+    if (load == null) return;
+    final found = await load();
+    if (!mounted) return;
+    setState(() => _suggestions = found);
   }
 
   Future<void> _search(String query) async {
@@ -165,6 +200,10 @@ class _ArtistPickerDialogState extends State<_ArtistPickerDialog> {
       _searching = false;
     });
   }
+
+  /// True while nothing is typed, which is when suggestions are the answer.
+  bool get _showingSuggestions =>
+      _controller.text.trim().isEmpty && _suggestions.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -189,40 +228,7 @@ class _ArtistPickerDialogState extends State<_ArtistPickerDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            Expanded(
-              child: _results.isEmpty
-                  ? Center(
-                      child: Text(
-                        _controller.text.trim().isEmpty
-                            ? 'Start typing to find an artist.'
-                            : _searching
-                                ? 'Searching...'
-                                : 'Nothing matches that.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _results.length,
-                      itemBuilder: (context, index) {
-                        final artist = _results[index];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(
-                            artist.kind == ArtistKind.group ||
-                                    artist.kind == ArtistKind.orchestra
-                                ? Icons.groups_outlined
-                                : Icons.person_outline,
-                          ),
-                          title: Text(artist.name),
-                          subtitle:
-                              Text(pluralize(artist.trackCount, 'track')),
-                          onTap: () => Navigator.of(context).pop(artist),
-                        );
-                      },
-                    ),
-            ),
+            Expanded(child: _body(theme)),
             // Offered whenever what is typed is not already an exact match.
             // Needing an artist who does not exist yet is the normal case when
             // correcting a credit, and leaving the editor to go and create one
@@ -245,6 +251,71 @@ class _ArtistPickerDialogState extends State<_ArtistPickerDialog> {
           child: const Text('Cancel'),
         ),
       ],
+    );
+  }
+
+  /// What fills the dialog: the suggestions until a query is typed, then the
+  /// results of that query.
+  Widget _body(ThemeData theme) {
+    if (_showingSuggestions) {
+      return ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+            child: Text(
+              widget.suggestionsLabel,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final suggestion in _suggestions)
+            _artistTile(
+              suggestion.artist,
+              // How much of the release they are on, which is what separates
+              // the act whose record it is from a guest on one song.
+              subtitle: 'on ${pluralize(suggestion.appearances, 'track')} '
+                  'of this release',
+            ),
+        ],
+      );
+    }
+
+    if (_results.isEmpty) {
+      return Center(
+        child: Text(
+          _controller.text.trim().isEmpty
+              ? 'Start typing to find an artist.'
+              : _searching
+                  ? 'Searching...'
+                  : 'Nothing matches that.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _results.length,
+      itemBuilder: (context, index) => _artistTile(
+        _results[index],
+        subtitle: pluralize(_results[index].trackCount, 'track'),
+      ),
+    );
+  }
+
+  Widget _artistTile(PickedArtist artist, {required String subtitle}) {
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        artist.kind == ArtistKind.group || artist.kind == ArtistKind.orchestra
+            ? Icons.groups_outlined
+            : Icons.person_outline,
+      ),
+      title: Text(artist.name),
+      subtitle: Text(subtitle),
+      onTap: () => Navigator.of(context).pop(artist),
     );
   }
 

@@ -141,7 +141,12 @@ class _TabBody extends StatelessWidget {
 /// Matches one of [AppLog]'s own lines: `HH:MM:SS.mmm  LEVEL  [tag] message`.
 /// Whitespace is matched loosely rather than assuming the exact column
 /// widths the writer pads to, so this survives a formatting tweak there.
-final _logLinePattern = RegExp(r'^(\d{2}:\d{2}:\d{2}\.\d{3})\s+(\S+)\s+(?:\[(\w+)\]\s+)?(.*)$');
+/// The date is optional so that logs written before timestamps carried one
+/// still colour correctly rather than falling back to plain grey -- a log
+/// file outlives the build that wrote it, and the one worth reading is
+/// usually the one from before the thing being investigated was changed.
+final _logLinePattern = RegExp(
+    r'^((?:\d{2}-\d{2} )?\d{2}:\d{2}:\d{2}\.\d{3})\s+(\S+)\s+(?:\[(\w+)\]\s+)?(.*)$');
 
 /// Colours one already-formatted log line for display: the timestamp in
 /// green, the level in a colour keyed to its severity, a `[tag]` in grey,

@@ -451,25 +451,33 @@ List<MenuAction> trackContextMenu(
       MenuAction(
         label: 'Open in Explorer',
         icon: Icons.folder_open_outlined,
-        onSelected: () => _revealTrackFile(ref, track),
+        onSelected: () =>
+            revealTrackFile(ref, trackId: track.id, title: track.title),
       ),
     ],
   ];
 }
 
-/// Resolves the track's own file and reveals it, or logs why there is none.
+/// Resolves a track's own file and reveals it, or logs why there is none.
+///
+/// Takes the id rather than a [TrackRow] so the places that only have a
+/// lighter-weight row -- the queue, say -- can reveal a file too.
 ///
 /// Silent otherwise: the menu item stays enabled even for a track with no
 /// playable file (missing drive, say), because "why can't I open this" is
 /// exactly the question the log should answer, not a reason to grey the
 /// option out pre-emptively for every track before anyone has clicked it.
-Future<void> _revealTrackFile(WidgetRef ref, TrackRow track) async {
-  final playable = await ref.read(libraryRepositoryProvider).playable(track.id);
+Future<void> revealTrackFile(
+  WidgetRef ref, {
+  required int trackId,
+  required String title,
+}) async {
+  final playable = await ref.read(libraryRepositoryProvider).playable(trackId);
   if (playable == null) {
     AppLog.instance.warn(
       'nothing to reveal in Explorer -- no playable file',
       tag: 'library',
-      fields: {'trackId': track.id, 'title': track.title},
+      fields: {'trackId': trackId, 'title': title},
     );
     return;
   }

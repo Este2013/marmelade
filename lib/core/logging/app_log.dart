@@ -308,11 +308,22 @@ class AppLog {
     } catch (_) {}
   }
 
+  /// A timestamp with the date on it.
+  ///
+  /// The date is not redundant with the one in the file name: a session is
+  /// not a day. One that ran from a Friday morning to the following Tuesday
+  /// logged four days of playback under bare `HH:MM:SS`, so the only way to
+  /// tell where one day ended was to notice the clock jumping backwards --
+  /// which reads exactly like out-of-order writes, and cost real time to rule
+  /// out while chasing a hang. `MM-DD` rather than the full date keeps the
+  /// line from growing much; the year is in the file name and a session does
+  /// not span one.
   static String _timestamp() {
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
     String three(int v) => v.toString().padLeft(3, '0');
-    return '${two(now.hour)}:${two(now.minute)}:${two(now.second)}'
+    return '${two(now.month)}-${two(now.day)} '
+        '${two(now.hour)}:${two(now.minute)}:${two(now.second)}'
         '.${three(now.millisecond)}';
   }
 }

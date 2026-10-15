@@ -98,6 +98,39 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.4.3',
+    changes: [
+      Change.fixed(
+        'The albums filter box now finds a release by its other titles, the '
+        'way search already did -- an album filed under its native title is '
+        'found by its romanisation.',
+      ),
+      Change.fixed(
+        'Adding or renaming an alias now updates a list already on screen '
+        'instead of waiting for something else to refresh it.',
+      ),
+      Change.changed(
+        "Choosing an album's artist now opens with the artists already "
+        'credited on its tracks, most-credited first, rather than a blank '
+        'search box.',
+      ),
+      Change.added(
+        'Right-clicking a search result or a song in the play queue now '
+        'offers the same menu as everywhere else, including opening the file '
+        'in Explorer.',
+      ),
+      Change.changed(
+        'Log lines now carry a date as well as a time, so a session left '
+        'running for several days can be read back.',
+      ),
+      Change.added(
+        'The log now records when the machine was suspended, and names each '
+        'step of loading a track, so a freeze can be placed against a sleep '
+        'rather than guessed at.',
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.4.2',
     date: '2026-09-23',
     headline: 'Better settings copy and about dialog',

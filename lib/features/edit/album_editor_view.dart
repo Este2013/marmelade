@@ -385,6 +385,23 @@ class _EditorState extends ConsumerState<_Editor> {
       context,
       ref,
       title: 'Album artist for ${widget.edit.title}',
+      // Who a release is by is nearly always somebody already credited on
+      // it, so the picker opens with those rather than with a blank field.
+      suggestions: () => ref
+          .read(editRepositoryProvider)
+          .albumArtistSuggestions(widget.edit.id)
+          .then((found) => [
+                for (final one in found)
+                  (
+                    artist: (
+                      id: one.id,
+                      name: one.name,
+                      kind: one.kind,
+                      trackCount: one.trackCount,
+                    ),
+                    appearances: one.appearances,
+                  ),
+              ]),
     );
     if (picked == null) return;
     setState(() {

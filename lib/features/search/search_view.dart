@@ -1092,6 +1092,14 @@ class _TrackResult extends ConsumerWidget {
       onOpenArtist: onOpenArtist,
       onOpenAlbum: onOpenAlbum,
       onEditTrack: onEditTrack,
+      menu: () => trackContextMenu(
+        context,
+        ref,
+        track,
+        onOpenAlbum: onOpenAlbum,
+        onOpenArtist: onOpenArtist,
+        onEditTrack: onEditTrack,
+      ),
     );
   }
 }

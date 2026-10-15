@@ -11,7 +11,9 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../widgets/expandable_artwork.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/selection.dart';
 import '../../widgets/time_text.dart';
+import '../library/bulk_actions.dart';
 
 /// The now-playing shade: artwork at full size, with the queue beside it.
 ///
@@ -731,6 +733,29 @@ class _QueuePaneState extends ConsumerState<_QueuePane> {
                           index == player.currentIndex && player.isPlaying,
                       onPlay: () => controller.playAt(index),
                       onRemove: () => controller.removeFromQueue(entry.itemId),
+                      menu: () => [
+                        MenuAction(
+                          label: 'Play',
+                          icon: Icons.play_arrow,
+                          onSelected: () => controller.playAt(index),
+                        ),
+                        MenuAction(
+                          label: 'Remove from the queue',
+                          icon: Icons.remove_circle_outline,
+                          onSelected: () =>
+                              controller.removeFromQueue(entry.itemId),
+                        ),
+                        const MenuAction.separator(),
+                        MenuAction(
+                          label: 'Open in Explorer',
+                          icon: Icons.folder_open_outlined,
+                          onSelected: () => revealTrackFile(
+                            ref,
+                            trackId: entry.trackId,
+                            title: entry.title,
+                          ),
+                        ),
+                      ],
                     );
                   },
     );
@@ -770,6 +795,7 @@ class _QueueRow extends StatefulWidget {
     required this.isPlaying,
     required this.onPlay,
     required this.onRemove,
+    required this.menu,
   });
 
   final QueueEntry entry;
@@ -778,6 +804,9 @@ class _QueueRow extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback onPlay;
   final VoidCallback onRemove;
+
+  /// The right-click menu, built when it opens rather than per rebuild.
+  final List<MenuAction> Function() menu;
 
   @override
   State<_QueueRow> createState() => _QueueRowState();
@@ -801,6 +830,8 @@ class _QueueRowState extends State<_QueueRow> {
             : Colors.transparent,
         child: InkWell(
           onTap: widget.onPlay,
+          onSecondaryTapUp: (details) =>
+              showItemMenu(context, details.globalPosition, widget.menu()),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(

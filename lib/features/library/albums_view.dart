@@ -51,10 +51,16 @@ final _smartAlbumFilterProvider = FutureProvider<Set<int>?>((ref) async {
 /// Every album, and the ones that survive the current filter.
 ///
 /// Shared between [AlbumsToolbar] (which only needs the counts) and the grid
-/// (which needs the filtered list) so the filtering itself -- matched on the
-/// two things visible on a card -- happens once regardless of which of them
-/// rebuilds. Kept beside the view it belongs to rather than in the shared
-/// providers file: this is this view's own derived state, not library data.
+/// (which needs the filtered list) so the filtering itself happens once
+/// regardless of which of them rebuilds. Kept beside the view it belongs to
+/// rather than in the shared providers file: this is this view's own derived
+/// state, not library data.
+///
+/// Matched on more than a card shows: both the release's own aliases and its
+/// artist's. A romanization is written down precisely so the release can be
+/// found under it, and the Search view has always honoured them -- a filter
+/// box that does not is just the same library answering differently
+/// depending on which field you typed into.
 final albumsShownProvider =
     Provider<({List<AlbumCard> all, List<AlbumCard> shown})>((ref) {
   final all = ref.watch(albumsProvider).value ?? const <AlbumCard>[];
@@ -73,10 +79,12 @@ final albumsShownProvider =
 
   final shown = [
     for (final album in all)
-      if (matchesQuery(
-        filter,
-        [album.title, album.artistName, ...album.artistAliases],
-      ))
+      if (matchesQuery(filter, [
+        album.title,
+        album.artistName,
+        ...album.aliases,
+        ...album.artistAliases,
+      ]))
         album,
   ];
   return (all: all, shown: shown);

@@ -482,6 +482,53 @@ class EditRepository {
     }
   }
 
+  /// The artists already credited on an album's own tracks, most-credited
+  /// first, for the album-artist picker to offer before anything is typed.
+  ///
+  /// Who a release is by is nearly always somebody already on it, so an empty
+  /// picker asks a question the library can mostly answer itself. `appearances`
+  /// is how many of the album's tracks credit them, which is both the sort key
+  /// and what makes the difference between the artist of the record and a
+  /// guest on one song of it legible at a glance.
+  ///
+  /// Ties break towards whoever is ever a main artist rather than always
+  /// featured: a guest on every track would otherwise outrank the act whose
+  /// record it is.
+  Future<List<({int id, String name, ArtistKind kind, int trackCount, int appearances})>>
+      albumArtistSuggestions(int albumId, {Set<int> exclude = const {}}) async {
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT a.id AS id, a.name AS name, a.kind AS kind,
+        COUNT(DISTINCT tc.track_id) AS appearances,
+        MAX(tc.role = 'mainArtist') AS ever_main,
+        (SELECT COUNT(DISTINCT tc2.track_id) FROM track_credits tc2
+          WHERE tc2.artist_id = a.id) AS track_count
+      FROM track_credits tc
+      JOIN tracks t ON t.id = tc.track_id
+      JOIN artists a ON a.id = tc.artist_id
+      WHERE t.album_id = ?1
+      GROUP BY a.id
+      ORDER BY appearances DESC, ever_main DESC, a.name
+      ''',
+          variables: [Variable(albumId)],
+          readsFrom: {db.trackCredits, db.tracks, db.artists},
+        )
+        .get();
+
+    return [
+      for (final row in rows)
+        if (!exclude.contains(row.read<int>('id')))
+          (
+            id: row.read<int>('id'),
+            name: row.read<String>('name'),
+            kind: _artistKind(row.read<String>('kind')),
+            trackCount: row.read<int>('track_count'),
+            appearances: row.read<int>('appearances'),
+          ),
+    ];
+  }
+
   /// Artists whose name or alias matches [query], for pickers.
   ///
   /// Excludes [exclude] so a group cannot be offered as its own member.

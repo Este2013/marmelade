@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_soloud/flutter_soloud.dart' as sl;
 
+import '../../core/logging/app_log.dart';
 import 'playback_engine.dart';
 
 /// [PlaybackEngine] backed by SoLoud.
@@ -92,7 +93,13 @@ class SoLoudEngine implements PlaybackEngine {
   Future<void> initialize() async {
     if (_soloud.isInitialized) return;
     try {
+      // The one call here that talks to the Windows audio service to open a
+      // device, which is the step most likely to be left waiting after a
+      // resume. Worth an info line rather than a debug one: it should happen
+      // once a session, so a second occurrence is itself information.
+      AppLog.instance.info('opening the audio device', tag: 'audio');
       await _soloud.init(bufferSize: bufferSize);
+      AppLog.instance.info('audio device open', tag: 'audio');
       _lastError = null;
     } catch (e) {
       _lastError = e;
@@ -111,9 +118,21 @@ class SoLoudEngine implements PlaybackEngine {
     _status = PlaybackStatus.idle;
   }
 
+  /// Written immediately *before* each native step of a load, not after.
+  ///
+  /// A hang leaves no "finished" line to read, so only a breadcrumb written
+  /// ahead of the call says which one was still running. The app froze once
+  /// between `[player] loading track file` and `[player] playing` with
+  /// nothing in between to narrow it down -- these are what that gap needed.
+  /// Debug level, so they cost nothing unless the log is turned up.
+  void _step(String what) =>
+      AppLog.instance.debug(what, tag: 'audio');
+
   @override
   Future<Duration> load(String filePath, {AudioLoadMode? mode}) async {
+    _step('engine: initialising if needed');
     await initialize();
+    _step('engine: releasing the previous source');
     await _releaseSource();
 
     _status = PlaybackStatus.loading;
@@ -130,7 +149,9 @@ class SoLoudEngine implements PlaybackEngine {
       // file plainly existing (dart:io has no such limit on Windows). Handing
       // over already-read bytes means the native side never opens the path
       // at all, so the length of it stops being its problem.
+      _step('engine: reading the file');
       final bytes = await File(filePath).readAsBytes();
+      _step('engine: handing ${bytes.length} bytes to the decoder');
       final source = await _soloud.loadMem(
         filePath,
         bytes,
@@ -139,6 +160,7 @@ class SoLoudEngine implements PlaybackEngine {
             : sl.LoadMode.disk,
       );
       _source = source;
+      _step('engine: decoded, measuring length');
       _duration = _soloud.getLength(source);
 
       // Fires once every voice for this source has ended, which is the clean
@@ -177,6 +199,7 @@ class SoLoudEngine implements PlaybackEngine {
       return;
     }
 
+    _step('engine: starting a voice');
     _handle = _soloud.play(source, volume: _effectiveVolume());
     _status = PlaybackStatus.playing;
     _soloud.setRelativePlaySpeed(_handle!, _speed);

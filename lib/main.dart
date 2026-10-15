@@ -15,6 +15,7 @@ import 'app/theme/theme_settings.dart';
 import 'core/debug/screenshotter.dart';
 import 'core/logging/app_log.dart';
 import 'core/logging/error_handlers.dart';
+import 'core/os/sleep_watch.dart';
 import 'data/repositories/settings_repository.dart';
 
 /// How much decoded image data to keep.
@@ -112,6 +113,11 @@ Future<void> main() async {
         .get(SettingKeys.logLevel, LogLevel.debug.name);
     log.minLevel = LogLevel.of(storedLevel);
     log.info('log level applied', fields: {'level': log.minLevel.name});
+
+    // Marks suspends in the log. This app is routinely left running for days,
+    // so "nothing happened for two hours" needs to be distinguishable from
+    // "the machine was asleep for two hours" when reading back a session.
+    SleepWatch().start();
 
     // A window close is the normal way this app exits; without a marker there
     // is no way to tell a clean shutdown from a crash in the log.

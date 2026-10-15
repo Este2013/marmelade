@@ -77,6 +77,9 @@ class LibraryRepository {
           AND EXISTS (SELECT 1 FROM media_files mf
                        WHERE mf.track_id = t.id AND mf.status = 'present'))
           AS present_track_count,
+        COALESCE((SELECT group_concat(aa.alias, x'1F') FROM album_aliases aa
+                   WHERE aa.album_id = al.id), '')
+          AS aliases,
         COALESCE((SELECT group_concat(aal.alias, x'1F') FROM artist_aliases aal
                    WHERE aal.artist_id = al.album_artist_id), '')
           AS artist_aliases,
@@ -88,7 +91,19 @@ class LibraryRepository {
       $filter
       ORDER BY $order
       ''',
-      readsFrom: {db.albums, db.artists, db.tracks, db.images, db.mediaFiles},
+      // The alias tables are listed because the aliases above are selected
+      // from them: leave them out and renaming an alias leaves the grid
+      // filtering on the old one until something else happens to invalidate
+      // the stream.
+      readsFrom: {
+        db.albums,
+        db.albumAliases,
+        db.artists,
+        db.artistAliases,
+        db.tracks,
+        db.images,
+        db.mediaFiles,
+      },
     ).watch().asyncMap((rows) async {
       final albums = [
         for (final row in rows)
@@ -108,6 +123,7 @@ class LibraryRepository {
             totalDurationMs: row.read<int>('total_ms'),
             isMissing: row.read<int>('track_count') > 0 &&
                 row.read<int>('present_track_count') == 0,
+            aliases: _split(row.read<String>('aliases')),
             artistAliases: _split(row.read<String>('artist_aliases')),
           ),
       ];
@@ -134,7 +150,13 @@ class LibraryRepository {
         (SELECT ar.name FROM track_credits tc
           JOIN artists ar ON ar.id = tc.artist_id
          WHERE tc.track_id = t.id AND tc.role = 'mainArtist'
-         ORDER BY tc.sort_order LIMIT 1) AS artist_name
+         ORDER BY tc.sort_order LIMIT 1) AS artist_name,
+        COALESCE((SELECT group_concat(ta.alias, x'1F') FROM track_aliases ta
+                   WHERE ta.track_id = t.id), '') AS aliases,
+        COALESCE((SELECT group_concat(aal.alias, x'1F')
+                    FROM track_credits tc
+                    JOIN artist_aliases aal ON aal.artist_id = tc.artist_id
+                   WHERE tc.track_id = t.id), '') AS artist_aliases
       FROM tracks t
       LEFT JOIN v_track_artwork vt ON vt.track_id = t.id
       LEFT JOIN images ti ON ti.id = vt.image_id
@@ -157,6 +179,8 @@ class LibraryRepository {
           releaseYear: row.read<int?>('release_year'),
           isFavorite: row.read<int>('is_favorite') == 1,
           totalDurationMs: row.read<int>('total_ms'),
+          aliases: _split(row.read<String>('aliases')),
+          artistAliases: _split(row.read<String>('artist_aliases')),
         ),
     ];
   }
@@ -465,6 +489,9 @@ class LibraryRepository {
           AND EXISTS (SELECT 1 FROM media_files mf
                        WHERE mf.track_id = t.id AND mf.status = 'present'))
           AS present_track_count,
+        COALESCE((SELECT group_concat(aa.alias, x'1F') FROM album_aliases aa
+                   WHERE aa.album_id = al.id), '')
+          AS aliases,
         COALESCE((SELECT group_concat(aal.alias, x'1F') FROM artist_aliases aal
                    WHERE aal.artist_id = al.album_artist_id), '')
           AS artist_aliases,
@@ -480,7 +507,16 @@ class LibraryRepository {
       ORDER BY al.release_year DESC, al.sort_title
       ''',
       variables: [Variable(artistId), Variable(artistId)],
-      readsFrom: {db.albums, db.artists, db.tracks, db.trackCredits, db.images, db.mediaFiles},
+      readsFrom: {
+        db.albums,
+        db.albumAliases,
+        db.artists,
+        db.artistAliases,
+        db.tracks,
+        db.trackCredits,
+        db.images,
+        db.mediaFiles,
+      },
     ).watch().map((rows) => [
           for (final row in rows)
             AlbumCard(
@@ -497,6 +533,7 @@ class LibraryRepository {
               totalDurationMs: row.read<int>('total_ms'),
               isMissing: row.read<int>('track_count') > 0 &&
                   row.read<int>('present_track_count') == 0,
+              aliases: _split(row.read<String>('aliases')),
               artistAliases: _split(row.read<String>('artist_aliases')),
             ),
         ]);

@@ -22,6 +22,7 @@ class AlbumCard {
     this.isFavorite = false,
     this.totalDurationMs = 0,
     this.isMissing = false,
+    this.aliases = const [],
     this.artistAliases = const [],
   });
 
@@ -37,6 +38,14 @@ class AlbumCard {
   /// True when every track on it has lost its files -- an album that is
   /// entirely gone, rather than one with a gap in it.
   final bool isMissing;
+
+  /// The release's own other titles -- a romanization, a localised name, the
+  /// catalogue title -- so the filter box finds it under whichever of them
+  /// somebody types, exactly as the Search view already does.
+  ///
+  /// For a single (a negative [id]) these are the track's aliases, since the
+  /// card stands in for a track there.
+  final List<String> aliases;
 
   /// The album artist's other names, so the filter box finds this release
   /// under whichever of them somebody types.

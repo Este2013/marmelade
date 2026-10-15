@@ -90,6 +90,96 @@ void main() {
     ];
   }
 
+  group('albumArtistSuggestions', () {
+    test('offers who is on the release, most-credited first', () async {
+      // The album artist of a release is nearly always already credited on
+      // its tracks, so the picker should not start from a blank field.
+      final main = await artist('PinocchioP');
+      final guest = await artist('Hatsune Miku');
+      final albumId = await album('Antenna');
+      await track('One', artistId: main, albumId: albumId);
+      await track('Two', artistId: main, albumId: albumId);
+      final third = await track('Three', artistId: main, albumId: albumId);
+      await db.into(db.trackCredits).insert(TrackCreditsCompanion.insert(
+            trackId: third,
+            artistId: guest,
+            role: const Value(CreditRole.featured),
+          ));
+
+      final found = await repository.albumArtistSuggestions(albumId);
+
+      expect([for (final one in found) one.name], ['PinocchioP', 'Hatsune Miku']);
+      expect([for (final one in found) one.appearances], [3, 1]);
+    });
+
+    test('a guest on every track does not outrank the act whose record it is',
+        () async {
+      // Both appear on everything, so the count alone cannot separate them.
+      final main = await artist('Camellia');
+      final guest = await artist('Nanahira');
+      final albumId = await album('Comic and Cosmic');
+      for (final title in ['One', 'Two']) {
+        final id = await track(title, artistId: main, albumId: albumId);
+        await db.into(db.trackCredits).insert(TrackCreditsCompanion.insert(
+              trackId: id,
+              artistId: guest,
+              role: const Value(CreditRole.featured),
+            ));
+      }
+
+      final found = await repository.albumArtistSuggestions(albumId);
+
+      expect([for (final one in found) one.name], ['Camellia', 'Nanahira']);
+    });
+
+    test('counts a track once, however many roles somebody has on it',
+        () async {
+      final who = await artist('Someone');
+      final albumId = await album('Solo Work');
+      final id = await track('One', artistId: who, albumId: albumId);
+      await db.into(db.trackCredits).insert(TrackCreditsCompanion.insert(
+            trackId: id,
+            artistId: who,
+            role: const Value(CreditRole.producer),
+          ));
+
+      final found = await repository.albumArtistSuggestions(albumId);
+
+      expect(found.single.appearances, 1);
+    });
+
+    test('leaves out an album artist from another release', () async {
+      final mine = await artist('Mine');
+      final theirs = await artist('Theirs');
+      final albumId = await album('Mine');
+      final other = await album('Theirs');
+      await track('One', artistId: mine, albumId: albumId);
+      await track('Two', artistId: theirs, albumId: other);
+
+      final found = await repository.albumArtistSuggestions(albumId);
+
+      expect([for (final one in found) one.name], ['Mine']);
+    });
+
+    test('an album with no tracks yet suggests nothing, rather than failing',
+        () async {
+      final albumId = await album('Empty');
+
+      expect(await repository.albumArtistSuggestions(albumId), isEmpty);
+    });
+
+    test('honours exclude, as the search does', () async {
+      final who = await artist('Someone');
+      final albumId = await album('Album');
+      await track('One', artistId: who, albumId: albumId);
+
+      final found =
+          await repository.albumArtistSuggestions(albumId, exclude: {who});
+
+      expect(found, isEmpty);
+    });
+  });
+
   group('saveArtist', () {
     test('moves the matching key with the name', () async {
       // Without this the artist stops matching its own files on the next scan.

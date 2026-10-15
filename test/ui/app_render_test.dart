@@ -313,6 +313,18 @@ const _antenna = AlbumCard(
   totalDurationMs: 402000,
 );
 
+/// A release filed under its native title, with a romanization written down
+/// so it can be found under that too.
+const _weatherStation = AlbumCard(
+  id: 7,
+  title: 'ウェザーステーション',
+  artistName: 'PinocchioP',
+  artistId: 1,
+  trackCount: 1,
+  imagePath: null,
+  aliases: ['Weather Station'],
+);
+
 const _comic = AlbumCard(
   id: 2,
   title: 'Comic and Cosmic',
@@ -828,6 +840,17 @@ void main() {
     expect(infoColour, isNotNull);
     expect(errorColour, isNotNull);
     expect(infoColour, isNot(equals(errorColour)));
+
+    // The date on the front is what distinguishes one day of a multi-day
+    // session from the next. Asserted here because the viewer parses the
+    // timestamp it is given: a format change that the regex does not follow
+    // silently drops every line back to uncoloured grey.
+    expect(
+      richLines.any((t) => RegExp(r'^\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+          .hasMatch(t.textSpan!.toPlainText())),
+      isTrue,
+      reason: 'log lines carry a date, and the viewer still parses them',
+    );
   });
 
   testWidgets('an empty library shows an empty state, not a blank panel',
@@ -2291,6 +2314,23 @@ void main() {
       expect(find.text('1 of 3 songs'), findsOneWidget);
     });
 
+    testWidgets('finds an album by a title it also goes by', (tester) async {
+      // The report this covers: an album filed under its Japanese title with
+      // a "Weather Station" romanization alias was found by the Search view
+      // and not by the albums grid's own filter box -- the same library
+      // answering differently depending on which field you typed into.
+      await open(tester, app: buildApp(albums: const [_antenna, _weatherStation]));
+
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Filter albums'),
+        'Weather Station',
+      );
+      await settle(tester);
+
+      expect(find.text('ウェザーステーション'), findsOneWidget);
+      expect(find.text('Antenna'), findsNothing);
+    });
+
     testWidgets('finds an artist by a name they also go by', (tester) async {
       // The point of aliases: somebody who types the Japanese name of an
       // artist filed under a romanised one is not making a mistake, and
@@ -2566,6 +2606,49 @@ void main() {
 
       expect(find.text('Open'), findsOneWidget);
       expect(find.text('Add to the queue'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a search result reaches the file like any other song row',
+        (tester) async {
+      // Search was the one list of songs with no menu at all: finding a track
+      // by name and then wanting its folder is an obvious pairing, and having
+      // to go find the same row under Songs first is not an answer.
+      await open(tester, app: buildApp(searchResults: _searchResults));
+      await tester.tap(railItem('Search'));
+      await settle(tester);
+
+      // The song row itself, not a top-result card that could show the same
+      // title above it.
+      final row = find.descendant(
+        of: find.byType(TrackTile),
+        matching: find.text('Cross Separator'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getCenter(row.first),
+        buttons: 2,
+      );
+      await gesture.up();
+      await settle(tester);
+
+      expect(find.text('Open in Explorer'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a queue row reaches the file too', (tester) async {
+      await open(tester, app: buildApp(playing: true));
+      await tester.tap(find.byTooltip('Open now playing'));
+      await settle(tester);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Kanraku').last),
+        buttons: 2,
+      );
+      await gesture.up();
+      await settle(tester);
+
+      expect(find.text('Open in Explorer'), findsOneWidget);
+      expect(find.text('Remove from the queue'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
