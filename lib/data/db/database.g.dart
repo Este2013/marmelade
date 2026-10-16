@@ -19058,6 +19058,1172 @@ class PendingCreditsCompanion extends UpdateCompanion<PendingCredit> {
   }
 }
 
+class $HomeSectionsTable extends HomeSections
+    with TableInfo<$HomeSectionsTable, HomeSection> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HomeSectionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeLayout, String> layout =
+      GeneratedColumn<String>(
+        'layout',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('grid'),
+      ).withConverter<HomeLayout>($HomeSectionsTable.$converterlayout);
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeSectionSource, String>
+  source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('curated'),
+  ).withConverter<HomeSectionSource>($HomeSectionsTable.$convertersource);
+  static const VerificationMeta _itemLimitMeta = const VerificationMeta(
+    'itemLimit',
+  );
+  @override
+  late final GeneratedColumn<int> itemLimit = GeneratedColumn<int>(
+    'item_limit',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(20),
+  );
+  static const VerificationMeta _collapsedMeta = const VerificationMeta(
+    'collapsed',
+  );
+  @override
+  late final GeneratedColumn<bool> collapsed = GeneratedColumn<bool>(
+    'collapsed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("collapsed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<int> icon = GeneratedColumn<int>(
+    'icon',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    layout,
+    position,
+    source,
+    itemLimit,
+    collapsed,
+    icon,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'home_sections';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HomeSection> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('item_limit')) {
+      context.handle(
+        _itemLimitMeta,
+        itemLimit.isAcceptableOrUnknown(data['item_limit']!, _itemLimitMeta),
+      );
+    }
+    if (data.containsKey('collapsed')) {
+      context.handle(
+        _collapsedMeta,
+        collapsed.isAcceptableOrUnknown(data['collapsed']!, _collapsedMeta),
+      );
+    }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  HomeSection map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HomeSection(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      layout: $HomeSectionsTable.$converterlayout.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}layout'],
+        )!,
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      source: $HomeSectionsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      itemLimit: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}item_limit'],
+      )!,
+      collapsed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}collapsed'],
+      )!,
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}icon'],
+      ),
+    );
+  }
+
+  @override
+  $HomeSectionsTable createAlias(String alias) {
+    return $HomeSectionsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<HomeLayout, String, String> $converterlayout =
+      const EnumNameConverter<HomeLayout>(HomeLayout.values);
+  static JsonTypeConverter2<HomeSectionSource, String, String>
+  $convertersource = const EnumNameConverter<HomeSectionSource>(
+    HomeSectionSource.values,
+  );
+}
+
+class HomeSection extends DataClass implements Insertable<HomeSection> {
+  final int id;
+  final String title;
+  final HomeLayout layout;
+  final int position;
+
+  /// Where the contents come from. See [HomeSectionSource].
+  final HomeSectionSource source;
+
+  /// Cap on a computed section's length, so "recently played" can be ten
+  /// items in one library and thirty in another.
+  final int itemLimit;
+
+  /// Whether the section is rolled up to its header.
+  ///
+  /// Stored rather than kept in memory: a home page somebody has collapsed
+  /// down to five headers is the shape they chose for it, and having it
+  /// spring open again on the next launch would undo that every time.
+  final bool collapsed;
+
+  /// Material icon code point, looked up in a fixed list -- never fed to
+  /// `IconData` directly, which would defeat icon-font tree-shaking. Null
+  /// means the section shows a plain collapse chevron instead.
+  final int? icon;
+  const HomeSection({
+    required this.id,
+    required this.title,
+    required this.layout,
+    required this.position,
+    required this.source,
+    required this.itemLimit,
+    required this.collapsed,
+    this.icon,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['title'] = Variable<String>(title);
+    {
+      map['layout'] = Variable<String>(
+        $HomeSectionsTable.$converterlayout.toSql(layout),
+      );
+    }
+    map['position'] = Variable<int>(position);
+    {
+      map['source'] = Variable<String>(
+        $HomeSectionsTable.$convertersource.toSql(source),
+      );
+    }
+    map['item_limit'] = Variable<int>(itemLimit);
+    map['collapsed'] = Variable<bool>(collapsed);
+    if (!nullToAbsent || icon != null) {
+      map['icon'] = Variable<int>(icon);
+    }
+    return map;
+  }
+
+  HomeSectionsCompanion toCompanion(bool nullToAbsent) {
+    return HomeSectionsCompanion(
+      id: Value(id),
+      title: Value(title),
+      layout: Value(layout),
+      position: Value(position),
+      source: Value(source),
+      itemLimit: Value(itemLimit),
+      collapsed: Value(collapsed),
+      icon: icon == null && nullToAbsent ? const Value.absent() : Value(icon),
+    );
+  }
+
+  factory HomeSection.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HomeSection(
+      id: serializer.fromJson<int>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      layout: $HomeSectionsTable.$converterlayout.fromJson(
+        serializer.fromJson<String>(json['layout']),
+      ),
+      position: serializer.fromJson<int>(json['position']),
+      source: $HomeSectionsTable.$convertersource.fromJson(
+        serializer.fromJson<String>(json['source']),
+      ),
+      itemLimit: serializer.fromJson<int>(json['itemLimit']),
+      collapsed: serializer.fromJson<bool>(json['collapsed']),
+      icon: serializer.fromJson<int?>(json['icon']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'title': serializer.toJson<String>(title),
+      'layout': serializer.toJson<String>(
+        $HomeSectionsTable.$converterlayout.toJson(layout),
+      ),
+      'position': serializer.toJson<int>(position),
+      'source': serializer.toJson<String>(
+        $HomeSectionsTable.$convertersource.toJson(source),
+      ),
+      'itemLimit': serializer.toJson<int>(itemLimit),
+      'collapsed': serializer.toJson<bool>(collapsed),
+      'icon': serializer.toJson<int?>(icon),
+    };
+  }
+
+  HomeSection copyWith({
+    int? id,
+    String? title,
+    HomeLayout? layout,
+    int? position,
+    HomeSectionSource? source,
+    int? itemLimit,
+    bool? collapsed,
+    Value<int?> icon = const Value.absent(),
+  }) => HomeSection(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    layout: layout ?? this.layout,
+    position: position ?? this.position,
+    source: source ?? this.source,
+    itemLimit: itemLimit ?? this.itemLimit,
+    collapsed: collapsed ?? this.collapsed,
+    icon: icon.present ? icon.value : this.icon,
+  );
+  HomeSection copyWithCompanion(HomeSectionsCompanion data) {
+    return HomeSection(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      layout: data.layout.present ? data.layout.value : this.layout,
+      position: data.position.present ? data.position.value : this.position,
+      source: data.source.present ? data.source.value : this.source,
+      itemLimit: data.itemLimit.present ? data.itemLimit.value : this.itemLimit,
+      collapsed: data.collapsed.present ? data.collapsed.value : this.collapsed,
+      icon: data.icon.present ? data.icon.value : this.icon,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HomeSection(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('layout: $layout, ')
+          ..write('position: $position, ')
+          ..write('source: $source, ')
+          ..write('itemLimit: $itemLimit, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('icon: $icon')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    title,
+    layout,
+    position,
+    source,
+    itemLimit,
+    collapsed,
+    icon,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HomeSection &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.layout == this.layout &&
+          other.position == this.position &&
+          other.source == this.source &&
+          other.itemLimit == this.itemLimit &&
+          other.collapsed == this.collapsed &&
+          other.icon == this.icon);
+}
+
+class HomeSectionsCompanion extends UpdateCompanion<HomeSection> {
+  final Value<int> id;
+  final Value<String> title;
+  final Value<HomeLayout> layout;
+  final Value<int> position;
+  final Value<HomeSectionSource> source;
+  final Value<int> itemLimit;
+  final Value<bool> collapsed;
+  final Value<int?> icon;
+  const HomeSectionsCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.layout = const Value.absent(),
+    this.position = const Value.absent(),
+    this.source = const Value.absent(),
+    this.itemLimit = const Value.absent(),
+    this.collapsed = const Value.absent(),
+    this.icon = const Value.absent(),
+  });
+  HomeSectionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String title,
+    this.layout = const Value.absent(),
+    required int position,
+    this.source = const Value.absent(),
+    this.itemLimit = const Value.absent(),
+    this.collapsed = const Value.absent(),
+    this.icon = const Value.absent(),
+  }) : title = Value(title),
+       position = Value(position);
+  static Insertable<HomeSection> custom({
+    Expression<int>? id,
+    Expression<String>? title,
+    Expression<String>? layout,
+    Expression<int>? position,
+    Expression<String>? source,
+    Expression<int>? itemLimit,
+    Expression<bool>? collapsed,
+    Expression<int>? icon,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (layout != null) 'layout': layout,
+      if (position != null) 'position': position,
+      if (source != null) 'source': source,
+      if (itemLimit != null) 'item_limit': itemLimit,
+      if (collapsed != null) 'collapsed': collapsed,
+      if (icon != null) 'icon': icon,
+    });
+  }
+
+  HomeSectionsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? title,
+    Value<HomeLayout>? layout,
+    Value<int>? position,
+    Value<HomeSectionSource>? source,
+    Value<int>? itemLimit,
+    Value<bool>? collapsed,
+    Value<int?>? icon,
+  }) {
+    return HomeSectionsCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      layout: layout ?? this.layout,
+      position: position ?? this.position,
+      source: source ?? this.source,
+      itemLimit: itemLimit ?? this.itemLimit,
+      collapsed: collapsed ?? this.collapsed,
+      icon: icon ?? this.icon,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (layout.present) {
+      map['layout'] = Variable<String>(
+        $HomeSectionsTable.$converterlayout.toSql(layout.value),
+      );
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(
+        $HomeSectionsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (itemLimit.present) {
+      map['item_limit'] = Variable<int>(itemLimit.value);
+    }
+    if (collapsed.present) {
+      map['collapsed'] = Variable<bool>(collapsed.value);
+    }
+    if (icon.present) {
+      map['icon'] = Variable<int>(icon.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HomeSectionsCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('layout: $layout, ')
+          ..write('position: $position, ')
+          ..write('source: $source, ')
+          ..write('itemLimit: $itemLimit, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('icon: $icon')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $HomeItemsTable extends HomeItems
+    with TableInfo<$HomeItemsTable, HomeItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HomeItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _sectionIdMeta = const VerificationMeta(
+    'sectionId',
+  );
+  @override
+  late final GeneratedColumn<int> sectionId = GeneratedColumn<int>(
+    'section_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES home_sections (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _parentIdMeta = const VerificationMeta(
+    'parentId',
+  );
+  @override
+  late final GeneratedColumn<int> parentId = GeneratedColumn<int>(
+    'parent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES home_items (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeItemKind, String> kind =
+      GeneratedColumn<String>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<HomeItemKind>($HomeItemsTable.$converterkind);
+  static const VerificationMeta _refIdMeta = const VerificationMeta('refId');
+  @override
+  late final GeneratedColumn<int> refId = GeneratedColumn<int>(
+    'ref_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _queryMeta = const VerificationMeta('query');
+  @override
+  late final GeneratedColumn<String> query = GeneratedColumn<String>(
+    'query',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _imageIdMeta = const VerificationMeta(
+    'imageId',
+  );
+  @override
+  late final GeneratedColumn<int> imageId = GeneratedColumn<int>(
+    'image_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES images (id) ON DELETE SET NULL',
+    ),
+  );
+  static const VerificationMeta _artworkCountMeta = const VerificationMeta(
+    'artworkCount',
+  );
+  @override
+  late final GeneratedColumn<int> artworkCount = GeneratedColumn<int>(
+    'artwork_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(4),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sectionId,
+    parentId,
+    position,
+    kind,
+    refId,
+    label,
+    query,
+    imageId,
+    artworkCount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'home_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HomeItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('section_id')) {
+      context.handle(
+        _sectionIdMeta,
+        sectionId.isAcceptableOrUnknown(data['section_id']!, _sectionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sectionIdMeta);
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(
+        _parentIdMeta,
+        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('ref_id')) {
+      context.handle(
+        _refIdMeta,
+        refId.isAcceptableOrUnknown(data['ref_id']!, _refIdMeta),
+      );
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('query')) {
+      context.handle(
+        _queryMeta,
+        query.isAcceptableOrUnknown(data['query']!, _queryMeta),
+      );
+    }
+    if (data.containsKey('image_id')) {
+      context.handle(
+        _imageIdMeta,
+        imageId.isAcceptableOrUnknown(data['image_id']!, _imageIdMeta),
+      );
+    }
+    if (data.containsKey('artwork_count')) {
+      context.handle(
+        _artworkCountMeta,
+        artworkCount.isAcceptableOrUnknown(
+          data['artwork_count']!,
+          _artworkCountMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  HomeItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HomeItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      sectionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}section_id'],
+      )!,
+      parentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parent_id'],
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      kind: $HomeItemsTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
+      refId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ref_id'],
+      ),
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
+      query: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}query'],
+      ),
+      imageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}image_id'],
+      ),
+      artworkCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}artwork_count'],
+      )!,
+    );
+  }
+
+  @override
+  $HomeItemsTable createAlias(String alias) {
+    return $HomeItemsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<HomeItemKind, String, String> $converterkind =
+      const EnumNameConverter<HomeItemKind>(HomeItemKind.values);
+}
+
+class HomeItem extends DataClass implements Insertable<HomeItem> {
+  final int id;
+
+  /// The section this belongs to, carried even on a nested item so a whole
+  /// section can be read in one query instead of one per level.
+  final int sectionId;
+
+  /// Enclosing collection, or null when the item sits directly in the section.
+  final int? parentId;
+
+  /// Sparse ordering key within the parent, or within the section at top level.
+  final int position;
+  final HomeItemKind kind;
+
+  /// The row this points at: an album, artist, playlist or track id.
+  ///
+  /// Null for a collection (which owns its children instead) and for a query
+  /// (which carries its own text). Deliberately not a foreign key: the kinds
+  /// point at four different tables, and a column cannot reference all of
+  /// them. A dangling reference is handled where items are read, by dropping
+  /// the item from the result rather than by failing the whole page.
+  final int? refId;
+
+  /// A name chosen by the user, replacing whatever the referenced row is
+  /// called. Always set for a collection, which has nothing else to be named by.
+  final String? label;
+
+  /// The smart query, for [HomeItemKind.query]. Stored as typed, in the same
+  /// grammar as a smart playlist.
+  final String? query;
+
+  /// An image chosen to stand for this item, overriding whatever artwork it
+  /// would otherwise compose or inherit.
+  final int? imageId;
+
+  /// How many of the contents' covers a collection tile composes when it has no
+  /// [imageId] of its own: 1 for a single cover, 4 for a quartered mosaic.
+  ///
+  /// Only 1 and 4 are offered in the UI; the column is an integer rather than
+  /// a two-value enum so a future 9-up needs no migration.
+  final int artworkCount;
+  const HomeItem({
+    required this.id,
+    required this.sectionId,
+    this.parentId,
+    required this.position,
+    required this.kind,
+    this.refId,
+    this.label,
+    this.query,
+    this.imageId,
+    required this.artworkCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['section_id'] = Variable<int>(sectionId);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<int>(parentId);
+    }
+    map['position'] = Variable<int>(position);
+    {
+      map['kind'] = Variable<String>(
+        $HomeItemsTable.$converterkind.toSql(kind),
+      );
+    }
+    if (!nullToAbsent || refId != null) {
+      map['ref_id'] = Variable<int>(refId);
+    }
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
+    if (!nullToAbsent || query != null) {
+      map['query'] = Variable<String>(query);
+    }
+    if (!nullToAbsent || imageId != null) {
+      map['image_id'] = Variable<int>(imageId);
+    }
+    map['artwork_count'] = Variable<int>(artworkCount);
+    return map;
+  }
+
+  HomeItemsCompanion toCompanion(bool nullToAbsent) {
+    return HomeItemsCompanion(
+      id: Value(id),
+      sectionId: Value(sectionId),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
+      position: Value(position),
+      kind: Value(kind),
+      refId: refId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refId),
+      label: label == null && nullToAbsent
+          ? const Value.absent()
+          : Value(label),
+      query: query == null && nullToAbsent
+          ? const Value.absent()
+          : Value(query),
+      imageId: imageId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageId),
+      artworkCount: Value(artworkCount),
+    );
+  }
+
+  factory HomeItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HomeItem(
+      id: serializer.fromJson<int>(json['id']),
+      sectionId: serializer.fromJson<int>(json['sectionId']),
+      parentId: serializer.fromJson<int?>(json['parentId']),
+      position: serializer.fromJson<int>(json['position']),
+      kind: $HomeItemsTable.$converterkind.fromJson(
+        serializer.fromJson<String>(json['kind']),
+      ),
+      refId: serializer.fromJson<int?>(json['refId']),
+      label: serializer.fromJson<String?>(json['label']),
+      query: serializer.fromJson<String?>(json['query']),
+      imageId: serializer.fromJson<int?>(json['imageId']),
+      artworkCount: serializer.fromJson<int>(json['artworkCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'sectionId': serializer.toJson<int>(sectionId),
+      'parentId': serializer.toJson<int?>(parentId),
+      'position': serializer.toJson<int>(position),
+      'kind': serializer.toJson<String>(
+        $HomeItemsTable.$converterkind.toJson(kind),
+      ),
+      'refId': serializer.toJson<int?>(refId),
+      'label': serializer.toJson<String?>(label),
+      'query': serializer.toJson<String?>(query),
+      'imageId': serializer.toJson<int?>(imageId),
+      'artworkCount': serializer.toJson<int>(artworkCount),
+    };
+  }
+
+  HomeItem copyWith({
+    int? id,
+    int? sectionId,
+    Value<int?> parentId = const Value.absent(),
+    int? position,
+    HomeItemKind? kind,
+    Value<int?> refId = const Value.absent(),
+    Value<String?> label = const Value.absent(),
+    Value<String?> query = const Value.absent(),
+    Value<int?> imageId = const Value.absent(),
+    int? artworkCount,
+  }) => HomeItem(
+    id: id ?? this.id,
+    sectionId: sectionId ?? this.sectionId,
+    parentId: parentId.present ? parentId.value : this.parentId,
+    position: position ?? this.position,
+    kind: kind ?? this.kind,
+    refId: refId.present ? refId.value : this.refId,
+    label: label.present ? label.value : this.label,
+    query: query.present ? query.value : this.query,
+    imageId: imageId.present ? imageId.value : this.imageId,
+    artworkCount: artworkCount ?? this.artworkCount,
+  );
+  HomeItem copyWithCompanion(HomeItemsCompanion data) {
+    return HomeItem(
+      id: data.id.present ? data.id.value : this.id,
+      sectionId: data.sectionId.present ? data.sectionId.value : this.sectionId,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      position: data.position.present ? data.position.value : this.position,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      refId: data.refId.present ? data.refId.value : this.refId,
+      label: data.label.present ? data.label.value : this.label,
+      query: data.query.present ? data.query.value : this.query,
+      imageId: data.imageId.present ? data.imageId.value : this.imageId,
+      artworkCount: data.artworkCount.present
+          ? data.artworkCount.value
+          : this.artworkCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HomeItem(')
+          ..write('id: $id, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('parentId: $parentId, ')
+          ..write('position: $position, ')
+          ..write('kind: $kind, ')
+          ..write('refId: $refId, ')
+          ..write('label: $label, ')
+          ..write('query: $query, ')
+          ..write('imageId: $imageId, ')
+          ..write('artworkCount: $artworkCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sectionId,
+    parentId,
+    position,
+    kind,
+    refId,
+    label,
+    query,
+    imageId,
+    artworkCount,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HomeItem &&
+          other.id == this.id &&
+          other.sectionId == this.sectionId &&
+          other.parentId == this.parentId &&
+          other.position == this.position &&
+          other.kind == this.kind &&
+          other.refId == this.refId &&
+          other.label == this.label &&
+          other.query == this.query &&
+          other.imageId == this.imageId &&
+          other.artworkCount == this.artworkCount);
+}
+
+class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
+  final Value<int> id;
+  final Value<int> sectionId;
+  final Value<int?> parentId;
+  final Value<int> position;
+  final Value<HomeItemKind> kind;
+  final Value<int?> refId;
+  final Value<String?> label;
+  final Value<String?> query;
+  final Value<int?> imageId;
+  final Value<int> artworkCount;
+  const HomeItemsCompanion({
+    this.id = const Value.absent(),
+    this.sectionId = const Value.absent(),
+    this.parentId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.refId = const Value.absent(),
+    this.label = const Value.absent(),
+    this.query = const Value.absent(),
+    this.imageId = const Value.absent(),
+    this.artworkCount = const Value.absent(),
+  });
+  HomeItemsCompanion.insert({
+    this.id = const Value.absent(),
+    required int sectionId,
+    this.parentId = const Value.absent(),
+    required int position,
+    required HomeItemKind kind,
+    this.refId = const Value.absent(),
+    this.label = const Value.absent(),
+    this.query = const Value.absent(),
+    this.imageId = const Value.absent(),
+    this.artworkCount = const Value.absent(),
+  }) : sectionId = Value(sectionId),
+       position = Value(position),
+       kind = Value(kind);
+  static Insertable<HomeItem> custom({
+    Expression<int>? id,
+    Expression<int>? sectionId,
+    Expression<int>? parentId,
+    Expression<int>? position,
+    Expression<String>? kind,
+    Expression<int>? refId,
+    Expression<String>? label,
+    Expression<String>? query,
+    Expression<int>? imageId,
+    Expression<int>? artworkCount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sectionId != null) 'section_id': sectionId,
+      if (parentId != null) 'parent_id': parentId,
+      if (position != null) 'position': position,
+      if (kind != null) 'kind': kind,
+      if (refId != null) 'ref_id': refId,
+      if (label != null) 'label': label,
+      if (query != null) 'query': query,
+      if (imageId != null) 'image_id': imageId,
+      if (artworkCount != null) 'artwork_count': artworkCount,
+    });
+  }
+
+  HomeItemsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? sectionId,
+    Value<int?>? parentId,
+    Value<int>? position,
+    Value<HomeItemKind>? kind,
+    Value<int?>? refId,
+    Value<String?>? label,
+    Value<String?>? query,
+    Value<int?>? imageId,
+    Value<int>? artworkCount,
+  }) {
+    return HomeItemsCompanion(
+      id: id ?? this.id,
+      sectionId: sectionId ?? this.sectionId,
+      parentId: parentId ?? this.parentId,
+      position: position ?? this.position,
+      kind: kind ?? this.kind,
+      refId: refId ?? this.refId,
+      label: label ?? this.label,
+      query: query ?? this.query,
+      imageId: imageId ?? this.imageId,
+      artworkCount: artworkCount ?? this.artworkCount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (sectionId.present) {
+      map['section_id'] = Variable<int>(sectionId.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<int>(parentId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(
+        $HomeItemsTable.$converterkind.toSql(kind.value),
+      );
+    }
+    if (refId.present) {
+      map['ref_id'] = Variable<int>(refId.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (query.present) {
+      map['query'] = Variable<String>(query.value);
+    }
+    if (imageId.present) {
+      map['image_id'] = Variable<int>(imageId.value);
+    }
+    if (artworkCount.present) {
+      map['artwork_count'] = Variable<int>(artworkCount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HomeItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('sectionId: $sectionId, ')
+          ..write('parentId: $parentId, ')
+          ..write('position: $position, ')
+          ..write('kind: $kind, ')
+          ..write('refId: $refId, ')
+          ..write('label: $label, ')
+          ..write('query: $query, ')
+          ..write('imageId: $imageId, ')
+          ..write('artworkCount: $artworkCount')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$MarmeladeDatabase extends GeneratedDatabase {
   _$MarmeladeDatabase(QueryExecutor e) : super(e);
   $MarmeladeDatabaseManager get managers => $MarmeladeDatabaseManager(this);
@@ -19099,6 +20265,8 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     this,
   );
   late final $PendingCreditsTable pendingCredits = $PendingCreditsTable(this);
+  late final $HomeSectionsTable homeSections = $HomeSectionsTable(this);
+  late final $HomeItemsTable homeItems = $HomeItemsTable(this);
   late final Index idxLibraryFoldersEnabled = Index(
     'idx_library_folders_enabled',
     'CREATE INDEX idx_library_folders_enabled ON library_folders (enabled)',
@@ -19263,6 +20431,18 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     'idx_pending_credits_track',
     'CREATE INDEX idx_pending_credits_track ON pending_credits (track_id)',
   );
+  late final Index idxHomeSectionsPosition = Index(
+    'idx_home_sections_position',
+    'CREATE INDEX idx_home_sections_position ON home_sections (position)',
+  );
+  late final Index idxHomeItemsSection = Index(
+    'idx_home_items_section',
+    'CREATE INDEX idx_home_items_section ON home_items (section_id)',
+  );
+  late final Index idxHomeItemsParent = Index(
+    'idx_home_items_parent',
+    'CREATE INDEX idx_home_items_parent ON home_items (parent_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -19300,6 +20480,8 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     separatorTokens,
     creditSplitRules,
     pendingCredits,
+    homeSections,
+    homeItems,
     idxLibraryFoldersEnabled,
     idxMediaFilesContentKey,
     idxMediaFilesQuickKey,
@@ -19341,6 +20523,9 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
     idxScanIssuesUnresolved,
     idxSplitRulesKey,
     idxPendingCreditsTrack,
+    idxHomeSectionsPosition,
+    idxHomeItemsSection,
+    idxHomeItemsParent,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -19651,6 +20836,27 @@ abstract class _$MarmeladeDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('pending_credits', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'home_sections',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('home_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'home_items',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('home_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'images',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('home_items', kind: UpdateKind.update)],
     ),
   ]);
 }
@@ -20345,6 +21551,24 @@ final class $$ImagesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$HomeItemsTable, List<HomeItem>>
+  _homeItemsRefsTable(_$MarmeladeDatabase db) => MultiTypedResultKey.fromTable(
+    db.homeItems,
+    aliasName: 'images__id__home_items__image_id',
+  );
+
+  $$HomeItemsTableProcessedTableManager get homeItemsRefs {
+    final manager = $$HomeItemsTableTableManager(
+      $_db,
+      $_db.homeItems,
+    ).filter((f) => f.imageId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_homeItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ImagesTableFilterComposer
@@ -20557,6 +21781,31 @@ class $$ImagesTableFilterComposer
           }) => $$PlaylistsTableFilterComposer(
             $db: $db,
             $table: $db.playlists,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> homeItemsRefs(
+    Expression<bool> Function($$HomeItemsTableFilterComposer f) f,
+  ) {
+    final $$HomeItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.imageId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.homeItems,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -20858,6 +22107,31 @@ class $$ImagesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> homeItemsRefs<T extends Object>(
+    Expression<T> Function($$HomeItemsTableAnnotationComposer a) f,
+  ) {
+    final $$HomeItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.imageId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ImagesTableTableManager
@@ -20880,6 +22154,7 @@ class $$ImagesTableTableManager
             bool tracksRefs,
             bool tagsRefs,
             bool playlistsRefs,
+            bool homeItemsRefs,
           })
         > {
   $$ImagesTableTableManager(_$MarmeladeDatabase db, $ImagesTable table)
@@ -20967,6 +22242,7 @@ class $$ImagesTableTableManager
                 tracksRefs = false,
                 tagsRefs = false,
                 playlistsRefs = false,
+                homeItemsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -20976,6 +22252,7 @@ class $$ImagesTableTableManager
                     if (tracksRefs) db.tracks,
                     if (tagsRefs) db.tags,
                     if (playlistsRefs) db.playlists,
+                    if (homeItemsRefs) db.homeItems,
                   ],
                   addJoins:
                       <
@@ -21086,6 +22363,27 @@ class $$ImagesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (homeItemsRefs)
+                        await $_getPrefetchedData<
+                          Image,
+                          $ImagesTable,
+                          HomeItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ImagesTableReferences
+                              ._homeItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ImagesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).homeItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.imageId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -21113,6 +22411,7 @@ typedef $$ImagesTableProcessedTableManager =
         bool tracksRefs,
         bool tagsRefs,
         bool playlistsRefs,
+        bool homeItemsRefs,
       })
     >;
 typedef $$ArtistsTableCreateCompanionBuilder = ArtistsCompanion Function({
@@ -37371,6 +38670,937 @@ typedef $$PendingCreditsTableProcessedTableManager =
       PendingCredit,
       PrefetchHooks Function({bool trackId})
     >;
+typedef $$HomeSectionsTableCreateCompanionBuilder =
+    HomeSectionsCompanion Function({
+      Value<int> id,
+      required String title,
+      Value<HomeLayout> layout,
+      required int position,
+      Value<HomeSectionSource> source,
+      Value<int> itemLimit,
+      Value<bool> collapsed,
+      Value<int?> icon,
+    });
+typedef $$HomeSectionsTableUpdateCompanionBuilder =
+    HomeSectionsCompanion Function({
+      Value<int> id,
+      Value<String> title,
+      Value<HomeLayout> layout,
+      Value<int> position,
+      Value<HomeSectionSource> source,
+      Value<int> itemLimit,
+      Value<bool> collapsed,
+      Value<int?> icon,
+    });
+
+final class $$HomeSectionsTableReferences
+    extends
+        BaseReferences<_$MarmeladeDatabase, $HomeSectionsTable, HomeSection> {
+  $$HomeSectionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$HomeItemsTable, List<HomeItem>>
+  _homeItemsRefsTable(_$MarmeladeDatabase db) => MultiTypedResultKey.fromTable(
+    db.homeItems,
+    aliasName: 'home_sections__id__home_items__section_id',
+  );
+
+  $$HomeItemsTableProcessedTableManager get homeItemsRefs {
+    final manager = $$HomeItemsTableTableManager(
+      $_db,
+      $_db.homeItems,
+    ).filter((f) => f.sectionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_homeItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$HomeSectionsTableFilterComposer
+    extends Composer<_$MarmeladeDatabase, $HomeSectionsTable> {
+  $$HomeSectionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<HomeLayout, HomeLayout, String> get layout =>
+      $composableBuilder(
+        column: $table.layout,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<HomeSectionSource, HomeSectionSource, String>
+  get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get itemLimit => $composableBuilder(
+    column: $table.itemLimit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> homeItemsRefs(
+    Expression<bool> Function($$HomeItemsTableFilterComposer f) f,
+  ) {
+    final $$HomeItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.sectionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$HomeSectionsTableOrderingComposer
+    extends Composer<_$MarmeladeDatabase, $HomeSectionsTable> {
+  $$HomeSectionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get layout => $composableBuilder(
+    column: $table.layout,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get itemLimit => $composableBuilder(
+    column: $table.itemLimit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HomeSectionsTableAnnotationComposer
+    extends Composer<_$MarmeladeDatabase, $HomeSectionsTable> {
+  $$HomeSectionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<HomeLayout, String> get layout =>
+      $composableBuilder(column: $table.layout, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<HomeSectionSource, String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<int> get itemLimit =>
+      $composableBuilder(column: $table.itemLimit, builder: (column) => column);
+
+  GeneratedColumn<bool> get collapsed =>
+      $composableBuilder(column: $table.collapsed, builder: (column) => column);
+
+  GeneratedColumn<int> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
+
+  Expression<T> homeItemsRefs<T extends Object>(
+    Expression<T> Function($$HomeItemsTableAnnotationComposer a) f,
+  ) {
+    final $$HomeItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.sectionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$HomeSectionsTableTableManager
+    extends
+        RootTableManager<
+          _$MarmeladeDatabase,
+          $HomeSectionsTable,
+          HomeSection,
+          $$HomeSectionsTableFilterComposer,
+          $$HomeSectionsTableOrderingComposer,
+          $$HomeSectionsTableAnnotationComposer,
+          $$HomeSectionsTableCreateCompanionBuilder,
+          $$HomeSectionsTableUpdateCompanionBuilder,
+          (HomeSection, $$HomeSectionsTableReferences),
+          HomeSection,
+          PrefetchHooks Function({bool homeItemsRefs})
+        > {
+  $$HomeSectionsTableTableManager(
+    _$MarmeladeDatabase db,
+    $HomeSectionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HomeSectionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HomeSectionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HomeSectionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<HomeLayout> layout = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<HomeSectionSource> source = const Value.absent(),
+                Value<int> itemLimit = const Value.absent(),
+                Value<bool> collapsed = const Value.absent(),
+                Value<int?> icon = const Value.absent(),
+              }) => HomeSectionsCompanion(
+                id: id,
+                title: title,
+                layout: layout,
+                position: position,
+                source: source,
+                itemLimit: itemLimit,
+                collapsed: collapsed,
+                icon: icon,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String title,
+                Value<HomeLayout> layout = const Value.absent(),
+                required int position,
+                Value<HomeSectionSource> source = const Value.absent(),
+                Value<int> itemLimit = const Value.absent(),
+                Value<bool> collapsed = const Value.absent(),
+                Value<int?> icon = const Value.absent(),
+              }) => HomeSectionsCompanion.insert(
+                id: id,
+                title: title,
+                layout: layout,
+                position: position,
+                source: source,
+                itemLimit: itemLimit,
+                collapsed: collapsed,
+                icon: icon,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$HomeSectionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({homeItemsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (homeItemsRefs) db.homeItems],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (homeItemsRefs)
+                    await $_getPrefetchedData<
+                      HomeSection,
+                      $HomeSectionsTable,
+                      HomeItem
+                    >(
+                      currentTable: table,
+                      referencedTable: $$HomeSectionsTableReferences
+                          ._homeItemsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$HomeSectionsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).homeItemsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.sectionId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$HomeSectionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarmeladeDatabase,
+      $HomeSectionsTable,
+      HomeSection,
+      $$HomeSectionsTableFilterComposer,
+      $$HomeSectionsTableOrderingComposer,
+      $$HomeSectionsTableAnnotationComposer,
+      $$HomeSectionsTableCreateCompanionBuilder,
+      $$HomeSectionsTableUpdateCompanionBuilder,
+      (HomeSection, $$HomeSectionsTableReferences),
+      HomeSection,
+      PrefetchHooks Function({bool homeItemsRefs})
+    >;
+typedef $$HomeItemsTableCreateCompanionBuilder = HomeItemsCompanion Function({
+  Value<int> id,
+  required int sectionId,
+  Value<int?> parentId,
+  required int position,
+  required HomeItemKind kind,
+  Value<int?> refId,
+  Value<String?> label,
+  Value<String?> query,
+  Value<int?> imageId,
+  Value<int> artworkCount,
+});
+typedef $$HomeItemsTableUpdateCompanionBuilder = HomeItemsCompanion Function({
+  Value<int> id,
+  Value<int> sectionId,
+  Value<int?> parentId,
+  Value<int> position,
+  Value<HomeItemKind> kind,
+  Value<int?> refId,
+  Value<String?> label,
+  Value<String?> query,
+  Value<int?> imageId,
+  Value<int> artworkCount,
+});
+
+final class $$HomeItemsTableReferences
+    extends BaseReferences<_$MarmeladeDatabase, $HomeItemsTable, HomeItem> {
+  $$HomeItemsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $HomeSectionsTable _sectionIdTable(_$MarmeladeDatabase db) =>
+      db.homeSections.createAlias('home_items__section_id__home_sections__id');
+
+  $$HomeSectionsTableProcessedTableManager get sectionId {
+    final $_column = $_itemColumn<int>('section_id')!;
+
+    final manager = $$HomeSectionsTableTableManager(
+      $_db,
+      $_db.homeSections,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sectionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $HomeItemsTable _parentIdTable(_$MarmeladeDatabase db) =>
+      db.homeItems.createAlias('home_items__parent_id__home_items__id');
+
+  $$HomeItemsTableProcessedTableManager? get parentId {
+    final $_column = $_itemColumn<int>('parent_id');
+    if ($_column == null) return null;
+    final manager = $$HomeItemsTableTableManager(
+      $_db,
+      $_db.homeItems,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_parentIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $ImagesTable _imageIdTable(_$MarmeladeDatabase db) =>
+      db.images.createAlias('home_items__image_id__images__id');
+
+  $$ImagesTableProcessedTableManager? get imageId {
+    final $_column = $_itemColumn<int>('image_id');
+    if ($_column == null) return null;
+    final manager = $$ImagesTableTableManager(
+      $_db,
+      $_db.images,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_imageIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$HomeItemsTableFilterComposer
+    extends Composer<_$MarmeladeDatabase, $HomeItemsTable> {
+  $$HomeItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<HomeItemKind, HomeItemKind, String> get kind =>
+      $composableBuilder(
+        column: $table.kind,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<int> get refId => $composableBuilder(
+    column: $table.refId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get query => $composableBuilder(
+    column: $table.query,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get artworkCount => $composableBuilder(
+    column: $table.artworkCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$HomeSectionsTableFilterComposer get sectionId {
+    final $$HomeSectionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.homeSections,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeSectionsTableFilterComposer(
+            $db: $db,
+            $table: $db.homeSections,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$HomeItemsTableFilterComposer get parentId {
+    final $$HomeItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ImagesTableFilterComposer get imageId {
+    final $$ImagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableFilterComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HomeItemsTableOrderingComposer
+    extends Composer<_$MarmeladeDatabase, $HomeItemsTable> {
+  $$HomeItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get refId => $composableBuilder(
+    column: $table.refId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get query => $composableBuilder(
+    column: $table.query,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get artworkCount => $composableBuilder(
+    column: $table.artworkCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$HomeSectionsTableOrderingComposer get sectionId {
+    final $$HomeSectionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.homeSections,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeSectionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.homeSections,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$HomeItemsTableOrderingComposer get parentId {
+    final $$HomeItemsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableOrderingComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ImagesTableOrderingComposer get imageId {
+    final $$ImagesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableOrderingComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HomeItemsTableAnnotationComposer
+    extends Composer<_$MarmeladeDatabase, $HomeItemsTable> {
+  $$HomeItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<HomeItemKind, String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get refId =>
+      $composableBuilder(column: $table.refId, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<String> get query =>
+      $composableBuilder(column: $table.query, builder: (column) => column);
+
+  GeneratedColumn<int> get artworkCount => $composableBuilder(
+    column: $table.artworkCount,
+    builder: (column) => column,
+  );
+
+  $$HomeSectionsTableAnnotationComposer get sectionId {
+    final $$HomeSectionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.homeSections,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeSectionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.homeSections,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$HomeItemsTableAnnotationComposer get parentId {
+    final $$HomeItemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.homeItems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$HomeItemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.homeItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$ImagesTableAnnotationComposer get imageId {
+    final $$ImagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.imageId,
+      referencedTable: $db.images,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.images,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$HomeItemsTableTableManager
+    extends
+        RootTableManager<
+          _$MarmeladeDatabase,
+          $HomeItemsTable,
+          HomeItem,
+          $$HomeItemsTableFilterComposer,
+          $$HomeItemsTableOrderingComposer,
+          $$HomeItemsTableAnnotationComposer,
+          $$HomeItemsTableCreateCompanionBuilder,
+          $$HomeItemsTableUpdateCompanionBuilder,
+          (HomeItem, $$HomeItemsTableReferences),
+          HomeItem,
+          PrefetchHooks Function({bool sectionId, bool parentId, bool imageId})
+        > {
+  $$HomeItemsTableTableManager(_$MarmeladeDatabase db, $HomeItemsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HomeItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HomeItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HomeItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> sectionId = const Value.absent(),
+                Value<int?> parentId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<HomeItemKind> kind = const Value.absent(),
+                Value<int?> refId = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<String?> query = const Value.absent(),
+                Value<int?> imageId = const Value.absent(),
+                Value<int> artworkCount = const Value.absent(),
+              }) => HomeItemsCompanion(
+                id: id,
+                sectionId: sectionId,
+                parentId: parentId,
+                position: position,
+                kind: kind,
+                refId: refId,
+                label: label,
+                query: query,
+                imageId: imageId,
+                artworkCount: artworkCount,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int sectionId,
+                Value<int?> parentId = const Value.absent(),
+                required int position,
+                required HomeItemKind kind,
+                Value<int?> refId = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<String?> query = const Value.absent(),
+                Value<int?> imageId = const Value.absent(),
+                Value<int> artworkCount = const Value.absent(),
+              }) => HomeItemsCompanion.insert(
+                id: id,
+                sectionId: sectionId,
+                parentId: parentId,
+                position: position,
+                kind: kind,
+                refId: refId,
+                label: label,
+                query: query,
+                imageId: imageId,
+                artworkCount: artworkCount,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$HomeItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({sectionId = false, parentId = false, imageId = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (sectionId) {
+                          state = state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.sectionId,
+                            referencedTable: $$HomeItemsTableReferences
+                                ._sectionIdTable(db),
+                            referencedColumn: $$HomeItemsTableReferences
+                                ._sectionIdTable(db)
+                                .id,
+                          ) as T;
+                        }
+                        if (parentId) {
+                          state = state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.parentId,
+                            referencedTable: $$HomeItemsTableReferences
+                                ._parentIdTable(db),
+                            referencedColumn: $$HomeItemsTableReferences
+                                ._parentIdTable(db)
+                                .id,
+                          ) as T;
+                        }
+                        if (imageId) {
+                          state = state.withJoin(
+                            currentTable: table,
+                            currentColumn: table.imageId,
+                            referencedTable: $$HomeItemsTableReferences
+                                ._imageIdTable(db),
+                            referencedColumn: $$HomeItemsTableReferences
+                                ._imageIdTable(db)
+                                .id,
+                          ) as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$HomeItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarmeladeDatabase,
+      $HomeItemsTable,
+      HomeItem,
+      $$HomeItemsTableFilterComposer,
+      $$HomeItemsTableOrderingComposer,
+      $$HomeItemsTableAnnotationComposer,
+      $$HomeItemsTableCreateCompanionBuilder,
+      $$HomeItemsTableUpdateCompanionBuilder,
+      (HomeItem, $$HomeItemsTableReferences),
+      HomeItem,
+      PrefetchHooks Function({bool sectionId, bool parentId, bool imageId})
+    >;
 
 class $MarmeladeDatabaseManager {
   final _$MarmeladeDatabase _db;
@@ -37438,4 +39668,8 @@ class $MarmeladeDatabaseManager {
       $$CreditSplitRulesTableTableManager(_db, _db.creditSplitRules);
   $$PendingCreditsTableTableManager get pendingCredits =>
       $$PendingCreditsTableTableManager(_db, _db.pendingCredits);
+  $$HomeSectionsTableTableManager get homeSections =>
+      $$HomeSectionsTableTableManager(_db, _db.homeSections);
+  $$HomeItemsTableTableManager get homeItems =>
+      $$HomeItemsTableTableManager(_db, _db.homeItems);
 }

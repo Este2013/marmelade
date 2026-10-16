@@ -6,7 +6,9 @@ import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../data/db/enums.dart' show QueueSource;
 import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../data/db/enums.dart' show HomeItemKind;
 import '../../domain/search/smart_query.dart';
+import '../home/library_draggable.dart';
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
@@ -322,7 +324,11 @@ class _ArtistTileState extends ConsumerState<_ArtistTile> {
           .select((s) => s.contains(artist.id)),
     );
 
-    return MouseRegion(
+    return LibraryDraggable(
+      kind: HomeItemKind.artist,
+      refId: artist.id,
+      title: artist.name,
+      child: MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -402,6 +408,7 @@ class _ArtistTileState extends ConsumerState<_ArtistTile> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

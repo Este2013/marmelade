@@ -291,3 +291,77 @@ enum ScanIssueKind {
   artworkFailed,
   permissionDenied,
 }
+
+/// How a home-page section lays its items out.
+enum HomeLayout {
+  /// A vertical list, capped at ten rows with a way through to the rest.
+  list,
+
+  /// A grid of artwork tiles.
+  grid;
+
+  String get label => switch (this) {
+        HomeLayout.list => 'List',
+        HomeLayout.grid => 'Grid',
+      };
+}
+
+/// Where a home-page section's contents come from.
+enum HomeSectionSource {
+  /// Items the user put there by hand.
+  curated,
+
+  /// Computed from listening history rather than stored.
+  recentlyPlayed;
+
+  /// Whether the section's contents can be edited item by item.
+  ///
+  /// A computed section has no items to rearrange -- its order is a fact
+  /// about what was played, and letting it be dragged would promise something
+  /// the next play would silently undo.
+  bool get isCurated => this == HomeSectionSource.curated;
+
+  String get label => switch (this) {
+        HomeSectionSource.curated => 'Chosen by hand',
+        HomeSectionSource.recentlyPlayed => 'Recently played',
+      };
+}
+
+/// What one item on the home page points at.
+///
+/// [collection] is both halves of "a hand-picked list of songs" and "a tile
+/// that opens into more tiles": a collection holding tracks is the former,
+/// one holding anything else is the latter, and the difference needs no
+/// separate kind because nothing treats them differently.
+enum HomeItemKind {
+  album,
+  artist,
+  playlist,
+  track,
+
+  /// A container for other items, nestable without limit.
+  ///
+  /// Named "collection" rather than "group" because this app already uses
+  /// "group" for a band -- an [ArtistKind] -- and a home page holding both
+  /// would be using one word for two unrelated things.
+  collection,
+
+  /// A smart query, resolved to tracks when the section is shown.
+  query;
+
+  /// Whether this kind is drawn as a circle rather than a rounded square.
+  ///
+  /// The visual code is the library's, not the home page's: round means a
+  /// person everywhere else in the app, and a home page that broke that
+  /// would be teaching a second vocabulary for the same things.
+  bool get isRound => this == HomeItemKind.artist;
+
+  String get label => switch (this) {
+        HomeItemKind.album => 'Album',
+        HomeItemKind.artist => 'Artist',
+        HomeItemKind.playlist => 'Playlist',
+        HomeItemKind.track => 'Song',
+        HomeItemKind.collection => 'Collection',
+        HomeItemKind.query => 'Search',
+      };
+}

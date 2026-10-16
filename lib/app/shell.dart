@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/library/album_detail_view.dart';
+import '../features/home/home_drag.dart';
+import '../features/home/home_view.dart';
 import '../features/library/albums_view.dart';
 import '../features/library/artist_detail_view.dart';
 import '../features/library/artists_view.dart';
@@ -42,6 +44,9 @@ import 'window_chrome.dart';
 /// the player itself, so it opens by drawing the player bar up over the content
 /// rather than by taking a rail slot alongside Albums and Artists.
 enum LibrarySection {
+  /// Reached from the logo rather than from a rail slot -- see the comment on
+  /// [railDestinations].
+  home('Home', Icons.home_outlined, Icons.home),
   search('Search', Icons.search_outlined, Icons.search),
   albums('Albums', Icons.album_outlined, Icons.album),
   songs('Songs', Icons.music_note_outlined, Icons.music_note),
@@ -60,6 +65,11 @@ enum LibrarySection {
   ///
   /// Settings is excluded and pinned to the foot of the rail instead: it is
   /// where the app gets configured, not another way to browse music.
+  ///
+  /// Home is excluded too, and for a different reason: the logo at the top of
+  /// the rail *is* its destination. A logo that goes home is a convention old
+  /// enough to need no label, and spending a seventh labelled slot on it
+  /// would crowd the rail to say something the mark above it already says.
   static const railDestinations = [search, albums, songs, artists, tags, playlists];
 }
 
@@ -75,7 +85,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMixin {
-  var _section = LibrarySection.albums;
+  var _section = LibrarySection.home;
 
   /// Drives the now-playing shade, drawn up out of the player bar.
   late final AnimationController _shade = AnimationController(duration: const Duration(milliseconds: 320), reverseDuration: const Duration(milliseconds: 240), vsync: this);
@@ -282,7 +292,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   ///
   /// Doubles as the child list of the section stack, so an unvisited section
   /// costs nothing at all.
-  final _visitedOrder = <LibrarySection>[LibrarySection.albums];
+  final _visitedOrder = <LibrarySection>[LibrarySection.home];
 
   /// What each section's title bar shows, mirroring that section's own
   /// Navigator stack one entry at a time.
@@ -922,6 +932,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   }
 
   Widget _rootFor(LibrarySection section) => switch (section) {
+    LibrarySection.home => HomeView(onOpenAlbum: _openAlbum, onOpenArtist: _openArtist, onOpenPlaylist: _openPlaylist, onOpenSettings: _openSettingsToAddAFolder),
     LibrarySection.search => SearchView(onClear: _clearSearch, onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onOpenTag: _openTag, onOpenPlaylist: _openPlaylist, onEditTrack: _editTrack, onSeeMore: _seeMoreFromSearch),
     LibrarySection.albums => AlbumsView(onOpenAlbum: _openAlbum, onOpenTrack: (trackId) => ref.read(playerProvider.notifier).playTrack(trackId), onOpenSettings: _openSettingsToAddAFolder),
     LibrarySection.songs => SongsView(onOpenArtist: _openArtist, onOpenAlbum: _openAlbum, onEditTrack: _editTrack, onOpenSettings: _openSettingsToAddAFolder),
@@ -940,6 +951,7 @@ class _AppShellState extends ConsumerState<AppShell> with TickerProviderStateMix
   /// space for now -- the same as before this change, just without a toolbar
   /// underneath it either.
   Widget? _rootChromeFor(LibrarySection section) => switch (section) {
+    LibrarySection.home => const HomeToolbar(),
     LibrarySection.search => SearchToolbar(controller: _searchController, focusNode: _searchFocus, onClear: _clearSearch),
     LibrarySection.albums => const AlbumsToolbar(),
     LibrarySection.songs => const SongsToolbar(),
@@ -1030,14 +1042,8 @@ class _Rail extends StatelessWidget {
       scrollable: true,
       trailingAtBottom: true,
       leading: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Tooltip(
-          message: 'marmelade',
-          child: Text(
-            'm',
-            style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w300),
-          ),
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: _LogoHome(selected: selected == LibrarySection.home, onTap: () => onSelect(LibrarySection.home)),
       ),
       trailing: Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -1058,6 +1064,89 @@ class _Rail extends StatelessWidget {
       return Icon(icon);
     }
     return Badge(label: Text('$pendingCredits'), child: Icon(icon));
+  }
+}
+
+/// The app's mark, which is also the way home.
+///
+/// A logo that goes to the home page is old enough as a convention to need no
+/// label, which is the whole reason Home does not take a rail slot. What it
+/// does need is to *look* pressable -- the mark sat here unclickable until the
+/// home page existed, so anyone who had used the app before has already
+/// learned that it does nothing. Hence a real hover state and a tooltip that
+/// says where it goes rather than just naming the app.
+class _LogoHome extends StatefulWidget {
+  const _LogoHome({required this.selected, required this.onTap});
+
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_LogoHome> createState() => _LogoHomeState();
+}
+
+class _LogoHomeState extends State<_LogoHome> {
+  var _hovering = false;
+  var _dragOver = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // Spring-loaded: holding a dragged item over the logo switches to Home
+    // without dropping it, the way holding a file over a folder opens it.
+    // The drag survives the switch because every section lives in an
+    // IndexedStack and is therefore still mounted -- the one it started in
+    // included -- so the gesture that began over in Albums is still live when
+    // the home page appears underneath it.
+    return DragTarget<HomeDrag>(
+      onWillAcceptWithDetails: (_) {
+        setState(() => _dragOver = true);
+        widget.onTap();
+        return true;
+      },
+      onLeave: (_) => setState(() => _dragOver = false),
+      // Nothing is accepted here. The logo is a door, not a destination: a
+      // drop has to land on an actual section so it has somewhere to go.
+      onAcceptWithDetails: (_) => setState(() => _dragOver = false),
+      builder: (context, candidate, rejected) => Tooltip(
+      message: 'Home',
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: Material(
+          color: _dragOver
+              ? scheme.primary
+              : widget.selected
+                  ? scheme.secondaryContainer
+                  : _hovering
+                      ? scheme.surfaceContainerHighest
+                      : Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: widget.onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Text(
+                'm',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: _dragOver
+                      ? scheme.onPrimary
+                      : widget.selected
+                          ? scheme.onSecondaryContainer
+                          : scheme.primary,
+                  fontWeight: FontWeight.w300,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
   }
 }
 

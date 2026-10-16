@@ -38,7 +38,10 @@ import '../data/transfer/library_importer.dart';
 import '../data/transfer/library_sync.dart';
 import '../data/transfer/transfer_bundle.dart';
 import '../data/transfer/transfer_report.dart';
+import '../domain/models/home_views.dart';
 import '../domain/models/library_views.dart';
+import '../data/repositories/home_repository.dart';
+import '../features/home/home_drag.dart';
 import 'theme/app_theme.dart' show marmeladeSeed;
 import 'theme/theme_settings.dart';
 import '../services/art/art_store.dart';
@@ -139,6 +142,94 @@ final Provider<PlaylistRepository> playlistRepositoryProvider = Provider(
     smart: ref.watch(smartPlaylistResolverProvider),
   ),
 );
+
+final homeRepositoryProvider = Provider<HomeRepository>(
+  (ref) => HomeRepository(ref.watch(databaseProvider)),
+);
+
+/// The home page, as sections with their items already resolved.
+final homeProvider = StreamProvider<List<HomeSectionView>>((ref) {
+  return ref.watch(homeRepositoryProvider).watchHome();
+});
+
+/// Asks the home page to scroll back to the top.
+///
+/// A signal, not a value: what matters is that something just landed up
+/// there, not what. Lives in a provider because the thing that creates a
+/// section is in the window's title bar and the thing that scrolls is the
+/// page, and they share no ancestor closer than the shell.
+final homeScrollToTopProvider =
+    NotifierProvider<HomeScrollToTop, int>(HomeScrollToTop.new);
+
+class HomeScrollToTop extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void request() => state++;
+}
+
+/// What is currently being dragged toward the home page, if anything.
+///
+/// Lives above the page because three unrelated parts of the tree need it:
+/// the logo in the rail, which lights up and switches sections when a drag
+/// comes near; the gaps between sections, which only exist while something is
+/// in flight; and the tiles themselves. Passing it between those would mean
+/// threading it through the whole shell.
+final homeDragProvider = NotifierProvider<HomeDragState, HomeDrag?>(
+  HomeDragState.new,
+);
+
+class HomeDragState extends Notifier<HomeDrag?> {
+  @override
+  HomeDrag? build() => null;
+
+  void start(HomeDrag dragged) => state = dragged;
+  void stop() => state = null;
+}
+
+/// Resolves one home item to every track playing it would queue, in order.
+///
+/// Exposed as a provider returning a function rather than as a bare top-level
+/// function because two of the six kinds are answered by other repositories
+/// -- a playlist by the playlist repository, a query by the smart resolver --
+/// and a repository reaching across to those would be the wrong seam. It is
+/// self-recursive: a collection is defined by what is inside it, and that can be
+/// more collections.
+final homeTracksProvider =
+    Provider<Future<List<int>> Function(HomeItemView)>((ref) {
+  late final Future<List<int>> Function(HomeItemView) resolve;
+  resolve = (item) async {
+    switch (item.kind) {
+      case HomeItemKind.track:
+        return item.refId == null ? const <int>[] : [item.refId!];
+      case HomeItemKind.album:
+        return item.refId == null
+            ? const <int>[]
+            : ref.read(homeRepositoryProvider).tracksOfAlbum(item.refId!);
+      case HomeItemKind.artist:
+        return item.refId == null
+            ? const <int>[]
+            : ref.read(homeRepositoryProvider).tracksOfArtist(item.refId!);
+      case HomeItemKind.playlist:
+        return item.refId == null
+            ? const <int>[]
+            : ref.read(playlistRepositoryProvider).resolveTrackIds(item.refId!);
+      case HomeItemKind.query:
+        final query = item.query;
+        if (query == null || query.trim().isEmpty) return const <int>[];
+        return ref.read(smartPlaylistResolverProvider).resolve(query);
+      case HomeItemKind.collection:
+        // Children in the order they are shown, de-duplicated: the same album
+        // sitting in two sub-collections should not play twice through.
+        final seen = <int>{};
+        for (final child in item.children) {
+          seen.addAll(await resolve(child));
+        }
+        return seen.toList();
+    }
+  };
+  return resolve;
+});
 
 /// Every playlist, flattened into tree order.
 final playlistsProvider = StreamProvider<List<PlaylistCard>>((ref) {
@@ -1041,7 +1132,7 @@ final tagTrackListProvider =
 ///
 /// Sorted by track count, most first: that row is ordered as a whole --
 /// these artists, then [tagArtistsByTracksProvider]'s -- and within each
-/// group the same "most reached first" rule applies.
+/// collection the same "most reached first" rule applies.
 final tagArtistsProvider =
     StreamProvider.family<List<ArtistCard>, int>((ref, tagId) {
   final tags = ref.watch(tagRepositoryProvider);

@@ -17,12 +17,7 @@ import '../../domain/search/smart_query.dart';
 /// The description underneath stays, because a suggestion tells you what you
 /// *can* type and the description tells you what you *did*.
 class SmartQueryField extends ConsumerStatefulWidget {
-  const SmartQueryField({
-    super.key,
-    required this.controller,
-    this.autofocus = false,
-    this.onSubmitted,
-  });
+  const SmartQueryField({super.key, required this.controller, this.autofocus = false, this.onSubmitted});
 
   final TextEditingController controller;
   final bool autofocus;
@@ -85,9 +80,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   /// The request for wherever the caret is.
   SuggestionRequest get _request {
     final selection = widget.controller.selection;
-    final caret = selection.isValid
-        ? selection.baseOffset
-        : widget.controller.text.length;
+    final caret = selection.isValid ? selection.baseOffset : widget.controller.text.length;
     return suggestionAt(widget.controller.text, caret);
   }
 
@@ -133,28 +126,12 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
         // Two characters before asking: one letter matches most of a library
         // and the list would be noise.
         if (partial.length < 2) return const [];
-        final artists =
-            await ref.read(editRepositoryProvider).findArtists(partial);
-        return [
-          for (final artist in artists.take(8))
-            Suggestion(
-              insert: 'artist${request.separator}${quoteIfNeeded(artist.name)}',
-              label: artist.name,
-              detail: '${artist.trackCount} tracks',
-            ),
-        ];
+        final artists = await ref.read(editRepositoryProvider).findArtists(partial);
+        return [for (final artist in artists.take(8)) Suggestion(insert: 'artist${request.separator}${quoteIfNeeded(artist.name)}', label: artist.name, detail: '${artist.trackCount} tracks')];
       case QueryField.album:
         if (partial.length < 2) return const [];
-        final albums =
-            await ref.read(editRepositoryProvider).findAlbums(partial);
-        return [
-          for (final album in albums.take(8))
-            Suggestion(
-              insert: 'album${request.separator}${quoteIfNeeded(album.title)}',
-              label: album.title,
-              detail: album.artistName ?? 'Unknown artist',
-            ),
-        ];
+        final albums = await ref.read(editRepositoryProvider).findAlbums(partial);
+        return [for (final album in albums.take(8)) Suggestion(insert: 'album${request.separator}${quoteIfNeeded(album.title)}', label: album.title, detail: album.artistName ?? 'Unknown artist')];
       case QueryField.title:
       case QueryField.tag:
         // Tags are watched in build, not fetched here: they come from a
@@ -170,41 +147,24 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   List<Suggestion> get _suggestions {
     final request = _request;
     return switch (request.kind) {
-      SuggestionKind.fields ||
-      SuggestionKind.matchingFields =>
-        suggestFields(request.partial),
-      SuggestionKind.names => request.field == QueryField.tag
-          ? _tagSuggestions(request.partial)
-          : _fetched,
-      SuggestionKind.ages => [
-          for (final age in ageSuggestions)
-            Suggestion(
-              insert: '${request.field!.keyword}:${age.value}',
-              label: age.value,
-              detail: age.label,
-            ),
-        ],
+      SuggestionKind.fields || SuggestionKind.matchingFields => suggestFields(request.partial),
+      SuggestionKind.names => request.field == QueryField.tag ? _tagSuggestions(request.partial) : _fetched,
+      SuggestionKind.ages => [for (final age in ageSuggestions) Suggestion(insert: '${request.field!.keyword}:${age.value}', label: age.value, detail: age.label)],
       SuggestionKind.comparators => [
-          for (final comparator in comparatorSuggestions)
-            Suggestion(
-              insert: '${request.field!.keyword}:${comparator.value}',
-              label: '${request.field!.keyword}:${comparator.value}',
-              detail: comparator.label,
-              // A comparator with no number matches nothing.
-              continues: true,
-            ),
-        ],
+        for (final comparator in comparatorSuggestions)
+          Suggestion(
+            insert: '${request.field!.keyword}:${comparator.value}',
+            label: '${request.field!.keyword}:${comparator.value}',
+            detail: comparator.label,
+            // A comparator with no number matches nothing.
+            continues: true,
+          ),
+      ],
       SuggestionKind.flags => [
-          for (final entry in flagSuggestions)
-            if (entry.flag.keyword.toLowerCase().startsWith(
-                  request.partial.toLowerCase(),
-                ))
-              Suggestion(
-                insert: 'is${request.separator}${entry.flag.keyword}',
-                label: 'is:${entry.flag.keyword}',
-                detail: entry.detail,
-              ),
-        ],
+        for (final entry in flagSuggestions)
+          if (entry.flag.keyword.toLowerCase().startsWith(request.partial.toLowerCase()))
+            Suggestion(insert: 'is${request.separator}${entry.flag.keyword}', label: 'is:${entry.flag.keyword}', detail: entry.detail),
+      ],
       SuggestionKind.none => const [],
     };
   }
@@ -219,13 +179,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     final typed = partial.replaceAll('"', '').toLowerCase();
     final tags = ref.watch(taggedProvider).value ?? const [];
     return [
-      for (final tag
-          in tags.where((t) => t.name.toLowerCase().contains(typed)).take(10))
-        Suggestion(
-          insert: 'tag=${quoteIfNeeded(tag.name)}',
-          label: tag.name,
-          detail: '${tag.trackCount} tracks',
-        ),
+      for (final tag in tags.where((t) => t.name.toLowerCase().contains(typed)).take(10)) Suggestion(insert: 'tag=${quoteIfNeeded(tag.name)}', label: tag.name, detail: '${tag.trackCount} tracks'),
     ];
   }
 
@@ -239,9 +193,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     if (suggestions.isEmpty) return null;
     final text = widget.controller.text;
     final selection = widget.controller.selection;
-    if (!selection.isValid ||
-        !selection.isCollapsed ||
-        selection.baseOffset != text.length) {
+    if (!selection.isValid || !selection.isCollapsed || selection.baseOffset != text.length) {
       return null;
     }
 
@@ -255,8 +207,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
   }
 
   void _accept(Suggestion suggestion) {
-    final applied =
-        applySuggestion(widget.controller.text, _request.token, suggestion);
+    final applied = applySuggestion(widget.controller.text, _request.token, suggestion);
     widget.controller.value = TextEditingValue(
       text: applied.text,
       selection: TextSelection.collapsed(offset: applied.caret),
@@ -280,22 +231,14 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     // every metric downstream of that (baseline included) came out wrong.
     // Resolving one style and giving it to both is what actually fixes that,
     // not any amount of padding or strut tuning.
-    final fieldStyle =
-        (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(
-      fontFamily: 'Consolas',
-      color: scheme.onSurface,
-    );
+    final fieldStyle = (theme.textTheme.titleMedium ?? const TextStyle()).copyWith(fontFamily: 'Consolas', color: scheme.onSurface);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 12, bottom: 4),
-          child: Text(
-            'Query',
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
-          ),
+          child: Text('Query', style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
         ),
         CallbackShortcuts(
           bindings: {
@@ -329,16 +272,11 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                             // exactly where the caret is.
                             TextSpan(
                               text: text,
-                              style: const TextStyle(
-                                color: Colors.transparent,
-                              ),
+                              style: const TextStyle(color: Colors.transparent),
                             ),
                             TextSpan(
                               text: ghost,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant
-                                    .withValues(alpha: 0.5),
-                              ),
+                              style: TextStyle(color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                             ),
                           ],
                         ),
@@ -355,13 +293,7 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                 autofocus: widget.autofocus,
                 autocorrect: false,
                 style: fieldStyle,
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: _fieldContentPadding,
-                  hintText:
-                      'artist:Nanahira tag:hardcore -tag:remix added:<30d',
-                  border: const OutlineInputBorder(),
-                ),
+                decoration: InputDecoration(isDense: true, contentPadding: _fieldContentPadding, hintText: 'artist:Nanahira tag:hardcore -tag:remix added:<30d', border: const OutlineInputBorder()),
                 onSubmitted: widget.onSubmitted,
               ),
             ],
@@ -379,43 +311,12 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
                 final suggestion = suggestions[index];
                 return Tooltip(
                   message: suggestion.detail ?? '',
-                  child: ActionChip(
-                    label: Text(suggestion.label),
-                    avatar: index == 0
-                        ? const Icon(Icons.keyboard_tab, size: 15)
-                        : null,
-                    onPressed: () => _accept(suggestion),
-                  ),
+                  child: ActionChip(label: Text(suggestion.label), avatar: index == 0 ? const Icon(Icons.keyboard_tab, size: 15) : null, onPressed: () => _accept(suggestion)),
                 );
               },
             ),
           ),
         ],
-        const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              text.trim().isEmpty
-                  ? Icons.help_outline
-                  : Icons.subdirectory_arrow_right,
-              size: 16,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text.trim().isEmpty
-                    ? 'Words search everything, including every artist '
-                        'credited on a track. Fields narrow it — pick one '
-                        'below, or press Tab. A dash in front excludes.'
-                    : query.describe(),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }

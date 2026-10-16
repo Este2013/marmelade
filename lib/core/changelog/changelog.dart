@@ -99,7 +99,73 @@ class ReleaseNotes {
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
     version: '0.4.3',
+    headline: 'A home page you arrange yourself.',
     changes: [
+      Change.added(
+        'A home page, reached from the logo at the top of the rail, and where '
+        'the app now opens. It holds sections of whatever you put in them -- '
+        'albums, artists, playlists, songs, groups of those, or a saved '
+        'search that re-runs itself.',
+      ),
+      Change.added(
+        'Sections can be a grid or a list, renamed, reordered and removed. A '
+        'list shows ten and offers the rest; a grid shows everything.',
+      ),
+      Change.added(
+        'Grid tiles can be nested into collections: one opens with a zoom '
+        'into what is inside it, including more collections, and composes its '
+        'picture from up to four of their covers. Playing one plays '
+        'everything in it.',
+      ),
+      Change.added(
+        'A "Recently played" section that fills itself in as you listen.',
+      ),
+      Change.added(
+        'Arrange mode: drag items to reorder them, drop one onto a '
+        'collection to file it inside, and drag whole sections up and down by '
+        'the handle beside them.',
+      ),
+      Change.added(
+        'Collections can be filled from inside: open one while arranging and '
+        'it offers "Add items" of its own.',
+      ),
+      Change.added(
+        'A collection can hold searches alongside hand-picked things, in any '
+        'order. Opening it shows what each search matches right where it '
+        'sits, so what a collection plays and what it shows are the same '
+        'list.',
+      ),
+      Change.added(
+        'Dropping one tile squarely on another makes a collection of the two.',
+      ),
+      Change.fixed(
+        'Something added through the "Add items" dialog was saved but never '
+        'appeared on the home page until the app was restarted.',
+      ),
+      Change.added(
+        'Anything in the library can be put on the home page by holding it '
+        'and dragging: an album, an artist, a playlist or a song. Hold the '
+        'drag over the logo and the home page opens under it, still holding '
+        'what you picked up.',
+      ),
+      Change.added(
+        'Dragging opens empty slots between sections, so a new section can be '
+        'made out of whatever is in hand.',
+      ),
+      Change.changed(
+        'The home page has no Arrange mode at all any more. Everything it '
+        'used to reveal now lives on the thing it acts on: hovering a '
+        'section title offers a plus, right-clicking it offers layout, '
+        'rename and removal, and holding it picks the section up to move.',
+      ),
+      Change.added(
+        'Sections can be folded away, and given an icon of their own -- the '
+        'icon takes the place of the fold arrow and still does its job.',
+      ),
+      Change.changed(
+        '"New section" moved to the top bar, and a new section now appears '
+        'first with the page scrolling up to meet it.',
+      ),
       Change.fixed(
         'The albums filter box now finds a release by its other titles, the '
         'way search already did -- an album filed under its native title is '

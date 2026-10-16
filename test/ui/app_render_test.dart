@@ -41,6 +41,7 @@ import 'package:marmelade/features/tags/tag_line.dart' show TagLine;
 import 'package:marmelade/features/tags/tags_view.dart' show TagsToolbar;
 import 'package:marmelade/widgets/title_with_actions.dart';
 import 'package:marmelade/data/repositories/tag_repository.dart';
+import 'package:marmelade/domain/models/home_views.dart';
 import 'package:marmelade/domain/models/library_views.dart';
 import 'package:marmelade/services/art/art_store.dart';
 import 'package:marmelade/services/audio/playback_engine.dart';
@@ -270,6 +271,76 @@ const _queue = [
     durationMs: 200000,
     source: 'album',
     albumTitle: 'Antenna',
+  ),
+];
+
+/// A home page with one of everything the brief asks a section to be: a grid
+/// holding a nesting group, and a list that has to cut itself off at ten.
+final _homeSections = <HomeSectionView>[
+  HomeSectionView(
+    id: 1,
+    title: 'Pinned',
+    layout: HomeLayout.grid,
+    source: HomeSectionSource.curated,
+    items: [
+      const HomeItemView(
+        id: 1,
+        kind: HomeItemKind.album,
+        title: 'Antenna',
+        subtitle: 'PinocchioP',
+        refId: 1,
+      ),
+      const HomeItemView(
+        id: 2,
+        kind: HomeItemKind.artist,
+        title: 'Camellia',
+        subtitle: '12 tracks',
+        refId: 2,
+      ),
+      const HomeItemView(
+        id: 3,
+        kind: HomeItemKind.collection,
+        title: 'Soundtracks',
+        subtitle: '2 items',
+        children: [
+          HomeItemView(
+            id: 4,
+            kind: HomeItemKind.album,
+            title: 'Rain World',
+            refId: 5,
+          ),
+          HomeItemView(
+            id: 5,
+            kind: HomeItemKind.album,
+            title: 'Comic and Cosmic',
+            refId: 2,
+          ),
+        ],
+      ),
+      const HomeItemView(
+        id: 6,
+        kind: HomeItemKind.query,
+        title: 'Recent hardcore',
+        subtitle: 'tag:hardcore added:<30d',
+        query: 'tag:hardcore added:<30d',
+      ),
+    ],
+  ),
+  HomeSectionView(
+    id: 2,
+    title: 'Recently played',
+    layout: HomeLayout.list,
+    source: HomeSectionSource.recentlyPlayed,
+    items: [
+      for (var i = 0; i < 12; i++)
+        HomeItemView(
+          id: -(i + 1),
+          kind: HomeItemKind.track,
+          title: 'Played $i',
+          subtitle: 'PinocchioP',
+          refId: i + 1,
+        ),
+    ],
   ),
 ];
 
@@ -506,6 +577,7 @@ void main() {
     List<PendingCreditGroup> pending = const [],
     bool playing = false,
     bool stageable = false,
+    List<HomeSectionView> home = const [],
     bool queuedOnly = false,
     ({int index, int length})? longQueue,
     Stream<Duration>? positions,
@@ -525,6 +597,10 @@ void main() {
         // "a Timer is still pending". The real app never sees it -- the scope
         // outlives everything and the timer fires during ordinary use.
         missingSummaryProvider.overrideWith((ref) => Stream.value(missing)),
+        // Same reason, and the home page is now the view that opens first, so
+        // leaving this live hangs every test in the file rather than failing
+        // one of them.
+        homeProvider.overrideWith((ref) => Stream.value(home)),
         artStoreProvider.overrideWithValue(ArtStore(artRoot)),
         playbackEngineProvider.overrideWithValue(_SilentEngine()),
         playerProvider.overrideWith(
@@ -669,14 +745,32 @@ void main() {
     });
   }
 
+  /// Opens the app and lands on [section].
+  ///
+  /// Albums by default, not because that is where the app opens -- it opens
+  /// on Home now -- but because almost every test in this file is about a
+  /// library view and said so by assuming Albums was the root. Tapping
+  /// through once here keeps that assumption true in one place instead of in
+  /// a hundred. Pass [LibrarySection.home] to stay on the real landing page.
   Future<void> open(
     WidgetTester tester, {
     Widget? app,
     Size size = const Size(1400, 900),
+    LibrarySection section = LibrarySection.albums,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(app ?? buildApp());
+    await settle(tester);
+    if (section == LibrarySection.home) return;
+    // Scrolled into view first: the rail scrolls in a short window, and a tap
+    // at a destination's nominal centre lands on the logo instead -- which,
+    // now that the logo goes home, would silently leave the test on the wrong
+    // page rather than failing.
+    final destination = railItem(section.label);
+    await tester.ensureVisible(destination);
+    await settle(tester);
+    await tester.tap(destination);
     await settle(tester);
   }
 
@@ -2805,6 +2899,115 @@ void main() {
       await settle(tester);
 
       expect(find.textContaining('missing their files'), findsNothing);
+    });
+  });
+
+  group('home', () {
+    testWidgets('the app opens on it, not on a library list', (tester) async {
+      // A home page somebody has to go and find each time is one that does
+      // not get curated, which is the whole point of it existing.
+      await open(tester, section: LibrarySection.home);
+
+      expect(find.text('Home'), findsWidgets);
+      // Scoped to the caption strip: an empty home page offers the same
+      // thing in its middle, and either alone would be a weaker claim.
+      expect(
+        find.descendant(
+          of: find.byType(WindowChrome),
+          matching: find.text('New section'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('lays out a grid, a nesting tile and a capped list',
+        (tester) async {
+      await open(
+        tester,
+        app: buildApp(home: _homeSections),
+        section: LibrarySection.home,
+      );
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(find.text('Soundtracks'), findsOneWidget);
+      // The list half, capped, with the rest reachable.
+      expect(find.text('Played 9'), findsOneWidget);
+      expect(find.text('Played 10'), findsNothing);
+      expect(find.text('View all 12'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await capture(tester, '10-home');
+    });
+
+    testWidgets('a section header carries everything it needs, with no mode',
+        (tester) async {
+      // What replaced the arranging mode: a plus on hover, a right-click
+      // menu, and a long press to move the whole section.
+      await open(
+        tester,
+        app: buildApp(home: _homeSections),
+        section: LibrarySection.home,
+      );
+
+      expect(find.byTooltip('Add items to "Pinned"'), findsOneWidget);
+      expect(find.byTooltip('Collapse'), findsNWidgets(2));
+      expect(find.text('Soundtracks'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await capture(tester, '11-home-sections');
+    });
+
+    testWidgets('an album can be carried to the home page from the grid',
+        (tester) async {
+      // The whole journey in one gesture: hold a cover in Albums, drag it to
+      // the logo, which springs open onto Home, and drop it on a section.
+      // It only works because every section lives in an IndexedStack and is
+      // therefore still mounted -- the drag began in a view that is now
+      // behind the one being dropped on.
+      await open(tester, app: buildApp(home: _homeSections));
+      expect(find.text('Antenna'), findsOneWidget, reason: 'starting in Albums');
+
+      final cover = tester.getCenter(find.text('Antenna'));
+      final gesture = await tester.startGesture(cover);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Over the logo: it should switch sections without the drop.
+      await gesture.moveTo(tester.getCenter(find.text('m')));
+      await settle(tester);
+
+      expect(find.text('Pinned'), findsOneWidget,
+          reason: 'the logo sprang open onto Home mid-drag');
+
+      await gesture.up();
+      await settle(tester);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the logo does not swallow the drop itself', (tester) async {
+      // It is a door, not a destination: letting go over it must not file the
+      // album anywhere, because there is no section there to file it into.
+      await open(tester, app: buildApp(home: _homeSections));
+
+      final cover = tester.getCenter(find.text('Antenna'));
+      final gesture = await tester.startGesture(cover);
+      await tester.pump(const Duration(milliseconds: 400));
+      await gesture.moveTo(tester.getCenter(find.text('m')));
+      await settle(tester);
+      await gesture.up();
+      await settle(tester);
+
+      // Four items were there before and four are there after.
+      expect(find.text('Soundtracks'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('home is not also a rail destination', (tester) async {
+      // Six labelled slots plus Settings is already a full rail; the mark
+      // above them says "home" without spending a seventh.
+      await open(tester, section: LibrarySection.home);
+
+      expect(railItem('Home'), findsNothing);
+      expect(railItem('Albums'), findsOneWidget);
     });
   });
 

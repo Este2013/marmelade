@@ -9,6 +9,7 @@ import '../../core/logging/app_log.dart';
 import '../../domain/credits/separator.dart';
 import 'enums.dart';
 import 'tables/catalog.dart';
+import 'tables/home.dart';
 import 'tables/images.dart';
 import 'tables/library.dart';
 import 'tables/playback.dart';
@@ -18,6 +19,7 @@ import 'tables/tags.dart';
 
 export 'enums.dart';
 export 'tables/catalog.dart';
+export 'tables/home.dart';
 export 'tables/images.dart';
 export 'tables/library.dart';
 export 'tables/playback.dart';
@@ -128,6 +130,9 @@ class WalCheckpoint {
     SeparatorTokens,
     CreditSplitRules,
     PendingCredits,
+    // Home
+    HomeSections,
+    HomeItems,
   ],
 )
 class MarmeladeDatabase extends _$MarmeladeDatabase {
@@ -186,7 +191,7 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   /// Set when the `trigram` FTS5 tokenizer is unavailable in the linked
   /// SQLite build. Search then falls back to token and prefix matching only,
@@ -214,6 +219,35 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
             await m.addColumn(playlists, playlists.displaySort);
             await m.addColumn(playlists, playlists.sortDescending);
             await m.addColumn(playlists, playlists.groupBy);
+          }
+          // v4 added the home page. An existing library gets the same one
+          // row a new one does -- an empty home page with no way to tell
+          // whether it is empty by choice would just look broken.
+          if (from < 4) {
+            await m.createTable(homeSections);
+            await m.createTable(homeItems);
+            await _seedHome();
+          }
+          // v5 renamed the "group" item kind to "collection". Enum values are
+          // stored by name (see enums.dart), so the rows have to be rewritten
+          // -- a kind this code no longer knows is dropped when the page is
+          // read, which would silently empty anybody's collections.
+          if (from < 5) {
+            await customStatement(
+              "UPDATE home_items SET kind = 'collection' WHERE kind = 'group'",
+            );
+          }
+          // v6 let a section be rolled up and given an icon of its own, which
+          // together replaced the home page's arranging mode.
+          //
+          // Skipped entirely when the home tables were created a few lines
+          // above, because `createTable` builds today's shape -- columns and
+          // all -- so adding them again is a duplicate-column error rather
+          // than a no-op. Only a database that already had the v4 tables
+          // needs this step.
+          if (from >= 4 && from < 6) {
+            await m.addColumn(homeSections, homeSections.collapsed);
+            await m.addColumn(homeSections, homeSections.icon);
           }
         },
         beforeOpen: (details) async {
@@ -465,7 +499,26 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
 
   /// Inserts the rows the app assumes exist: system tag categories and the
   /// default credit separators.
+  /// The one section a brand-new home page starts with.
+  ///
+  /// Not an empty page: an empty home page and a broken one look identical,
+  /// and the first thing anyone wants from a music app they have already
+  /// filled is what they were last listening to. Everything about it -- its
+  /// title, its layout, whether it exists at all -- can be changed or removed
+  /// afterwards, so this is a starting point rather than a fixture.
+  Future<void> _seedHome() async {
+    await into(homeSections).insert(
+      HomeSectionsCompanion.insert(
+        title: 'Recently played',
+        position: 1000,
+        layout: const Value(HomeLayout.grid),
+        source: const Value(HomeSectionSource.recentlyPlayed),
+      ),
+    );
+  }
+
   Future<void> _seed() async {
+    await _seedHome();
     await batch((b) {
       b.insertAll(tagCategories, [
         TagCategoriesCompanion.insert(

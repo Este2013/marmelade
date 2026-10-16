@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../data/db/enums.dart' show HomeItemKind;
+import '../home/library_draggable.dart';
 import '../../data/db/enums.dart' show PlaylistKind, QueueSource;
 import '../../data/repositories/playlist_repository.dart' show PlaylistInclusion;
 import '../../domain/models/library_views.dart';
@@ -315,7 +317,11 @@ class _PlaylistTile extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final repository = ref.read(playlistRepositoryProvider);
 
-    return Padding(
+    return LibraryDraggable(
+      kind: HomeItemKind.playlist,
+      refId: playlist.id,
+      title: playlist.name,
+      child: Padding(
       // Indented by depth, which is the whole visual signal that this playlist
       // sits inside another.
       padding: EdgeInsets.only(left: depth * 28.0, bottom: 4),
@@ -437,6 +443,7 @@ class _PlaylistTile extends ConsumerWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

@@ -6,7 +6,9 @@ import '../../data/db/enums.dart' show QueueSource;
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
 import '../../data/repositories/tag_repository.dart' show TagTarget;
+import '../../data/db/enums.dart' show HomeItemKind;
 import '../../domain/search/smart_query.dart';
+import '../home/library_draggable.dart';
 import '../../domain/text/normalize.dart' show matchesQuery;
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_field.dart';
@@ -386,7 +388,14 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
     final album = widget.album;
     final isSingle = album.id < 0;
 
-    return MouseRegion(
+    return LibraryDraggable(
+      // A single is a track wearing an album card, so it travels as one --
+      // dropping it on the home page should put the song there, not a
+      // reference to an album id that does not exist.
+      kind: isSingle ? HomeItemKind.track : HomeItemKind.album,
+      refId: isSingle ? -album.id : album.id,
+      title: album.title,
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       cursor: SystemMouseCursors.click,
@@ -511,6 +520,7 @@ class _AlbumTileState extends ConsumerState<_AlbumTile> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

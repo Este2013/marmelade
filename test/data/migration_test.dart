@@ -79,13 +79,18 @@ void main() {
       );
       await db.customStatement('ALTER TABLE playlists DROP COLUMN display_sort');
       await db.customStatement('DROP TABLE playlist_tags');
+      // Undo v4.
+      await db.customStatement('DROP TABLE home_items');
+      await db.customStatement('DROP TABLE home_sections');
       await db.customStatement('PRAGMA user_version = 1');
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 3);
+    expect(await versionOf(db), 6);
     expect(await hasTable(db, 'playlist_tags'), isTrue);
     expect(await hasTable(db, 'playlist_track_order'), isTrue);
+    expect(await hasTable(db, 'home_sections'), isTrue);
+    expect(await hasTable(db, 'home_items'), isTrue);
     expect(
       await columnsOf(db, 'playlists'),
       containsAll(['display_sort', 'sort_descending', 'group_by']),
@@ -135,11 +140,13 @@ void main() {
         'ALTER TABLE playlists DROP COLUMN sort_descending',
       );
       await db.customStatement('ALTER TABLE playlists DROP COLUMN display_sort');
+      await db.customStatement('DROP TABLE home_items');
+      await db.customStatement('DROP TABLE home_sections');
       await db.customStatement('PRAGMA user_version = 2');
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 3);
+    expect(await versionOf(db), 6);
     expect(await hasTable(db, 'playlist_track_order'), isTrue);
 
     final rows = await db
@@ -156,6 +163,146 @@ void main() {
     // were added, ungrouped, until someone says otherwise.
     expect(rows.read<String>('sort'), 'added');
     expect(rows.read<String>('grouped'), 'none');
+  });
+
+  test('v3 gains a home page with its one section already on it', () async {
+    // An existing library must not arrive at a home page that is simply
+    // blank: an empty home page and a broken one look identical, so the
+    // upgrade seeds the same starting section a fresh install gets.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      await db.customStatement('DROP TABLE home_items');
+      await db.customStatement('DROP TABLE home_sections');
+      await db.customStatement('PRAGMA user_version = 3');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 6);
+
+    final sections = await db
+        .customSelect('SELECT title, source, layout FROM home_sections')
+        .get();
+    expect(sections, hasLength(1));
+    expect(sections.single.read<String>('source'), 'recentlyPlayed');
+    expect(sections.single.read<String>('title'), 'Recently played');
+  });
+
+  test('a home item is taken with its section, not orphaned', () async {
+    // The cascade is the only thing keeping a removed section from leaving
+    // its items behind as rows nothing can reach or clean up.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = MarmeladeDatabase(
+      NativeDatabase.opened(file, closeUnderlyingOnClose: false),
+    );
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get();
+
+    final sectionId = await db.into(db.homeSections).insert(
+          HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+        );
+    final groupId = await db.into(db.homeItems).insert(
+          HomeItemsCompanion.insert(
+            sectionId: sectionId,
+            position: 1000,
+            kind: HomeItemKind.collection,
+            label: const Value('A group'),
+          ),
+        );
+    await db.into(db.homeItems).insert(
+          HomeItemsCompanion.insert(
+            sectionId: sectionId,
+            parentId: Value(groupId),
+            position: 1000,
+            kind: HomeItemKind.album,
+            refId: const Value(1),
+          ),
+        );
+
+    await (db.delete(db.homeSections)..where((s) => s.id.equals(sectionId)))
+        .go();
+
+    final left =
+        await db.customSelect('SELECT COUNT(*) AS n FROM home_items').getSingle();
+    expect(left.read<int>('n'), 0, reason: 'nested items go too');
+  });
+
+  test('v4 renames a group item to a collection, keeping it', () async {
+    // The kind is stored by name, and a name this code does not recognise is
+    // dropped when the page is read -- so without this step an existing
+    // home page would quietly lose every collection on it.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.collection,
+              label: const Value('Soundtracks'),
+            ),
+          );
+      // Wind it back to what v4 would have written: the old kind name, and
+      // without the two columns v6 adds.
+      await db.customStatement(
+        "UPDATE home_items SET kind = 'group' WHERE kind = 'collection'",
+      );
+      await db.customStatement(
+        'ALTER TABLE home_sections DROP COLUMN collapsed',
+      );
+      await db.customStatement('ALTER TABLE home_sections DROP COLUMN icon');
+      await db.customStatement('PRAGMA user_version = 4');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 6);
+    final items =
+        await db.customSelect('SELECT kind, label FROM home_items').get();
+    expect(items.single.read<String>('kind'), 'collection');
+    expect(items.single.read<String>('label'), 'Soundtracks');
+  });
+
+  test('v5 gains somewhere to store a collapsed section and its icon',
+      () async {
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.customStatement(
+        'ALTER TABLE home_sections DROP COLUMN collapsed',
+      );
+      await db.customStatement('ALTER TABLE home_sections DROP COLUMN icon');
+      await db.customStatement('PRAGMA user_version = 5');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 6);
+    expect(
+      await columnsOf(db, 'home_sections'),
+      containsAll(['collapsed', 'icon']),
+    );
+    // Usable, and defaulted to what an existing section should look like.
+    // A fresh database seeds a section of its own, so the one this test
+    // wrote has to be asked for by name.
+    final row = await db
+        .customSelect(
+          "SELECT title, collapsed, icon FROM home_sections "
+          "WHERE title = 'Mine'",
+        )
+        .getSingle();
+    expect(row.read<String>('title'), 'Mine');
+    expect(row.read<bool>('collapsed'), isFalse);
+    expect(row.read<int?>('icon'), isNull);
   });
 
   test('the cascade view is rebuilt on an existing database', () async {

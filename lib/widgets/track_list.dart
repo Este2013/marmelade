@@ -5,6 +5,8 @@ import '../app/providers.dart';
 import '../data/db/enums.dart' show QueueSource;
 import '../domain/models/library_views.dart';
 import '../features/playlists/playlists_view.dart';
+import '../data/db/enums.dart' show HomeItemKind;
+import '../features/home/library_draggable.dart';
 import 'artwork.dart';
 import 'selection.dart';
 import 'spectrum_bars.dart';
@@ -368,7 +370,11 @@ class _TrackTileState extends ConsumerState<TrackTile> {
             selectionProvider(scope).select((s) => s.contains(track.id)),
           );
 
-    return MouseRegion(
+    return LibraryDraggable(
+      kind: HomeItemKind.track,
+      refId: track.id,
+      title: track.title,
+      child: MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: Material(
@@ -490,6 +496,7 @@ class _TrackTileState extends ConsumerState<TrackTile> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
