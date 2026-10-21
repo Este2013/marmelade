@@ -6,10 +6,18 @@ import '../../data/db/database.dart' show SearchEntity;
 import '../../data/db/enums.dart';
 import '../../domain/models/library_views.dart';
 import '../../widgets/artwork.dart';
-import '../playlists/smart_query_field.dart';
+import 'query_fields.dart';
 
 /// What the dialog decided to add.
-typedef NewHomeItem = ({HomeItemKind kind, int? refId, String? label, String? query});
+typedef NewHomeItem = ({
+  HomeItemKind kind,
+  int? refId,
+  String? label,
+  String? query,
+  HomeQueryType queryType,
+  HomeQuerySort querySort,
+  bool queryInverted,
+});
 
 /// Asks what to put on the home page.
 ///
@@ -42,6 +50,9 @@ class _AddHomeItemDialogState extends State<_AddHomeItemDialog> {
   final _query = TextEditingController();
 
   var _kind = HomeItemKind.album;
+  var _queryType = HomeQueryType.album;
+  var _querySort = HomeQuerySort.matched;
+  var _queryInverted = false;
   var _searching = false;
 
   List<AlbumCard> _albums = const [];
@@ -151,12 +162,18 @@ class _AddHomeItemDialogState extends State<_AddHomeItemDialog> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name', hintText: 'What to call it on the home page', border: OutlineInputBorder()),
+            QueryFields(
+              controller: _query,
+              titleController: _name,
+              type: _queryType,
+              sort: _querySort,
+              onTypeChanged: (type) => setState(() => _queryType = type),
+              onSortChanged: (sort) => setState(() => _querySort = sort),
+              inverted: _queryInverted,
+              onInvertedChanged: (value) =>
+                  setState(() => _queryInverted = value),
+              onSubmitted: _commit,
             ),
-            const SizedBox(height: 12),
-            SmartQueryField(controller: _query, onSubmitted: (_) => _commit()),
           ],
         );
 
@@ -206,7 +223,17 @@ class _AddHomeItemDialogState extends State<_AddHomeItemDialog> {
           leading: Artwork(storedPath: row.image, size: 36, borderRadius: _kind.isRound ? 999 : 6, fallbackSeed: row.title),
           title: Text(row.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: row.subtitle == null ? null : Text(row.subtitle!),
-          onTap: () => Navigator.of(context).pop((kind: _kind, refId: row.id, label: null, query: null)),
+          onTap: () => Navigator.of(context).pop(
+            (
+              kind: _kind,
+              refId: row.id,
+              label: null,
+              query: null,
+              queryType: _queryType,
+              querySort: _querySort,
+              queryInverted: _queryInverted,
+            ),
+          ),
         );
       },
     );
@@ -217,11 +244,34 @@ class _AddHomeItemDialogState extends State<_AddHomeItemDialog> {
     switch (_kind) {
       case HomeItemKind.collection:
         if (name.isEmpty) return;
-        Navigator.of(context).pop((kind: _kind, refId: null, label: name, query: null));
+        Navigator.of(context).pop(
+          (
+            kind: _kind,
+            refId: null,
+            label: name,
+            query: null,
+            queryType: _queryType,
+            querySort: _querySort,
+            queryInverted: _queryInverted,
+          ),
+        );
       case HomeItemKind.query:
         final query = _query.text.trim();
         if (query.isEmpty) return;
-        Navigator.of(context).pop((kind: _kind, refId: null, label: name.isEmpty ? query : name, query: query));
+        Navigator.of(context).pop(
+          (
+            kind: _kind,
+            refId: null,
+            // Left null when nothing was typed: a search with no name of
+            // its own prints its rule, and storing the rule as a name would
+            // freeze today's wording into a label that stops following it.
+            label: name.isEmpty ? null : name,
+            query: query,
+            queryType: _queryType,
+            querySort: _querySort,
+            queryInverted: _queryInverted,
+          ),
+        );
       default:
         return;
     }

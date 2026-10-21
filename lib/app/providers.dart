@@ -144,7 +144,10 @@ final Provider<PlaylistRepository> playlistRepositoryProvider = Provider(
 );
 
 final homeRepositoryProvider = Provider<HomeRepository>(
-  (ref) => HomeRepository(ref.watch(databaseProvider)),
+  (ref) => HomeRepository(
+    ref.watch(databaseProvider),
+    artStore: ref.watch(artStoreProvider),
+  ),
 );
 
 /// The home page, as sections with their items already resolved.
@@ -187,6 +190,51 @@ class HomeDragState extends Notifier<HomeDrag?> {
   void stop() => state = null;
 }
 
+/// Resolves a search item into the items it currently matches.
+///
+/// One place, used by both halves: the collection panel shows these and
+/// playing the search queues whatever playing each of them would. That is
+/// what keeps "what it shows" and "what it plays" the same list -- the rule
+/// is applied once and both read the answer.
+final homeQueryItemsProvider =
+    Provider<Future<List<HomeItemView>> Function(HomeItemView)>((ref) {
+  return (item) async {
+    final query = item.query;
+    if (query == null || query.trim().isEmpty) return const [];
+    final tracks =
+        await ref.read(smartPlaylistResolverProvider).resolve(query);
+    if (tracks.isEmpty) return const [];
+
+    final home = ref.read(homeRepositoryProvider);
+    final section = item.sectionId;
+    final sort = item.querySort;
+    final back = item.queryInverted;
+    return switch (item.queryType) {
+      HomeQueryType.track =>
+        home.trackItems(tracks, section, sort: sort, inverted: back),
+      HomeQueryType.album =>
+        home.albumItemsFor(tracks, section, sort: sort, inverted: back),
+      HomeQueryType.artist =>
+        home.artistItemsFor(tracks, section, sort: sort, inverted: back),
+      HomeQueryType.playlist =>
+        home.playlistItemsFor(tracks, section, sort: sort, inverted: back),
+      // Everything the query implies, by kind. Broad on purpose -- there are
+      // four narrower options for anybody who wants one. The sort applies
+      // within each kind rather than across them: there is no order that
+      // interleaves an album with an artist meaningfully -- and for the same
+      // reason reversing turns each run around where it stands, rather than
+      // putting the songs before the albums.
+      HomeQueryType.any => [
+          ...await home.albumItemsFor(tracks, section,
+              sort: sort, inverted: back),
+          ...await home.artistItemsFor(tracks, section,
+              sort: sort, inverted: back),
+          ...await home.trackItems(tracks, section, sort: sort, inverted: back),
+        ],
+    };
+  };
+});
+
 /// Resolves one home item to every track playing it would queue, in order.
 ///
 /// Exposed as a provider returning a function rather than as a bare top-level
@@ -215,9 +263,14 @@ final homeTracksProvider =
             ? const <int>[]
             : ref.read(playlistRepositoryProvider).resolveTrackIds(item.refId!);
       case HomeItemKind.query:
-        final query = item.query;
-        if (query == null || query.trim().isEmpty) return const <int>[];
-        return ref.read(smartPlaylistResolverProvider).resolve(query);
+        // Through the items it produces rather than straight to the tracks it
+        // matched: "albums where X" shows whole albums, so playing it has to
+        // play those albums rather than only the songs that tripped the rule.
+        final seen = <int>{};
+        for (final produced in await ref.read(homeQueryItemsProvider)(item)) {
+          seen.addAll(await resolve(produced));
+        }
+        return seen.toList();
       case HomeItemKind.collection:
         // Children in the order they are shown, de-duplicated: the same album
         // sitting in two sub-collections should not play twice through.
@@ -1272,6 +1325,13 @@ final syncArtworkProvider = NotifierProvider<StoredFlag, bool>(
   () => StoredFlag(SettingKeys.syncIncludeArtwork, initial: true),
 );
 
+/// Whether the home page travels with a bundle. On: it is a few kilobytes of
+/// JSON, and an arrangement nobody can rebuild from the library itself is
+/// exactly the sort of work worth carrying.
+final syncHomeProvider = NotifierProvider<StoredFlag, bool>(
+  () => StoredFlag(SettingKeys.syncIncludeHome, initial: true),
+);
+
 /// Whether the audio files travel too. Off: that turns a bundle of megabytes
 /// into one the size of the music, and a shared folder is often metered.
 final syncAudioProvider = NotifierProvider<StoredFlag, bool>(
@@ -1420,6 +1480,7 @@ class TransferJobController extends Notifier<TransferProgress?> {
   TransferExportOptions get _exportOptions => TransferExportOptions(
         includeArtwork: ref.read(syncArtworkProvider),
         includeAudio: ref.read(syncAudioProvider),
+        includeHome: ref.read(syncHomeProvider),
       );
 
   Future<T?> _guard<T>(Future<T?> Function() body) async {

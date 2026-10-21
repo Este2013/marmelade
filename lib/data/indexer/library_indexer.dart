@@ -432,6 +432,7 @@ class LibraryIndexer {
       onProgress?.call(const IndexProgress(phase: IndexPhase.artwork));
       final artStarted = DateTime.now();
       await _importArtwork(folder.path, pending, outcome);
+      await _repairLooseTrackArtwork(folderId, outcome);
       log.info('artwork imported', tag: 'indexer', fields: {
         'stored': outcome.imagesStored,
         'ms': DateTime.now().difference(artStarted).inMilliseconds,
@@ -610,9 +611,11 @@ class LibraryIndexer {
   /// Works a directory at a time, because artwork belongs to a folder far more
   /// often than to a file: one `cover.jpg` serves a whole album, and probing it
   /// once per folder instead of once per track is the difference between a fast
-  /// scan and a slow one. Embedded pictures are only extracted when the folder
-  /// offered nothing, since decoding a multi-megabyte APIC frame per track is
-  /// the expensive path.
+  /// scan and a slow one. Embedded pictures are therefore only extracted when
+  /// the folder offered nothing, since decoding a multi-megabyte APIC frame
+  /// per track is the expensive path -- except for a track with no album,
+  /// which no folder cover ever reaches and whose own picture is the only
+  /// artwork about it.
   Future<void> _importArtwork(
     String folderPath,
     List<_PendingFile> pending,
@@ -680,9 +683,22 @@ class LibraryIndexer {
           }
         }
 
-        // 2. Embedded art, when the folder had nothing to offer.
-        if (front == null &&
-            (albumId == null || !albumsHandled.contains(albumId))) {
+        // 2. Embedded art.
+        //
+        // For a track on an album, only when the folder had nothing to
+        // offer: one cover.jpg already serves the whole release, and
+        // decoding a multi-megabyte APIC frame per track is the expensive
+        // path this pass exists to avoid.
+        //
+        // For a track with no album, always. Step 1 only ever hands a folder
+        // cover to an album, so a loose single in a folder that happens to
+        // have one came away with nothing and fell through the artwork view
+        // to its artist's portrait -- which is a picture of the person, not
+        // of the song. The picture inside the file is the only artwork that
+        // is actually about *this* track, and there is no album to keep it
+        // on, so it is always worth the read.
+        final loose = albumId == null;
+        if (loose || (front == null && !albumsHandled.contains(albumId))) {
           final attempts = albumId == null ? 0 : (embeddedAttempts[albumId] ?? 0);
           if (attempts < _maxEmbeddedAttemptsPerAlbum) {
             if (albumId != null) embeddedAttempts[albumId] = attempts + 1;
@@ -753,13 +769,97 @@ class LibraryIndexer {
     );
   }
 
+  /// Fills in artwork for album-less tracks this scan did not otherwise
+  /// touch.
+  ///
+  /// The pass above only ever sees files that were added, moved or changed,
+  /// which is right for everything it does -- but it means a rule about
+  /// where artwork goes only applies to music indexed after the rule
+  /// existed. A loose single that was scanned before this one did came away
+  /// with nothing, and nothing would ever go back for it.
+  ///
+  /// Narrow by construction: only tracks with no album *and* no picture, so
+  /// it finds nothing at all once a library is in order, and a track drops
+  /// out of the set the moment it gets a picture.
+  ///
+  /// Deliberately uncapped, after a cap made it useless. `LIMIT` with no
+  /// cursor returns the *same* rows every time, so a library with more
+  /// candidates than the cap re-read its first two hundred on every scan and
+  /// never once reached the rest -- the tracks that needed it most being the
+  /// ones added last. Measured on a real library, the two hundred it did
+  /// read cost 127ms between them: rejecting a file with no picture is a
+  /// header read, and the expensive part only happens for a file that has
+  /// one, which then leaves this set for good.
+  Future<void> _repairLooseTrackArtwork(
+    int folderId,
+    IndexOutcome outcome,
+  ) async {
+    final rows = await db.customSelect(
+      '''
+      SELECT t.id AS track_id, mf.id AS file_id,
+        lf.path AS folder_path, mf.relative_path AS relative_path
+      FROM tracks t
+      JOIN media_files mf ON mf.track_id = t.id
+      JOIN library_folders lf ON lf.id = mf.folder_id
+      WHERE t.album_id IS NULL
+        AND t.image_id IS NULL
+        AND mf.status = 'present'
+        AND mf.folder_id = ?1
+      ''',
+      variables: [Variable(folderId)],
+      readsFrom: {db.tracks, db.mediaFiles, db.libraryFolders},
+    ).get();
+    if (rows.isEmpty) return;
+
+    final started = DateTime.now();
+    final log = AppLog.instance;
+    log.info('looking for artwork on loose tracks', tag: 'artwork', fields: {
+      'candidates': rows.length,
+    });
+
+    var found = 0;
+    for (final row in rows) {
+      // Relative paths are stored with forward slashes; Windows accepts them.
+      final file = File(
+        '${row.read<String>('folder_path')}/'
+        '${row.read<String>('relative_path')}',
+      );
+      if (!file.existsSync()) continue;
+      final imageId = await _importEmbeddedArtFrom(
+        file,
+        outcome,
+        sourceFileId: row.read<int>('file_id'),
+      );
+      if (imageId == null) continue;
+      await writer.setTrackImageIfAbsent(row.read<int>('track_id'), imageId);
+      found++;
+    }
+
+    log.info('loose track artwork', tag: 'artwork', fields: {
+      'checked': rows.length,
+      'found': found,
+      'ms': DateTime.now().difference(started).inMilliseconds,
+    });
+  }
+
   Future<int?> _importEmbeddedArt(
     _PendingFile file,
     IndexOutcome outcome,
-  ) async {
+  ) =>
+      _importEmbeddedArtFrom(
+        file.scanned.file,
+        outcome,
+        sourceFileId: file.mediaFileId,
+      );
+
+  Future<int?> _importEmbeddedArtFrom(
+    File source,
+    IndexOutcome outcome, {
+    int? sourceFileId,
+  }) async {
     TrackFileMetadata withPictures;
     try {
-      withPictures = tagReader.read(file.scanned.file, includePictures: true);
+      withPictures = tagReader.read(source, includePictures: true);
     } catch (_) {
       return null;
     }
@@ -785,8 +885,8 @@ class LibraryIndexer {
       height: stored.height,
       kind: ImageKind.embedded,
       role: picture.role,
-      sourceFileId: file.mediaFileId,
-      sourceDescription: 'embedded in ${file.scanned.fileName}',
+      sourceFileId: sourceFileId,
+      sourceDescription: 'embedded in ${p.basename(source.path)}',
     );
   }
 

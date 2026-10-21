@@ -239,6 +239,7 @@ class _ImportRun {
     await _applyAlbums();
     await _applyTracks();
     if (options.importPlaylists) await _applyPlaylists();
+    if (options.importHome) await _applyHome();
     await _applySplitRules();
     await _applySeparators();
   }
@@ -1040,6 +1041,205 @@ class _ImportRun {
     }
     return null;
   }
+
+  // --------------------------------------------------------------------- home
+
+  /// Brings the bundle's home page across.
+  ///
+  /// Matched by title, which is the only thing about a section that is both
+  /// stable and meaningful: positions renumber, and a section has no id worth
+  /// anything on this machine. A section the bundle does not mention is never
+  /// touched -- deletions do not propagate here any more than anywhere else.
+  ///
+  /// Under [TransferConflictPolicy.keepMine] an existing section is left
+  /// exactly as it is, because its arrangement is somebody's work and the
+  /// bundle cannot know whose is newer. Under `preferTheirs` it is rebuilt
+  /// from the bundle, which is what "I did the real work over there" means.
+  Future<void> _applyHome() async {
+    if (bundle.home.isEmpty) return;
+
+    final existing = await db
+        .customSelect(
+          'SELECT id, title FROM home_sections',
+          readsFrom: {db.homeSections},
+        )
+        .get();
+    final byTitle = {
+      for (final row in existing)
+        row.read<String>('title').toLowerCase(): row.read<int>('id'),
+    };
+    final last = await db
+        .customSelect(
+          'SELECT COALESCE(MAX(position), 0) AS p FROM home_sections',
+          readsFrom: {db.homeSections},
+        )
+        .getSingle();
+    var position = last.read<int>('p');
+
+    for (final section in bundle.home) {
+      final match = byTitle[section.title.toLowerCase()];
+      if (match != null && options.conflicts == TransferConflictPolicy.keepMine) {
+        report.homeSectionsSkipped++;
+        continue;
+      }
+
+      int sectionId;
+      if (match != null) {
+        sectionId = match;
+        // Rebuilt rather than merged: the items are a tree with an order, and
+        // "union two arrangements" has no meaning anybody would recognise.
+        await (db.delete(db.homeItems)
+              ..where((i) => i.sectionId.equals(sectionId)))
+            .go();
+        await (db.update(db.homeSections)..where((s) => s.id.equals(sectionId)))
+            .write(
+          HomeSectionsCompanion(
+            layout: Value(_homeLayout(section.layout)),
+            source: Value(_homeSource(section.source)),
+            itemLimit: Value(section.itemLimit),
+            collapsed: Value(section.collapsed),
+            icon: Value(section.icon),
+          ),
+        );
+        report.homeSectionsUpdated++;
+      } else {
+        position += 1000;
+        sectionId = await db.into(db.homeSections).insert(
+              HomeSectionsCompanion.insert(
+                title: section.title,
+                position: position,
+                layout: Value(_homeLayout(section.layout)),
+                source: Value(_homeSource(section.source)),
+                itemLimit: Value(section.itemLimit),
+                collapsed: Value(section.collapsed),
+                icon: Value(section.icon),
+              ),
+            );
+        report.homeSectionsAdded++;
+      }
+
+      await _applyHomeItems(sectionId, section.items);
+    }
+  }
+
+  /// Writes a section's items, parents before children.
+  ///
+  /// Two passes rather than recursion: the tree is flat in the bundle, and a
+  /// child can appear before its parent there, so the ids have to exist
+  /// before anything points at them.
+  Future<void> _applyHomeItems(
+    int sectionId,
+    List<TransferHomeItem> items,
+  ) async {
+    final local = <int, int>{};
+
+    Future<void> write(int? parentBundleId) async {
+      for (final item in items) {
+        if (item.parentId != parentBundleId) continue;
+
+        final ref = _homeRef(item);
+        // An item pointing at something this machine does not have is
+        // dropped, along with anything inside it: a tile that opens nothing
+        // is worse than a tile that is not there.
+        if (_homeNeedsRef(item.kind) && ref == null) {
+          report.homeItemsSkipped++;
+          continue;
+        }
+
+        final (sort, inverted) = _homeQueryOrder(item);
+        final id = await db.into(db.homeItems).insert(
+              HomeItemsCompanion.insert(
+                sectionId: sectionId,
+                parentId: Value(
+                  parentBundleId == null ? null : local[parentBundleId],
+                ),
+                position: item.position,
+                kind: _homeKind(item.kind),
+                refId: Value(ref),
+                label: Value(item.label),
+                query: Value(item.query),
+                queryType: Value(_homeQueryType(item.queryType)),
+                querySort: Value(sort),
+                queryInverted: Value(inverted),
+                imageId: Value(
+                  options.importArtwork ? _images[item.imageId] : null,
+                ),
+                artworkMode: Value(_homeArtworkMode(item.artworkMode)),
+                artworkCount: Value(item.artworkCount),
+                quadrantImages: Value(_homeQuadrant(item)),
+                collapsed: Value(item.collapsed),
+              ),
+            );
+        local[item.id] = id;
+        report.homeItemsAdded++;
+        await write(item.id);
+      }
+    }
+
+    await write(null);
+  }
+
+  /// Resolves a tile's target against whatever this machine calls it.
+  int? _homeRef(TransferHomeItem item) => switch (item.kind) {
+        'album' => _albums[item.refId],
+        'artist' => _artists[item.refId],
+        'playlist' => _playlists[item.refId],
+        'track' => _tracks[item.refId],
+        _ => null,
+      };
+
+  static bool _homeNeedsRef(String kind) =>
+      kind != 'collection' && kind != 'query';
+
+  /// The pinned quarters, remapped, as the comma-separated form the column
+  /// stores. Empty slots stay empty; one whose picture did not travel becomes
+  /// empty too, which reads as "whatever would have gone there".
+  String? _homeQuadrant(TransferHomeItem item) {
+    if (item.quadrantImageIds.isEmpty || !options.importArtwork) return null;
+    final slots = [
+      for (var i = 0; i < 4; i++)
+        i < item.quadrantImageIds.length
+            ? (_images[item.quadrantImageIds[i]]?.toString() ?? '')
+            : '',
+    ];
+    return slots.every((one) => one.isEmpty) ? null : slots.join(',');
+  }
+
+  static HomeLayout _homeLayout(String name) =>
+      HomeLayout.values.where((v) => v.name == name).firstOrNull ??
+      HomeLayout.grid;
+
+  static HomeSectionSource _homeSource(String name) =>
+      HomeSectionSource.values.where((v) => v.name == name).firstOrNull ??
+      HomeSectionSource.curated;
+
+  static HomeItemKind _homeKind(String name) =>
+      HomeItemKind.values.where((v) => v.name == name).firstOrNull ??
+      HomeItemKind.album;
+
+  static HomeQueryType _homeQueryType(String name) =>
+      HomeQueryType.values.where((v) => v.name == name).firstOrNull ??
+      HomeQueryType.album;
+
+  /// The order a bundled search asked for, and whether it runs backwards.
+  ///
+  /// Both at once, because a bundle written before reversing existed can say
+  /// `nameDescending` -- which is this version's name sort, reversed. Read
+  /// separately, that name would match nothing and fall to "as found", so a
+  /// page arriving from an older copy of the app would come in reordered
+  /// without a word about it.
+  static (HomeQuerySort, bool) _homeQueryOrder(TransferHomeItem item) {
+    if (item.querySort == 'nameDescending') return (HomeQuerySort.name, true);
+    final sort = HomeQuerySort.values
+            .where((v) => v.name == item.querySort)
+            .firstOrNull ??
+        HomeQuerySort.matched;
+    return (sort, item.queryInverted);
+  }
+
+  static HomeArtworkMode _homeArtworkMode(String name) =>
+      HomeArtworkMode.values.where((v) => v.name == name).firstOrNull ??
+      HomeArtworkMode.quadrant;
 
   // ---------------------------------------------------------------- playlists
 

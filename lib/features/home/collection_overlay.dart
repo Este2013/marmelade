@@ -5,8 +5,13 @@ import '../../app/providers.dart';
 import '../../data/db/enums.dart';
 import '../../domain/models/home_views.dart';
 import 'add_home_item.dart';
+import '../../widgets/selection.dart';
+import 'collection_picture.dart';
+import 'detail_overlay.dart';
+import 'drag_scroll.dart';
 import 'home_drag.dart';
-import '../playlists/smart_query_field.dart';
+import 'home_overlay.dart';
+import 'query_fields.dart';
 import 'home_actions.dart';
 import 'home_artwork.dart';
 import 'home_tile.dart';
@@ -27,44 +32,11 @@ Future<void> showHomeCollection(
   HomeItemView collection,
   HomeActions actions,
 ) {
-  // Where on screen the tile sits, as an alignment, so the panel can scale
-  // out of that point. Measured before the route is pushed, while the tile is
-  // certainly still laid out.
-  final box = from.findRenderObject() as RenderBox?;
-  final overlay = Overlay.of(from).context.findRenderObject() as RenderBox?;
-  var origin = Alignment.center;
-  if (box != null && box.hasSize && overlay != null && overlay.hasSize) {
-    final centre = box.localToGlobal(box.size.center(Offset.zero));
-    origin = Alignment(
-      (centre.dx / overlay.size.width) * 2 - 1,
-      (centre.dy / overlay.size.height) * 2 - 1,
-    );
-  }
-
-  return showGeneralDialog(
-    context: from,
-    barrierDismissible: true,
-    barrierLabel: 'Close ${collection.title}',
-    barrierColor: Colors.black.withValues(alpha: 0.55),
-    transitionDuration: const Duration(milliseconds: 320),
-    pageBuilder: (context, _, _) => _CollectionPanel(collection: collection, actions: actions),
-    transitionBuilder: (context, animation, _, child) {
-      final curve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return FadeTransition(
-        opacity: curve,
-        child: ScaleTransition(
-          // Anchored at the tile, so the panel reads as that tile opening
-          // rather than as a dialog that happens to grow.
-          alignment: origin,
-          scale: Tween<double>(begin: 0.35, end: 1).animate(curve),
-          child: child,
-        ),
-      );
-    },
+  return showHomeOverlay<void>(
+    from,
+    label: 'Close ${collection.title}',
+    builder: (context) =>
+        _CollectionPanel(collection: collection, actions: actions),
   );
 }
 
@@ -90,12 +62,50 @@ class _CollectionPanelState extends ConsumerState<_CollectionPanel> {
   /// costs one frame of patience and takes that cost to nothing.
   var _settled = false;
 
-  /// The collection's contents with any searches already run and spliced in.
+  /// What each search in this collection currently matches, by its item id.
+  final _resolved = <int, List<HomeItemView>>{};
+
+  /// The rule each entry in [_resolved] was produced from, so rewriting one
+  /// re-runs it rather than showing what the old one found.
+  final _resolvedFor = <int, String>{};
+
+  /// All three parts of a rule, so changing the type or the order re-runs it
+  /// too -- the query text alone would call "albums where X" and "artists
+  /// where X, by name" the same question.
+  static String _ruleOf(HomeItemView search) =>
+      '${search.queryType.name}/${search.querySort.name}'
+      '/${search.queryInverted}:${search.query ?? ''}';
+
+  final _scroll = ScrollController();
+  var _running = false;
+
+  /// Set when the page changed while a resolve was already running, so the
+  /// loop below takes another pass instead of dropping that change.
+  var _again = false;
+
+  /// The actions this panel hands to its tiles.
   ///
-  /// Null until the first resolve finishes, which is the one moment the
-  /// panel has nothing truthful to show -- a collection whose middle is a
-  /// search does not know its own length until that search has been asked.
-  List<HomeItemView>? _contents;
+  /// Everything except the three kinds with a page of their own is passed
+  /// straight through; those open on top instead, so clicking an album
+  /// inside a collection does not bury it under the collection.
+  ///
+  /// A panel opened from here hands the same rule on by itself -- the detail
+  /// panel's own links call back into [showHomeDetail] -- so this needs no
+  /// recursion of its own.
+  HomeActions get _actions => widget.actions.copyWith(
+        openAlbum: (id) =>
+            showHomeDetail(context, kind: HomeItemKind.album, refId: id),
+        openArtist: (id) =>
+            showHomeDetail(context, kind: HomeItemKind.artist, refId: id),
+        openPlaylist: (id) =>
+            showHomeDetail(context, kind: HomeItemKind.playlist, refId: id),
+      );
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -103,52 +113,267 @@ class _CollectionPanelState extends ConsumerState<_CollectionPanel> {
     Future<void>.delayed(const Duration(milliseconds: 330), () {
       if (mounted) setState(() => _settled = true);
     });
-    _resolve();
+
+    // fireImmediately, because the page almost certainly already has its
+    // data by the time this panel opens -- waiting for a *change* would mean
+    // the searches never ran at all on a collection nobody edits.
+    ref.listenManual(
+      homeProvider,
+      (_, _) => _syncSearches(),
+      fireImmediately: true,
+    );
   }
 
-  /// Expands every search child into what it currently matches.
+  /// The collection as it is now, rather than as it was when the panel opened.
   ///
-  /// A collection's contents are "these, then everything that matches, then
-  /// those", so a search sitting in the middle has to become its results in
-  /// place rather than a tile standing for them -- otherwise what the
-  /// collection *plays* and what it *shows* are two different lists.
-  ///
-  /// Run on open rather than cached: a search that froze what it found the
-  /// first time it was looked at would stop being a search.
-  Future<void> _resolve() async {
-    final out = <HomeItemView>[];
-    for (final child in widget.collection.children) {
-      if (child.kind != HomeItemKind.query || child.query == null) {
-        out.add(child);
-        continue;
+  /// The panel is a dialog route: nothing rebuilds it when the page behind
+  /// changes, so holding the [HomeItemView] it was handed meant a search
+  /// added from in here was written to the database and never shown. Looking
+  /// the collection up by id on every build is what makes the panel live.
+  HomeItemView? _lookUp(List<HomeSectionView>? page) {
+    if (page == null) return null;
+    HomeItemView? walk(List<HomeItemView> items, int depth) {
+      if (depth > 8) return null;
+      for (final item in items) {
+        if (item.id == widget.collection.id) return item;
+        final found = walk(item.children, depth + 1);
+        if (found != null) return found;
       }
-      final ids =
-          await ref.read(smartPlaylistResolverProvider).resolve(child.query!);
-      out.addAll(
-        await ref
-            .read(homeRepositoryProvider)
-            .trackItems(ids, widget.collection.sectionId),
+      return null;
+    }
+
+    for (final section in page) {
+      final found = walk(section.items, 0);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  /// Runs any search whose results are missing or were found for an older
+  /// version of its query, and forgets the ones whose rule has been deleted.
+  ///
+  /// Driven from a listen on the page rather than from [initState]: a rule
+  /// can be added, rewritten or removed while the panel is open, and each of
+  /// those is a different list of results a moment later.
+  ///
+  /// Loops rather than returning early when one is already running. Two edits
+  /// in quick succession -- adding a rule and then another -- would otherwise
+  /// see the second arrive mid-resolve and be dropped, leaving results that
+  /// are correct for a collection nobody has any more.
+  Future<void> _syncSearches() async {
+    if (_running) {
+      _again = true;
+      return;
+    }
+    _running = true;
+    do {
+      _again = false;
+      // Re-read every pass: the whole point of looping is that it changed.
+      final collection = _lookUp(ref.read(homeProvider).value);
+      if (collection == null) break;
+
+      final present = {for (final child in collection.children) child.id};
+      _resolved.removeWhere((id, _) => !present.contains(id));
+      _resolvedFor.removeWhere((id, _) => !present.contains(id));
+
+      final stale = [
+        for (final child in collection.children)
+          if (child.kind == HomeItemKind.query &&
+              _resolvedFor[child.id] != _ruleOf(child))
+            child,
+      ];
+      for (final child in stale) {
+        _resolved[child.id] = await ref.read(homeQueryItemsProvider)(child);
+        _resolvedFor[child.id] = _ruleOf(child);
+      }
+    } while (_again && mounted);
+    _running = false;
+    if (mounted) setState(() {});
+  }
+
+  /// Rewrites one search: what it looks for, what makes a match, and how it
+  /// is ordered.
+  ///
+  /// Lives on the panel now that the rule has a block of its own -- it used
+  /// to hang off a chip in the header, which is the thing that had to go.
+  Future<void> _edit(HomeItemView search) async {
+    final controller = TextEditingController(text: search.query ?? '');
+    final titleController = TextEditingController(text: search.label ?? '');
+    var type = search.queryType;
+    var sort = search.querySort;
+    var inverted = search.queryInverted;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit the search'),
+          content: SizedBox(
+            width: 460,
+            child: QueryFields(
+              controller: controller,
+              titleController: titleController,
+              type: type,
+              sort: sort,
+              onTypeChanged: (chosen) => setState(() => type = chosen),
+              onSortChanged: (chosen) => setState(() => sort = chosen),
+              inverted: inverted,
+              onInvertedChanged: (chosen) =>
+                  setState(() => inverted = chosen),
+              autofocus: true,
+              onSubmitted: () => Navigator.of(context).pop(true),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true || controller.text.trim().isEmpty) return;
+    final repository = ref.read(homeRepositoryProvider);
+    await repository.setItemQuery(
+      search.id,
+      controller.text.trim(),
+      type: type,
+      sort: sort,
+      inverted: inverted,
+    );
+    // Emptied means "go back to showing the rule", which is a different
+    // answer from leaving it alone -- so it is written either way.
+    final title = titleController.text.trim();
+    await repository.renameItem(search.id, title.isEmpty ? null : title);
+  }
+
+  /// Drops something after the last item of a run.
+  ///
+  /// "After this run" is "before whatever follows it", which is how the rest
+  /// of the ordering already works -- and when nothing follows, it is the
+  /// end of the collection and needs no anchor at all.
+  void _afterRun(HomeDrag dragged, HomeItemView collection, _Block run) {
+    final children = collection.children;
+    final last = run.items.isEmpty ? null : run.items.last;
+    final at = last == null ? -1 : children.indexWhere((c) => c.id == last.id);
+    final next = at >= 0 && at + 1 < children.length ? children[at + 1] : null;
+    _move(dragged, parentId: collection.id, beforeId: next?.id);
+  }
+
+  /// The collection's contents, broken into the blocks that make it up.
+  ///
+  /// A run of hand-picked items is one block; each search is a block of its
+  /// own, headed by the rule and filled with what it currently finds. That is
+  /// what makes a search movable: it is a thing on the page with a handle,
+  /// rather than a chip in the header describing something spliced invisibly
+  /// into a flat grid.
+  ///
+  /// Order comes straight from the children, so moving a search among them is
+  /// an ordinary reorder and needs no separate notion of where blocks sit.
+  List<_Block> _blocks(HomeItemView collection) {
+    final blocks = <_Block>[];
+    var picked = <HomeItemView>[];
+
+    void flush() {
+      if (picked.isEmpty) return;
+      blocks.add((search: null, items: picked));
+      picked = [];
+    }
+
+    for (final child in collection.children) {
+      if (child.kind == HomeItemKind.query) {
+        flush();
+        blocks.add((search: child, items: _resolved[child.id] ?? const []));
+      } else {
+        picked.add(child);
+      }
+    }
+    flush();
+    return blocks;
+  }
+
+  Widget _body(ThemeData theme, HomeItemView collection, bool dragging) {
+    final blocks = _blocks(collection);
+    if (blocks.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(48),
+        child: Text(
+          'Nothing in here yet.',
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
       );
     }
-    if (!mounted) return;
-    setState(() => _contents = out);
-  }
 
-  @override
-  void didUpdateWidget(_CollectionPanel old) {
-    super.didUpdateWidget(old);
-    _resolve();
+    return AnimatedOpacity(
+      opacity: _settled ? 1 : 0,
+      duration: const Duration(milliseconds: 180),
+      alwaysIncludeSemantics: true,
+      child: DragScroll(
+        controller: _scroll,
+        active: dragging,
+        child: ListView(
+        controller: _scroll,
+        padding: const EdgeInsets.all(20),
+        children: [
+          for (final block in blocks)
+            if (block.search case final search?)
+              _SearchBlock(
+                search: search,
+                results: block.items,
+                actions: _actions,
+                onEdit: () => _edit(search),
+                onRemove: () =>
+                    ref.read(homeRepositoryProvider).removeItem(search.id),
+                onDropBefore: (dragged) => _move(
+                  dragged,
+                  parentId: collection.id,
+                  beforeId: search.id,
+                ),
+                onToggleCollapsed: () => ref
+                    .read(homeRepositoryProvider)
+                    .setItemCollapsed(search.id, !search.collapsed),
+              )
+            else
+              _PickedBlock(
+                items: block.items,
+                collection: collection,
+                dragging: dragging,
+                actions: _actions,
+                onOpenMenu: _menuForChild,
+                onBefore: (dragged, before) => _move(
+                  dragged,
+                  parentId: collection.id,
+                  beforeId: before.id,
+                ),
+                onInto: (dragged, target) =>
+                    _move(dragged, parentId: target.id),
+                onCombine: _combine,
+                onAfterLast: (dragged) => _afterRun(dragged, collection, block),
+              ),
+          // The way to put something at the very end, which every other
+          // target's "before this one" leaves unreachable.
+          if (dragging)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: HomeDropEnd(
+                enabled: true,
+                axis: Axis.vertical,
+                onDrop: (dragged) =>
+                    _move(dragged, parentId: collection.id),
+              ),
+            ),
+        ],
+        ),
+      ),
+    );
   }
-
-  /// What the grid shows: the contents, with searches already run.
-  ///
-  /// The searches themselves do not appear here -- they are in the header as
-  /// chips (see [_Rules]). A rule that has dissolved into fifty results is a
-  /// rule nobody can change or delete, so it needs somewhere of its own to
-  /// live; showing it twice, once as a tile and once as its results, would
-  /// just list the collection's contents twice over.
-  List<HomeItemView> get _shown =>
-      _contents ?? widget.collection.children;
 
   void _move(HomeDrag dragged, {required int parentId, int? beforeId}) {
     applyHomeDrop(
@@ -178,6 +403,35 @@ class _CollectionPanelState extends ConsumerState<_CollectionPanel> {
     );
   }
 
+  /// The right-click menu on a tile inside this panel.
+  ///
+  /// The same offers a tile on the page gets -- a collection two levels down
+  /// is still a collection, and having to close the panel to rename its
+  /// picture would be a rule with no reason behind it.
+  List<MenuAction> _menuForChild(HomeItemView child) => [
+        MenuAction(
+          label: 'Play',
+          icon: Icons.play_arrow,
+          onSelected: () => _actions.play(child),
+        ),
+        if (child.isCollection) ...[
+          const MenuAction.separator(),
+          MenuAction(
+            label: 'Change picture',
+            icon: Icons.image_outlined,
+            onSelected: () => pickCollectionPicture(context, ref, child),
+          ),
+        ],
+        const MenuAction.separator(),
+        MenuAction(
+          label: 'Remove from home',
+          icon: Icons.close,
+          isDestructive: true,
+          onSelected: () =>
+              ref.read(homeRepositoryProvider).removeItem(child.id),
+        ),
+      ];
+
   /// Puts something new straight into this collection.
   ///
   /// The add dialog has always told people to "open it and use Add items
@@ -202,6 +456,9 @@ class _CollectionPanelState extends ConsumerState<_CollectionPanel> {
         refId: chosen.refId,
         label: chosen.label,
         query: chosen.query,
+        queryType: chosen.queryType,
+        querySort: chosen.querySort,
+        queryInverted: chosen.queryInverted,
       );
     }
   }
@@ -209,110 +466,26 @@ class _CollectionPanelState extends ConsumerState<_CollectionPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final collection = widget.collection;
-    // Read here rather than passed in: the overlay outlives the tile that
-    // opened it, and Arrange can be switched off while it is up.
+    final page = ref.watch(homeProvider).value;
+    final collection = _lookUp(page) ?? widget.collection;
     final dragging = ref.watch(homeDragProvider) != null;
-    final shown = _shown;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 940, maxHeight: 720),
-          child: Material(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            elevation: 12,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _Header(
-                  collection: collection,
-                  actions: widget.actions,
-                  onAddItems: _addItems,
-                ),
-                _Rules(
-                  collection: collection,
-                  onChanged: _resolve,
-                ),
-                const Divider(height: 1),
-                Flexible(
-                  child: shown.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(48),
-                          child: Text(
-                            'Nothing in here yet.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      : AnimatedOpacity(
-                          opacity: _settled ? 1 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          alwaysIncludeSemantics: true,
-                          child: GridView.builder(
-                            padding: const EdgeInsets.all(20),
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 180,
-                              childAspectRatio: 0.78,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                            ),
-                            itemCount: shown.length + (dragging ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index == shown.length) {
-                                return Center(
-                                  child: HomeDropEnd(
-                                    enabled: true,
-                                    axis: Axis.horizontal,
-                                    onDrop: (dragged) => _move(
-                                      dragged,
-                                      parentId: collection.id,
-                                    ),
-                                  ),
-                                );
-                              }
-                              final child = shown[index];
-                              return HomeDraggable(
-                                item: child,
-                                sectionId: widget.collection.sectionId,
-                                // Live regardless of Arrange, like the page
-                                // behind it -- a drag arriving from the
-                                // library has to be able to land in here.
-                                enabled: !child.isComputed,
-                                axis: Axis.horizontal,
-                                preview: HomeDragPreview(title: child.title),
-                                onBefore: (dragged) => _move(
-                                  dragged,
-                                  parentId: collection.id,
-                                  beforeId: child.id,
-                                ),
-                                onInto: (dragged) =>
-                                    _move(dragged, parentId: child.id),
-                                onCombine: (dragged) =>
-                                    _combine(dragged, child),
-                                child: Builder(
-                                  builder: (tileContext) => HomeTile(
-                                    item: child,
 
-                                    onOpen: () =>
-                                        widget.actions.open(tileContext, child),
-                                    onPlay: () => widget.actions.play(child),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                ),
-              ],
-            ),
+
+    return HomeOverlayCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _Header(
+            collection: collection,
+            actions: _actions,
+            onAddItems: _addItems,
+            onPickPicture: () =>
+                pickCollectionPicture(context, ref, collection),
           ),
-        ),
+          const Divider(height: 1),
+          Flexible(child: _body(theme, collection, dragging)),
+        ],
       ),
     );
   }
@@ -323,12 +496,14 @@ class _Header extends StatelessWidget {
     required this.collection,
     required this.actions,
     required this.onAddItems,
+    required this.onPickPicture,
   });
 
   final HomeItemView collection;
   final HomeActions actions;
 
   final VoidCallback onAddItems;
+  final VoidCallback onPickPicture;
 
   @override
   Widget build(BuildContext context) {
@@ -337,7 +512,10 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
       child: Row(
         children: [
-          HomeArtwork(item: collection, size: 56, radius: 10),
+          _EditablePicture(
+            collection: collection,
+            onPressed: onPickPicture,
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -345,9 +523,9 @@ class _Header extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(collection.title, style: theme.textTheme.titleLarge),
-                if (collection.subtitle != null)
+                if (collection.displaySubtitle != null)
                   Text(
-                    collection.subtitle!,
+                    collection.displaySubtitle!,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -378,98 +556,354 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// The searches a collection holds, as chips.
+/// The collection's picture, with the way to change it laid over it.
 ///
-/// Their results are out in the grid, mixed in where they belong, which
-/// leaves the rules themselves with nowhere to be clicked. This is that
-/// somewhere: one chip per search, removable, and tapping one rewrites it.
-/// Absent entirely when the collection has none, which is most of them.
-class _Rules extends ConsumerWidget {
-  const _Rules({required this.collection, required this.onChanged});
+/// On the artwork rather than beside it, the way the album grid puts play on
+/// a cover and the editors put their camera button on a portrait: the thing
+/// being changed is the thing you point at, and a button in the row would be
+/// one more control competing with Add items and Play all for the eye.
+class _EditablePicture extends StatefulWidget {
+  const _EditablePicture({required this.collection, required this.onPressed});
 
   final HomeItemView collection;
-
-  /// Re-runs the searches after one has been edited or removed. The grid is
-  /// built from a resolved snapshot, so it does not follow the database on
-  /// its own.
-  final VoidCallback onChanged;
+  final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final searches = [
-      for (final child in collection.children)
-        if (child.kind == HomeItemKind.query) child,
-    ];
-    if (searches.isEmpty) return const SizedBox.shrink();
+  State<_EditablePicture> createState() => _EditablePictureState();
+}
 
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Row(
-        children: [
-          Icon(
-            Icons.search,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final search in searches)
-                  InputChip(
-                    label: Text(search.title),
-                    tooltip: search.query,
-                    onPressed: () => _edit(context, ref, search),
-                    onDeleted: () async {
-                      await ref
-                          .read(homeRepositoryProvider)
-                          .removeItem(search.id);
-                      onChanged();
-                    },
+class _EditablePictureState extends State<_EditablePicture> {
+  var _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      cursor: SystemMouseCursors.click,
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            HomeArtwork(item: widget.collection, radius: 10),
+            // Opacity rather than presence, and never `onPressed: null`:
+            // adding and removing a button rewrites its semantics node
+            // instead of updating it, which is what floods the Windows
+            // accessibility bridge. alwaysIncludeSemantics keeps it
+            // reachable without a pointer at all.
+            AnimatedOpacity(
+              opacity: _hovering ? 1 : 0,
+              duration: const Duration(milliseconds: 140),
+              alwaysIncludeSemantics: true,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: widget.onPressed,
+                  child: Tooltip(
+                    message: 'Change picture',
+                    child: Icon(
+                      Icons.edit_outlined,
+                      size: 20,
+                      color: scheme.onPrimary,
+                    ),
                   ),
-              ],
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
 
-  Future<void> _edit(
-    BuildContext context,
-    WidgetRef ref,
-    HomeItemView search,
-  ) async {
-    final controller = TextEditingController(text: search.query ?? '');
-    final query = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit "${search.title}"'),
-        content: SizedBox(
-          width: 460,
-          child: SmartQueryField(
-            controller: controller,
-            autofocus: true,
-            onSubmitted: (value) => Navigator.of(context).pop(value),
+/// One run of a collection's contents: either hand-picked items, or a search
+/// and what it found.
+typedef _Block = ({HomeItemView? search, List<HomeItemView> items});
+
+/// A run of hand-picked items, as a grid.
+class _PickedBlock extends StatelessWidget {
+  const _PickedBlock({
+    required this.items,
+    required this.collection,
+    required this.dragging,
+    required this.actions,
+    required this.onOpenMenu,
+    required this.onBefore,
+    required this.onInto,
+    required this.onCombine,
+    required this.onAfterLast,
+  });
+
+  final List<HomeItemView> items;
+  final HomeItemView collection;
+
+  /// Whether something is in flight, which is the only time the trailing
+  /// slot is worth the space it takes.
+  final bool dragging;
+
+  final HomeActions actions;
+  final List<MenuAction> Function(HomeItemView) onOpenMenu;
+  final void Function(HomeDrag dragged, HomeItemView before) onBefore;
+  final void Function(HomeDrag dragged, HomeItemView target) onInto;
+  final void Function(HomeDrag dragged, HomeItemView target) onCombine;
+
+  /// Drops something at the end of this run, which for the last run in a
+  /// collection is the end of the collection.
+  final void Function(HomeDrag dragged) onAfterLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 180,
+        childAspectRatio: 0.78,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      // One extra cell while dragging, so the position *after* the last item
+      // is reachable -- every other target means "before this one", which
+      // leaves the end of a run with nothing to aim at.
+      itemCount: items.length + (dragging ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == items.length) {
+          return Center(
+            child: HomeDropEnd(
+              enabled: true,
+              axis: Axis.horizontal,
+              onDrop: onAfterLast,
+            ),
+          );
+        }
+        final child = items[index];
+        return HomeDraggable(
+          item: child,
+          sectionId: collection.sectionId,
+          // Live regardless of anything: a drag arriving from the library has
+          // to be able to land in here.
+          enabled: true,
+          axis: Axis.horizontal,
+          preview: HomeDragPreview(title: child.title),
+          onBefore: (dragged) => onBefore(dragged, child),
+          onInto: (dragged) => onInto(dragged, child),
+          onCombine: (dragged) => onCombine(dragged, child),
+          child: Builder(
+            builder: (tileContext) => HomeTile(
+              item: child,
+              onOpen: () => actions.open(tileContext, child),
+              onPlay: () => actions.play(child),
+              onMenu: (at) => showItemMenu(context, at, onOpenMenu(child)),
+            ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// A search, headed by its rule and filled with what it currently finds.
+///
+/// Shaped after a section on the home page, and for the same reason: it is a
+/// run of things with a title that says where they came from, and it has to
+/// be movable among its neighbours. Holding the header picks the whole block
+/// up; right-clicking it offers the two things a rule can have done to it.
+class _SearchBlock extends ConsumerStatefulWidget {
+  const _SearchBlock({
+    required this.search,
+    required this.results,
+    required this.actions,
+    required this.onEdit,
+    required this.onRemove,
+    required this.onDropBefore,
+    required this.onToggleCollapsed,
+  });
+
+  final HomeItemView search;
+  final List<HomeItemView> results;
+  final HomeActions actions;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+  final void Function(HomeDrag dragged) onDropBefore;
+  final VoidCallback onToggleCollapsed;
+
+  @override
+  ConsumerState<_SearchBlock> createState() => _SearchBlockState();
+}
+
+class _SearchBlockState extends ConsumerState<_SearchBlock> {
+  var _dragOver = false;
+
+  List<MenuAction> get _menu => [
+        MenuAction(
+          label: 'Play what it found',
+          icon: Icons.play_arrow,
+          onSelected: () => widget.actions.play(widget.search),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
+        const MenuAction.separator(),
+        MenuAction(
+          label: 'Edit the search',
+          icon: Icons.edit_outlined,
+          onSelected: widget.onEdit,
+        ),
+        MenuAction(
+          label: 'Remove the search',
+          icon: Icons.close,
+          isDestructive: true,
+          onSelected: widget.onRemove,
+        ),
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final search = widget.search;
+    final payload = HomeMove(item: search, sectionId: search.sectionId);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // An insertion bar above the header, so a drag can be aimed at the
+          // gap before this block rather than only at a tile inside one.
+          DragTarget<HomeDrag>(
+            onWillAcceptWithDetails: (_) {
+              setState(() => _dragOver = true);
+              return true;
+            },
+            onLeave: (_) => setState(() => _dragOver = false),
+            onAcceptWithDetails: (details) {
+              setState(() => _dragOver = false);
+              widget.onDropBefore(details.data);
+            },
+            builder: (context, candidate, rejected) => AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              height: _dragOver ? 6 : 3,
+              margin: const EdgeInsets.only(bottom: 6),
+              decoration: BoxDecoration(
+                color: _dragOver ? scheme.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Save'),
+          LongPressDraggable<HomeDrag>(
+            data: payload,
+            delay: const Duration(milliseconds: 220),
+            dragAnchorStrategy: pointerDragAnchorStrategy,
+            feedback: HomeDragPreview(
+              title: search.displayTitle,
+              icon: Icons.search,
+            ),
+            // Announced, like every other draggable on the page. Without it
+            // nothing that depends on "something is in flight" existed while
+            // a search block was being moved: no trailing slot on the run
+            // below it, no gaps between sections, and no edge scrolling --
+            // which is three symptoms of one omission.
+            onDragStarted: () =>
+                ref.read(homeDragProvider.notifier).start(payload),
+            onDragEnd: (_) => ref.read(homeDragProvider.notifier).stop(),
+            onDraggableCanceled: (_, _) =>
+                ref.read(homeDragProvider.notifier).stop(),
+            child: Material(
+              type: MaterialType.transparency,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                // The whole row, like a section's title bar on the page:
+                // hitting the few characters of a rule is a worse target
+                // than the line it sits on.
+                onTap: widget.onToggleCollapsed,
+                onSecondaryTapUp: (details) =>
+                    showItemMenu(context, details.globalPosition, _menu),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 6,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        search.collapsed
+                            ? Icons.chevron_right
+                            : Icons.expand_more,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.search,
+                        size: 16,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          // Its own name when it has one, otherwise the rule
+                          // -- which is the only honest thing to call a
+                          // search nobody has named.
+                          search.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
+          const SizedBox(height: 10),
+          if (search.collapsed)
+            const SizedBox.shrink()
+          else if (widget.results.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Nothing matches it right now.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 180,
+                childAspectRatio: 0.78,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: widget.results.length,
+              itemBuilder: (context, index) {
+                final found = widget.results[index];
+                // Not draggable: these are not rows anybody placed, they are
+                // what the rule above currently says. Moving one would be
+                // undone by the next time it ran.
+                return Builder(
+                  builder: (tileContext) => HomeTile(
+                    item: found,
+                    onOpen: () => widget.actions.open(tileContext, found),
+                    onPlay: () => widget.actions.play(found),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
-    if (query == null || query.trim().isEmpty) return;
-    await ref.read(homeRepositoryProvider).setItemQuery(search.id, query.trim());
-    onChanged();
   }
 }

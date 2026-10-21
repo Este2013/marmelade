@@ -88,6 +88,16 @@ class TransferSection extends ConsumerWidget {
           onChanged: busy ? null : (value) => ref.read(syncArtworkProvider.notifier).set(value),
         ),
         SwitchListTile(
+          secondary: const Icon(Icons.home_outlined),
+          title: const Text('Include home layout'),
+          subtitle: const Text(
+            'Your sections, collections and searches, with any pictures you '
+            'chose for them. A few kilobytes.',
+          ),
+          value: ref.watch(syncHomeProvider),
+          onChanged: busy ? null : (value) => ref.read(syncHomeProvider.notifier).set(value),
+        ),
+        SwitchListTile(
           secondary: const Icon(Icons.audio_file_outlined),
           title: const Text('Include the music files'),
           subtitle: const Text('The exported bundle will be as big as the musics themselves. Beware of data usage!'),
@@ -499,6 +509,17 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 title: const Text('Include playlists'),
                 value: _options.importPlaylists,
                 onChanged: _loading || _applying ? null : (value) => _change(_options.copyWith(importPlaylists: value)),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Include home layout'),
+                subtitle: const Text(
+                  'Adds sections this computer does not already have. One it '
+                  'has by the same name is left alone unless "Prefer theirs" '
+                  'is on, which rebuilds it from the bundle.',
+                ),
+                value: _options.importHome,
+                onChanged: _loading || _applying ? null : (value) => _change(_options.copyWith(importHome: value)),
               ),
             ],
           ),

@@ -365,3 +365,176 @@ enum HomeItemKind {
         HomeItemKind.query => 'Search',
       };
 }
+
+/// What a home-page search is looking for.
+///
+/// The query grammar itself only ever describes *tracks* -- `tag:hardcore`,
+/// `artist:Nanahira`, `added:<30d` are all properties of a song. This is the
+/// second half of the sentence the UI writes: "albums where tag:hardcore"
+/// means the albums that contain such a song, and "artists where ..." the
+/// people credited on one.
+enum HomeQueryType {
+  /// Everything the query implies: the albums, then the artists, then the
+  /// songs. Deliberately the broad answer rather than a clever mixture --
+  /// anybody who wants it narrower has four narrower options.
+  any,
+
+  album,
+  artist,
+  playlist,
+  track;
+
+  /// The word the UI puts in front of "where".
+  String get label => switch (this) {
+        HomeQueryType.any => 'Any',
+        HomeQueryType.album => 'Albums',
+        HomeQueryType.artist => 'Artists',
+        HomeQueryType.playlist => 'Playlists',
+        HomeQueryType.track => 'Songs',
+      };
+}
+
+/// How a home-page search orders what it found.
+///
+/// Its own enum rather than a reuse of [PlaylistSort] or `LibrarySort`,
+/// because this is the one place the available options depend on *what was
+/// asked for*: a release year means nothing for an artist, a track count
+/// means nothing for a single song, and offering either would be offering an
+/// order that cannot be obeyed. See [HomeQuerySort.forType].
+///
+/// Each value names one direction only -- the one that is obviously meant,
+/// newest first and longest first -- and reversing is a separate flag on the
+/// search. A pair of values per order would be ten more entries in a menu
+/// to say what one button already says, which is what `nameDescending` was
+/// before it became [descendsByNature] plus that flag.
+enum HomeQuerySort {
+  /// Whatever order the rule itself produced. The default, and the only one
+  /// that is never wrong: a query written `added:<30d` already has an
+  /// opinion, and overriding it by default would discard that.
+  matched,
+
+  name,
+  recentlyAdded,
+  recentlyPlayed,
+  mostPlayed,
+  releaseYear,
+  trackCount,
+  duration,
+  random;
+
+  String get label => switch (this) {
+        HomeQuerySort.matched => 'As found',
+        HomeQuerySort.name => 'Name',
+        HomeQuerySort.recentlyAdded => 'Recently added',
+        HomeQuerySort.recentlyPlayed => 'Recently played',
+        HomeQuerySort.mostPlayed => 'Most played',
+        HomeQuerySort.releaseYear => 'Release year',
+        HomeQuerySort.trackCount => 'Number of songs',
+        HomeQuerySort.duration => 'Length',
+        HomeQuerySort.random => 'Shuffled',
+      };
+
+  /// Whether this order counts down rather than up when nobody inverts it.
+  ///
+  /// "Recently added" means newest first or it means nothing, and the same
+  /// goes for most played, release year and length -- asking for them and
+  /// getting the oldest, least played or shortest first would be a trick.
+  /// Names are the exception: A to Z is where a list of names starts.
+  ///
+  /// Kept here rather than in the two ORDER BY builders because it is a fact
+  /// about what the order *means*, not about which column holds it, and the
+  /// builders would otherwise each carry their own copy of it.
+  bool get descendsByNature => switch (this) {
+        HomeQuerySort.matched || HomeQuerySort.name => false,
+        HomeQuerySort.random => false,
+        HomeQuerySort.recentlyAdded ||
+        HomeQuerySort.recentlyPlayed ||
+        HomeQuerySort.mostPlayed ||
+        HomeQuerySort.releaseYear ||
+        HomeQuerySort.trackCount ||
+        HomeQuerySort.duration =>
+          true,
+      };
+
+  /// What reversing this order is called, for the button that does it.
+  ///
+  /// Spelled out per order because "reversed" alone does not tell anybody
+  /// what they are about to get, and the answer differs: the opposite of
+  /// recently added is oldest first, not "added descending".
+  String get invertedLabel => switch (this) {
+        HomeQuerySort.matched => 'Last match first',
+        HomeQuerySort.name => 'Z to A',
+        HomeQuerySort.recentlyAdded => 'Oldest first',
+        HomeQuerySort.recentlyPlayed => 'Least recently played first',
+        HomeQuerySort.mostPlayed => 'Least played first',
+        HomeQuerySort.releaseYear => 'Oldest release first',
+        HomeQuerySort.trackCount => 'Fewest songs first',
+        HomeQuerySort.duration => 'Shortest first',
+        // Reversing a shuffle is still a shuffle, which is why the button is
+        // not offered for it. Worded so that a stale tooltip cannot lie.
+        HomeQuerySort.random => 'Shuffled',
+      };
+
+  /// Whether reversing this order would produce a different list at all.
+  bool get canInvert => this != HomeQuerySort.random;
+
+  /// The orders that mean something for [type].
+  ///
+  /// Listed per type rather than filtered by a rule, because the reasons
+  /// differ: an artist has no release year at all, a playlist has no play
+  /// count of its own, and a mixed answer can only be ordered by the few
+  /// things every kind in it shares.
+  static List<HomeQuerySort> forType(HomeQueryType type) => switch (type) {
+        HomeQueryType.track => const [
+            matched,
+            name,
+            recentlyAdded,
+            recentlyPlayed,
+            mostPlayed,
+            releaseYear,
+            duration,
+            random,
+          ],
+        HomeQueryType.album => const [
+            matched,
+            name,
+            recentlyAdded,
+            releaseYear,
+            trackCount,
+            duration,
+            random,
+          ],
+        HomeQueryType.artist => const [
+            matched,
+            name,
+            recentlyAdded,
+            trackCount,
+            random,
+          ],
+        HomeQueryType.playlist => const [
+            matched,
+            name,
+            recentlyAdded,
+            trackCount,
+            random,
+          ],
+        // A mixed answer holds albums, artists and songs at once, so only
+        // what all three have can order it.
+        HomeQueryType.any => const [matched, name, random],
+      };
+}
+
+/// How a collection's tile makes its picture.
+enum HomeArtworkMode {
+  /// Four of its contents, quartered. The default, and what a collection
+  /// looks like before anybody decides otherwise.
+  quadrant,
+
+  /// One picture filling the tile.
+  single;
+
+  String get label => switch (this) {
+        HomeArtworkMode.quadrant => 'Quadrant',
+        HomeArtworkMode.single => 'Picture',
+      };
+}

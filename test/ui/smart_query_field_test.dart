@@ -95,32 +95,6 @@ void main() {
       );
   }
 
-  testWidgets('an empty query offers the vocabulary', (tester) async {
-    final controller = TextEditingController();
-    addTearDown(controller.dispose);
-    await pump(tester, controller);
-
-    expect(find.textContaining('Fields narrow it'), findsOneWidget);
-  });
-
-  testWidgets('the description follows what is typed', (tester) async {
-    final controller = TextEditingController();
-    addTearDown(controller.dispose);
-    await pump(tester, controller);
-
-    await tester.enterText(find.byType(TextField), 'artist:Nanahira');
-    await tester.pump();
-    expect(find.text('Tracks by Nanahira'), findsOneWidget);
-
-    // And it keeps up, rather than describing the first thing typed forever.
-    await tester.enterText(find.byType(TextField), 'tag:hardcore -tag:remix');
-    await tester.pump();
-    expect(
-      find.text('Tracks tagged hardcore and not tagged remix'),
-      findsOneWidget,
-    );
-  });
-
   group('suggestions', () {
     testWidgets('an empty field offers the fields to filter by',
         (tester) async {
@@ -328,7 +302,7 @@ void main() {
     });
   });
 
-  testWidgets('a half-typed query still describes itself', (tester) async {
+  testWidgets('a half-typed query never throws on the way', (tester) async {
     // Every character is a state the field is in. "year:>" parses to nothing
     // and must not throw on the way there.
     final controller = TextEditingController();
@@ -340,6 +314,5 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull, reason: text);
     }
-    expect(find.text('Tracks released after 20'), findsOneWidget);
   });
 }

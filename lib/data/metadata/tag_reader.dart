@@ -4,6 +4,7 @@ import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:path/path.dart' as p;
 
 import '../db/enums.dart';
+import '../fs/image_probe.dart';
 import '../fs/vorbis_comments.dart';
 import 'track_metadata.dart';
 
@@ -610,10 +611,18 @@ class TagReader {
     return _leadingInt(parts[1]);
   }
 
+  /// Adapts the package's pictures, repairing the bytes on the way through.
+  ///
+  /// The trim is not cosmetic: the package leaves the tail of an `APIC`
+  /// frame's UTF-16 description attached to the picture, so the bytes it
+  /// hands over are not a file any decoder will open. Doing it here means
+  /// every caller gets a picture that is actually an image, rather than each
+  /// discovering separately that it is not. Bytes that cannot be rescued are
+  /// passed on untouched, for whoever reads them to reject.
   static List<EmbeddedPicture> _pictures(List<Picture> pictures) => [
         for (final picture in pictures)
           EmbeddedPicture(
-            bytes: picture.bytes,
+            bytes: ImageProbe.trimToImage(picture.bytes) ?? picture.bytes,
             mimeType: picture.mimetype,
             role: _pictureRole(picture.pictureType),
           ),

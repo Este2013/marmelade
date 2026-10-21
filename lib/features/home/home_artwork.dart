@@ -39,12 +39,12 @@ class HomeArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final covers = item.coverPaths();
+    final covers = item.paintedCovers();
     final corner = item.kind.isRound ? 999.0 : radius;
 
     if (covers.length < 2) {
       return Artwork(
-        storedPath: covers.isEmpty ? null : covers.first,
+        storedPath: covers.isEmpty ? null : covers.first.path,
         size: size,
         borderRadius: corner,
         fallbackSeed: item.title,
@@ -93,7 +93,7 @@ class _Mosaic extends StatelessWidget {
     required this.radius,
   });
 
-  final List<String> covers;
+  final List<HomeCover> covers;
   final String seed;
   final IconData icon;
   final double radius;
@@ -101,12 +101,23 @@ class _Mosaic extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const gap = HomeArtwork._mosaicGap;
-    Widget cell(int index) => Artwork(
-          storedPath: index < covers.length ? covers[index] : null,
-          borderRadius: 0,
-          fallbackSeed: '$seed$index',
-          fallbackIcon: icon,
-        );
+
+    // A cell keeps the shape of whatever it is a picture of: an artist is
+    // round in a quarter tile for the same reason they are round everywhere
+    // else. Padded when round, so the circle is a circle rather than a
+    // square with its corners shaved off by the cell edge.
+    Widget cell(int index) {
+      final cover = index < covers.length ? covers[index] : null;
+      final art = Artwork(
+        storedPath: cover?.path,
+        borderRadius: cover?.round ?? false ? 999 : 0,
+        fallbackSeed: '$seed$index',
+        fallbackIcon: icon,
+      );
+      return cover?.round ?? false
+          ? Padding(padding: const EdgeInsets.all(3), child: art)
+          : art;
+    }
 
     if (covers.length == 2) {
       return ClipRRect(

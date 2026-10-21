@@ -98,7 +98,8 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
-    version: '0.4.3',
+    version: '0.5.0',
+    date: '2026-10-21',
     headline: 'A home page you arrange yourself.',
     changes: [
       Change.added(
@@ -121,26 +122,68 @@ const changelog = <ReleaseNotes>[
         'A "Recently played" section that fills itself in as you listen.',
       ),
       Change.added(
-        'Arrange mode: drag items to reorder them, drop one onto a '
-        'collection to file it inside, and drag whole sections up and down by '
-        'the handle beside them.',
+        'Everything on the page moves by holding it: an item dragged among '
+        'its neighbours reorders them, one dropped onto a collection goes '
+        'inside it, and a section held by its title bar moves among the '
+        'other sections.',
       ),
       Change.added(
-        'Collections can be filled from inside: open one while arranging and '
-        'it offers "Add items" of its own.',
+        'Collections can be filled from inside: open one and it offers '
+        '"Add items" of its own.',
       ),
       Change.added(
         'A collection can hold searches alongside hand-picked things, in any '
-        'order. Opening it shows what each search matches right where it '
-        'sits, so what a collection plays and what it shows are the same '
-        'list.',
+        'order. Each search is a block of its own inside the collection, '
+        'headed by its rule and filled with what it currently finds -- click '
+        'that header to fold the block away, hold it to move it among the '
+        'things around it, or right-click it to change or remove the rule. A '
+        'search can be given a title of its own, which the heading shows '
+        'instead of the rule.',
+      ),
+      Change.fixed(
+        'Cover art stored inside a music file was often thrown away without '
+        'a word. Where the file labelled its picture -- "Cover (front)" and '
+        'the like -- the label was being read as part of the picture, which '
+        'left something no longer openable as an image. On a real library '
+        'that was four covers in five.',
+      ),
+      Change.fixed(
+        'A song with no album now keeps the picture inside its own file. It '
+        'was only read when the folder had no cover of its own -- which is '
+        'the right rule for an album, but a loose single is never given a '
+        'folder cover, so it fell back to a photo of its artist instead. '
+        'Songs already in your library are put right the next time their '
+        'folder is rescanned, however many of them there are.',
+      ),
+      Change.added(
+        'The home page travels between computers. "Include home layout" is '
+        'on by default when sharing, and carries your sections, '
+        'collections, searches and any pictures you chose for them. '
+        'Bringing a bundle in adds sections this computer does not already '
+        'have; one it has by the same name is left alone unless you ask for '
+        'the version from the other machine.',
+      ),
+      Change.added(
+        'A search now says what it is looking for and how to order it: '
+        '"Albums where tag:hardcore, by release year". Find gives Albums, '
+        'Artists, Playlists, Songs or Any; Sorted by offers only the orders '
+        'that kind can actually be put in.',
+      ),
+      Change.added(
+        'A button beside "Sorted by" turns the order around: oldest release '
+        'first, shortest first, least played first, or -- on "As found" -- '
+        'the order the rule itself found things in, read backwards.',
       ),
       Change.added(
         'Dropping one tile squarely on another makes a collection of the two.',
       ),
-      Change.fixed(
-        'Something added through the "Add items" dialog was saved but never '
-        'appeared on the home page until the app was restarted.',
+      Change.added(
+        'A collection can be given a picture: right-click it and choose '
+        'between a quadrant and one whole image. A quadrant lets each '
+        'quarter be pinned to something in particular; a picture fills the '
+        'tile. Either way the choices are what the collection holds, '
+        'searches included and resolved on the spot, or a file of your own. '
+        'An artist among them keeps their round portrait.',
       ),
       Change.added(
         'Anything in the library can be put on the home page by holding it '
@@ -152,19 +195,20 @@ const changelog = <ReleaseNotes>[
         'Dragging opens empty slots between sections, so a new section can be '
         'made out of whatever is in hand.',
       ),
-      Change.changed(
-        'The home page has no Arrange mode at all any more. Everything it '
-        'used to reveal now lives on the thing it acts on: hovering a '
-        'section title offers a plus, right-clicking it offers layout, '
-        'rename and removal, and holding it picks the section up to move.',
-      ),
       Change.added(
         'Sections can be folded away, and given an icon of their own -- the '
         'icon takes the place of the fold arrow and still does its job.',
       ),
-      Change.changed(
-        '"New section" moved to the top bar, and a new section now appears '
-        'first with the page scrolling up to meet it.',
+      Change.added(
+        'A section is run entirely from its own title bar, which is one '
+        'target across its whole width and lights up to say so: hovering it '
+        'offers a plus to add something, clicking folds the section away, '
+        'holding picks it up, and right-clicking offers layout, rename and '
+        'removal.',
+      ),
+      Change.added(
+        'A "New section" button in the top bar. A section made with it '
+        'appears first, with the page scrolling up to meet it.',
       ),
       Change.fixed(
         'The albums filter box now finds a release by its other titles, the '

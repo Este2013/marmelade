@@ -71,6 +71,36 @@ abstract final class ImageProbe {
     return _jpeg(bytes, size);
   }
 
+  /// [bytes] with any leading junk removed, or null if no image is in there.
+  ///
+  /// Normally returns [bytes] untouched. It exists for tag frames: an ID3
+  /// `APIC` with a UTF-16 description comes back from the metadata package
+  /// with the tail of that description still glued to the front of the
+  /// picture, so a perfectly good JPEG arrives as `...o.v.e.r..` then `FFD8`.
+  /// Those bytes are not an image file, and everything downstream -- the
+  /// probe, the store, the decoder -- is right to refuse them. Measured on a
+  /// real library: 270 of 334 album-less tracks lost their cover this way.
+  ///
+  /// Only signatures long enough to not appear by accident are searched for,
+  /// which rules out BMP: `BM` is two bytes, and a description is text.
+  static Uint8List? trimToImage(Uint8List bytes, {int searchWindow = 1024}) {
+    if (probeBytes(bytes) != null) return bytes;
+    final last = bytes.length - 12;
+    final limit = searchWindow < last ? searchWindow : last;
+    for (var offset = 1; offset <= limit; offset++) {
+      if (!_startsImage(bytes, offset)) continue;
+      final candidate = Uint8List.sublistView(bytes, offset);
+      if (probeBytes(candidate) != null) return candidate;
+    }
+    return null;
+  }
+
+  static bool _startsImage(Uint8List b, int o) =>
+      (b[o] == 0xFF && b[o + 1] == 0xD8 && b[o + 2] == 0xFF) ||
+      (b[o] == 0x89 && _ascii(b, o + 1, 'PNG')) ||
+      _ascii(b, o, 'GIF8') ||
+      (_ascii(b, o, 'RIFF') && _ascii(b, o + 8, 'WEBP'));
+
   // ------------------------------------------------------------------- PNG
 
   static ImageInfo? _png(Uint8List b, int size) {

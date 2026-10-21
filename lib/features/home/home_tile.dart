@@ -67,7 +67,19 @@ class _HomeTileState extends ConsumerState<HomeTile> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Stack(
+              // Square whatever height is left over. The reserved subtitle
+              // line above keeps that height equal between tiles, and this
+              // keeps a circle a circle.
+              //
+              // Centred, and not merely wrapped: a flex child is handed a
+              // width it has to fill, and AspectRatio then constrains its
+              // own result back up to that width -- producing exactly the
+              // oblong this is here to prevent. Center is what gives it
+              // permission to be narrower than its slot.
+              child: Center(
+                child: AspectRatio(
+                aspectRatio: 1,
+                child: Stack(
                 fit: StackFit.expand,
                 children: [
                   AnimatedScale(
@@ -129,6 +141,8 @@ class _HomeTileState extends ConsumerState<HomeTile> {
                     ),
                   ),
                 ],
+                ),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -140,15 +154,19 @@ class _HomeTileState extends ConsumerState<HomeTile> {
               style: theme.textTheme.bodyMedium
                   ?.copyWith(fontWeight: FontWeight.w600),
             ),
-            if (item.subtitle != null)
-              Text(
-                item.subtitle!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: round ? TextAlign.center : TextAlign.start,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
+            // Always rendered, empty or not. Dropping the line when there is
+            // nothing to say leaves that tile's text block one line shorter,
+            // which hands its artwork the spare height -- and an artist,
+            // having no second line, came out visibly bigger and oval beside
+            // its neighbours.
+            Text(
+              item.displaySubtitle ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: round ? TextAlign.center : TextAlign.start,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
           ],
         ),
       ),
@@ -270,9 +288,9 @@ class _HomeRowState extends State<HomeRow> {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium,
                       ),
-                      if (item.subtitle != null)
+                      if (item.displaySubtitle != null)
                         Text(
-                          item.subtitle!,
+                          item.displaySubtitle!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(

@@ -191,7 +191,7 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
   }
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 11;
 
   /// Set when the `trigram` FTS5 tokenizer is unavailable in the linked
   /// SQLite build. Search then falls back to token and prefix matching only,
@@ -248,6 +248,51 @@ class MarmeladeDatabase extends _$MarmeladeDatabase {
           if (from >= 4 && from < 6) {
             await m.addColumn(homeSections, homeSections.collapsed);
             await m.addColumn(homeSections, homeSections.icon);
+          }
+          // v7 let a search say what it is looking for. New ones default to
+          // albums, but anything already on a page was written when a search
+          // could only mean songs -- so those are pinned to songs rather than
+          // silently becoming something else under whoever arranged them.
+          if (from >= 4 && from < 7) {
+            await m.addColumn(homeItems, homeItems.queryType);
+            await customStatement(
+              "UPDATE home_items SET query_type = 'track' WHERE kind = 'query'",
+            );
+          }
+          // v8 let a search say how to order what it found. The default is
+          // "as found", which is what every existing one already did.
+          if (from >= 4 && from < 8) {
+            await m.addColumn(homeItems, homeItems.querySort);
+          }
+          // v9 split "which picture" from "one picture or four". A collection
+          // that already had one chosen by hand meant it as the whole tile,
+          // not as the first quarter -- which is the bug this fixes, so those
+          // are moved to the mode that was intended.
+          if (from >= 4 && from < 9) {
+            await m.addColumn(homeItems, homeItems.artworkMode);
+            await m.addColumn(homeItems, homeItems.quadrantImages);
+            await customStatement(
+              "UPDATE home_items SET artwork_mode = 'single' "
+              "WHERE kind = 'collection' AND image_id IS NOT NULL",
+            );
+          }
+          // v10 let a search inside a collection be rolled up, the way a
+          // section on the page already could be.
+          if (from >= 4 && from < 10) {
+            await m.addColumn(homeItems, homeItems.collapsed);
+          }
+          // v11 made the direction of a sort a flag of its own, which left
+          // `nameDescending` saying the same thing twice. Anything stored
+          // under that name becomes the name sort, reversed -- the same
+          // order it already produced. Dropping the value without this would
+          // silently demote those searches to "as found", because that is
+          // what an unrecognised sort falls back to when it is read.
+          if (from >= 4 && from < 11) {
+            await m.addColumn(homeItems, homeItems.queryInverted);
+            await customStatement(
+              "UPDATE home_items SET query_sort = 'name', query_inverted = 1 "
+              "WHERE query_sort = 'nameDescending'",
+            );
           }
         },
         beforeOpen: (details) async {

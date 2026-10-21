@@ -6,6 +6,7 @@ import '../../data/db/enums.dart';
 import '../../domain/models/home_views.dart';
 import '../../widgets/selection.dart';
 import 'home_actions.dart';
+import 'collection_picture.dart';
 import 'home_drag.dart';
 import 'section_header.dart';
 import 'home_tile.dart';
@@ -180,7 +181,7 @@ class _Grid extends StatelessWidget {
               onPlay: () => actions.play(item),
               onMenu: item.isComputed
                   ? null
-                  : (at) => showItemMenu(context, at, _menuFor(ref, actions, item)),
+                  : (at) => showItemMenu(context, at, _menuFor(context, ref, actions, item)),
             ),
           ),
         );
@@ -239,6 +240,7 @@ class _Grid extends StatelessWidget {
 /// for exactly the same thing, and a menu that differed between them would
 /// be a difference with no meaning behind it.
 List<MenuAction> _menuFor(
+  BuildContext context,
   WidgetRef ref,
   HomeActions actions,
   HomeItemView item,
@@ -249,6 +251,17 @@ List<MenuAction> _menuFor(
         icon: Icons.play_arrow,
         onSelected: () => actions.play(item),
       ),
+      // Only a collection has a picture to decide: everything else shows
+      // whatever the library already has for it, and overriding that here
+      // would be editing the album from the wrong place.
+      if (item.isCollection) ...[
+        const MenuAction.separator(),
+        MenuAction(
+          label: 'Change picture',
+          icon: Icons.image_outlined,
+          onSelected: () => pickCollectionPicture(context, ref, item),
+        ),
+      ],
       const MenuAction.separator(),
       MenuAction(
         label: 'Remove from home',
@@ -306,7 +319,7 @@ class _List extends StatelessWidget {
                   onPlay: () => actions.play(item),
                   onMenu: item.isComputed
                       ? null
-                      : (at) => showItemMenu(context, at, _menuFor(ref, actions, item)),
+                      : (at) => showItemMenu(context, at, _menuFor(context, ref, actions, item)),
                 ),
               ),
             ),

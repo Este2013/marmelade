@@ -37,39 +37,82 @@ class _SectionHeaderState extends ConsumerState<SectionHeader> {
     final theme = Theme.of(context);
     final section = widget.section;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: GestureDetector(
-        onSecondaryTapUp: (details) => showItemMenu(context, details.globalPosition, _menu(context)),
-        child: Row(
-          spacing: 8,
-          children: [
-            _CollapseButton(collapsed: section.collapsed, icon: section.icon, onTap: () => _repository.setSectionCollapsed(section.id, !section.collapsed)),
-
-            Flexible(
-              child: Text(section.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge),
-            ),
-
-            // Only ever an icon. A chip wide enough to read "Add items to
-            // Pinned" is a chip that moves the title every time the pointer
-            // crosses the row, and the plus says the same thing in a corner
-            // of the space.
-            if (section.source.isCurated)
-              AnimatedOpacity(
-                opacity: _hovering ? 1 : 0,
-                duration: const Duration(milliseconds: 140),
-                // Kept in the tree at every opacity: toggling a button in and
-                // out rewrites its semantics node rather than updating it,
-                // which is what floods the Windows accessibility bridge.
-                alwaysIncludeSemantics: true,
-                child: IconButton(tooltip: 'Add items to "${section.title}"', visualDensity: VisualDensity.compact, onPressed: widget.onAddItems, iconSize: 20, icon: const Icon(Icons.add)),
+    return Material(
+      // Transparent, not a surface of its own: the ink has to land on
+      // something, but the header is not a card and should not read as one.
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        // The whole bar is one target. The Spacer below stretches the row the
+        // full width, so the empty space to the right of a short title
+        // behaves exactly as the title does -- hitting the few characters of a
+        // word is a worse target than the row it sits in.
+        onTap: () =>
+            _repository.setSectionCollapsed(section.id, !section.collapsed),
+        onSecondaryTapUp: (details) =>
+            showItemMenu(context, details.globalPosition, _menu(context)),
+        // InkWell's own hover rather than a MouseRegion around it: one source
+        // of truth for "the pointer is on this bar", which is what the plus
+        // fades in on.
+        onHover: (over) => setState(() => _hovering = over),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            spacing: 8,
+            children: [
+              // Still a real button, even though the whole bar now does the
+              // same thing: an InkWell is not focusable on its own here, so
+              // dropping it would leave collapsing reachable by mouse only.
+              // It simply absorbs the tap within its own few pixels.
+              _CollapseButton(
+                collapsed: section.collapsed,
+                icon: section.icon,
+                onTap: () => _repository.setSectionCollapsed(
+                  section.id,
+                  !section.collapsed,
+                ),
               ),
 
-            if (section.hasMore && !section.collapsed) TextButton(onPressed: widget.onViewAll, child: Text('View all ${section.items.length}')),
+              Flexible(
+                child: Text(
+                  section.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleLarge,
+                ),
+              ),
 
-            const Spacer(),
-          ],
+              // Only ever an icon. A chip wide enough to read "Add items to
+              // Pinned" is a chip that moves the title every time the pointer
+              // crosses the row, and the plus says the same thing in a corner
+              // of the space.
+              if (section.source.isCurated)
+                AnimatedOpacity(
+                  opacity: _hovering ? 1 : 0,
+                  duration: const Duration(milliseconds: 140),
+                  // Kept in the tree at every opacity: toggling a button in
+                  // and out rewrites its semantics node rather than updating
+                  // it, which is what floods the Windows accessibility bridge.
+                  alwaysIncludeSemantics: true,
+                  child: IconButton(
+                    tooltip: 'Add items to "${section.title}"',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: widget.onAddItems,
+                    iconSize: 20,
+                    icon: const Icon(Icons.add),
+                  ),
+                ),
+
+              if (section.hasMore && !section.collapsed)
+                TextButton(
+                  onPressed: widget.onViewAll,
+                  child: Text('View all ${section.items.length}'),
+                ),
+
+              const Spacer(),
+            ],
+          ),
         ),
       ),
     );

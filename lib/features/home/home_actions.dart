@@ -32,6 +32,24 @@ class HomeActions {
   /// screen to grow from.
   final void Function(BuildContext from, HomeItemView collection) openCollection;
 
+  /// The same actions with some of the destinations swapped.
+  ///
+  /// What the collection panel uses to send albums, artists and playlists to
+  /// a panel on top instead of to the page behind it -- the page being
+  /// exactly where they would land underneath the collection still open.
+  HomeActions copyWith({
+    void Function(int albumId)? openAlbum,
+    void Function(int artistId)? openArtist,
+    void Function(int playlistId)? openPlaylist,
+  }) =>
+      HomeActions(
+        openAlbum: openAlbum ?? this.openAlbum,
+        openArtist: openArtist ?? this.openArtist,
+        openPlaylist: openPlaylist ?? this.openPlaylist,
+        play: play,
+        openCollection: openCollection,
+      );
+
   /// Routes an item to whichever of the above it belongs to.
   ///
   /// A query has no page of its own to open -- it is a question, not a place

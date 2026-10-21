@@ -19665,6 +19665,41 @@ class $HomeItemsTable extends HomeItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeQueryType, String> queryType =
+      GeneratedColumn<String>(
+        'query_type',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('album'),
+      ).withConverter<HomeQueryType>($HomeItemsTable.$converterqueryType);
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeQuerySort, String> querySort =
+      GeneratedColumn<String>(
+        'query_sort',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('matched'),
+      ).withConverter<HomeQuerySort>($HomeItemsTable.$converterquerySort);
+  static const VerificationMeta _queryInvertedMeta = const VerificationMeta(
+    'queryInverted',
+  );
+  @override
+  late final GeneratedColumn<bool> queryInverted = GeneratedColumn<bool>(
+    'query_inverted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("query_inverted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _queryMeta = const VerificationMeta('query');
   @override
   late final GeneratedColumn<String> query = GeneratedColumn<String>(
@@ -19688,6 +19723,42 @@ class $HomeItemsTable extends HomeItems
       'REFERENCES images (id) ON DELETE SET NULL',
     ),
   );
+  static const VerificationMeta _collapsedMeta = const VerificationMeta(
+    'collapsed',
+  );
+  @override
+  late final GeneratedColumn<bool> collapsed = GeneratedColumn<bool>(
+    'collapsed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("collapsed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<HomeArtworkMode, String>
+  artworkMode = GeneratedColumn<String>(
+    'artwork_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('quadrant'),
+  ).withConverter<HomeArtworkMode>($HomeItemsTable.$converterartworkMode);
+  static const VerificationMeta _quadrantImagesMeta = const VerificationMeta(
+    'quadrantImages',
+  );
+  @override
+  late final GeneratedColumn<String> quadrantImages = GeneratedColumn<String>(
+    'quadrant_images',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _artworkCountMeta = const VerificationMeta(
     'artworkCount',
   );
@@ -19709,8 +19780,14 @@ class $HomeItemsTable extends HomeItems
     kind,
     refId,
     label,
+    queryType,
+    querySort,
+    queryInverted,
     query,
     imageId,
+    collapsed,
+    artworkMode,
+    quadrantImages,
     artworkCount,
   ];
   @override
@@ -19762,6 +19839,15 @@ class $HomeItemsTable extends HomeItems
         label.isAcceptableOrUnknown(data['label']!, _labelMeta),
       );
     }
+    if (data.containsKey('query_inverted')) {
+      context.handle(
+        _queryInvertedMeta,
+        queryInverted.isAcceptableOrUnknown(
+          data['query_inverted']!,
+          _queryInvertedMeta,
+        ),
+      );
+    }
     if (data.containsKey('query')) {
       context.handle(
         _queryMeta,
@@ -19772,6 +19858,21 @@ class $HomeItemsTable extends HomeItems
       context.handle(
         _imageIdMeta,
         imageId.isAcceptableOrUnknown(data['image_id']!, _imageIdMeta),
+      );
+    }
+    if (data.containsKey('collapsed')) {
+      context.handle(
+        _collapsedMeta,
+        collapsed.isAcceptableOrUnknown(data['collapsed']!, _collapsedMeta),
+      );
+    }
+    if (data.containsKey('quadrant_images')) {
+      context.handle(
+        _quadrantImagesMeta,
+        quadrantImages.isAcceptableOrUnknown(
+          data['quadrant_images']!,
+          _quadrantImagesMeta,
+        ),
       );
     }
     if (data.containsKey('artwork_count')) {
@@ -19822,6 +19923,22 @@ class $HomeItemsTable extends HomeItems
         DriftSqlType.string,
         data['${effectivePrefix}label'],
       ),
+      queryType: $HomeItemsTable.$converterqueryType.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}query_type'],
+        )!,
+      ),
+      querySort: $HomeItemsTable.$converterquerySort.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}query_sort'],
+        )!,
+      ),
+      queryInverted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}query_inverted'],
+      )!,
       query: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}query'],
@@ -19829,6 +19946,20 @@ class $HomeItemsTable extends HomeItems
       imageId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}image_id'],
+      ),
+      collapsed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}collapsed'],
+      )!,
+      artworkMode: $HomeItemsTable.$converterartworkMode.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}artwork_mode'],
+        )!,
+      ),
+      quadrantImages: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}quadrant_images'],
       ),
       artworkCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -19844,6 +19975,14 @@ class $HomeItemsTable extends HomeItems
 
   static JsonTypeConverter2<HomeItemKind, String, String> $converterkind =
       const EnumNameConverter<HomeItemKind>(HomeItemKind.values);
+  static JsonTypeConverter2<HomeQueryType, String, String> $converterqueryType =
+      const EnumNameConverter<HomeQueryType>(HomeQueryType.values);
+  static JsonTypeConverter2<HomeQuerySort, String, String> $converterquerySort =
+      const EnumNameConverter<HomeQuerySort>(HomeQuerySort.values);
+  static JsonTypeConverter2<HomeArtworkMode, String, String>
+  $converterartworkMode = const EnumNameConverter<HomeArtworkMode>(
+    HomeArtworkMode.values,
+  );
 }
 
 class HomeItem extends DataClass implements Insertable<HomeItem> {
@@ -19873,6 +20012,28 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
   /// called. Always set for a collection, which has nothing else to be named by.
   final String? label;
 
+  /// What a [HomeItemKind.query] is looking for -- see [HomeQueryType].
+  ///
+  /// Albums by default: a search put on a home page is far more often "which
+  /// records are like this" than "which individual songs are", and a grid of
+  /// four hundred song tiles is not a thing anybody arranges on purpose.
+  final HomeQueryType queryType;
+
+  /// How a search orders what it found -- see [HomeQuerySort].
+  ///
+  /// `matched` by default, which is to say "leave it alone": the rule often
+  /// carries its own opinion about order, and overriding that unasked would
+  /// throw it away.
+  final HomeQuerySort querySort;
+
+  /// Whether [querySort] runs backwards.
+  ///
+  /// A flag rather than a second value per order: every order has an obvious
+  /// direction and an opposite, and spelling both into [HomeQuerySort] would
+  /// double a menu to say what one button says. It applies to `matched` too,
+  /// where it reverses the order the rule itself found things in.
+  final bool queryInverted;
+
   /// The smart query, for [HomeItemKind.query]. Stored as typed, in the same
   /// grammar as a smart playlist.
   final String? query;
@@ -19880,6 +20041,30 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
   /// An image chosen to stand for this item, overriding whatever artwork it
   /// would otherwise compose or inherit.
   final int? imageId;
+
+  /// Whether a block inside a collection is rolled up to its header.
+  ///
+  /// Only means anything for a search, which is the one kind that heads a
+  /// run of other things. Stored for the same reason a section's is: a
+  /// collection somebody folded down is the shape they chose for it.
+  final bool collapsed;
+
+  /// Whether the tile quarters four pictures or shows one whole.
+  ///
+  /// Separate from [imageId], which only ever answers "which one": a picture
+  /// chosen by hand went into the first quarter before this existed, which is
+  /// not what choosing a picture means.
+  final HomeArtworkMode artworkMode;
+
+  /// Pictures pinned to particular quarters, as image ids separated by
+  /// commas, with an empty slot meaning "whatever would have gone there".
+  ///
+  /// A text column rather than four nullable foreign keys or a side table:
+  /// there are at most four, they are an override on something that already
+  /// has an answer, and a dangling id is handled the same way every other
+  /// dangling reference on this page is -- by falling back rather than
+  /// failing.
+  final String? quadrantImages;
 
   /// How many of the contents' covers a collection tile composes when it has no
   /// [imageId] of its own: 1 for a single cover, 4 for a quartered mosaic.
@@ -19895,8 +20080,14 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
     required this.kind,
     this.refId,
     this.label,
+    required this.queryType,
+    required this.querySort,
+    required this.queryInverted,
     this.query,
     this.imageId,
+    required this.collapsed,
+    required this.artworkMode,
+    this.quadrantImages,
     required this.artworkCount,
   });
   @override
@@ -19919,11 +20110,31 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
     if (!nullToAbsent || label != null) {
       map['label'] = Variable<String>(label);
     }
+    {
+      map['query_type'] = Variable<String>(
+        $HomeItemsTable.$converterqueryType.toSql(queryType),
+      );
+    }
+    {
+      map['query_sort'] = Variable<String>(
+        $HomeItemsTable.$converterquerySort.toSql(querySort),
+      );
+    }
+    map['query_inverted'] = Variable<bool>(queryInverted);
     if (!nullToAbsent || query != null) {
       map['query'] = Variable<String>(query);
     }
     if (!nullToAbsent || imageId != null) {
       map['image_id'] = Variable<int>(imageId);
+    }
+    map['collapsed'] = Variable<bool>(collapsed);
+    {
+      map['artwork_mode'] = Variable<String>(
+        $HomeItemsTable.$converterartworkMode.toSql(artworkMode),
+      );
+    }
+    if (!nullToAbsent || quadrantImages != null) {
+      map['quadrant_images'] = Variable<String>(quadrantImages);
     }
     map['artwork_count'] = Variable<int>(artworkCount);
     return map;
@@ -19944,12 +20155,20 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
       label: label == null && nullToAbsent
           ? const Value.absent()
           : Value(label),
+      queryType: Value(queryType),
+      querySort: Value(querySort),
+      queryInverted: Value(queryInverted),
       query: query == null && nullToAbsent
           ? const Value.absent()
           : Value(query),
       imageId: imageId == null && nullToAbsent
           ? const Value.absent()
           : Value(imageId),
+      collapsed: Value(collapsed),
+      artworkMode: Value(artworkMode),
+      quadrantImages: quadrantImages == null && nullToAbsent
+          ? const Value.absent()
+          : Value(quadrantImages),
       artworkCount: Value(artworkCount),
     );
   }
@@ -19969,8 +20188,20 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
       ),
       refId: serializer.fromJson<int?>(json['refId']),
       label: serializer.fromJson<String?>(json['label']),
+      queryType: $HomeItemsTable.$converterqueryType.fromJson(
+        serializer.fromJson<String>(json['queryType']),
+      ),
+      querySort: $HomeItemsTable.$converterquerySort.fromJson(
+        serializer.fromJson<String>(json['querySort']),
+      ),
+      queryInverted: serializer.fromJson<bool>(json['queryInverted']),
       query: serializer.fromJson<String?>(json['query']),
       imageId: serializer.fromJson<int?>(json['imageId']),
+      collapsed: serializer.fromJson<bool>(json['collapsed']),
+      artworkMode: $HomeItemsTable.$converterartworkMode.fromJson(
+        serializer.fromJson<String>(json['artworkMode']),
+      ),
+      quadrantImages: serializer.fromJson<String?>(json['quadrantImages']),
       artworkCount: serializer.fromJson<int>(json['artworkCount']),
     );
   }
@@ -19987,8 +20218,20 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
       ),
       'refId': serializer.toJson<int?>(refId),
       'label': serializer.toJson<String?>(label),
+      'queryType': serializer.toJson<String>(
+        $HomeItemsTable.$converterqueryType.toJson(queryType),
+      ),
+      'querySort': serializer.toJson<String>(
+        $HomeItemsTable.$converterquerySort.toJson(querySort),
+      ),
+      'queryInverted': serializer.toJson<bool>(queryInverted),
       'query': serializer.toJson<String?>(query),
       'imageId': serializer.toJson<int?>(imageId),
+      'collapsed': serializer.toJson<bool>(collapsed),
+      'artworkMode': serializer.toJson<String>(
+        $HomeItemsTable.$converterartworkMode.toJson(artworkMode),
+      ),
+      'quadrantImages': serializer.toJson<String?>(quadrantImages),
       'artworkCount': serializer.toJson<int>(artworkCount),
     };
   }
@@ -20001,8 +20244,14 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
     HomeItemKind? kind,
     Value<int?> refId = const Value.absent(),
     Value<String?> label = const Value.absent(),
+    HomeQueryType? queryType,
+    HomeQuerySort? querySort,
+    bool? queryInverted,
     Value<String?> query = const Value.absent(),
     Value<int?> imageId = const Value.absent(),
+    bool? collapsed,
+    HomeArtworkMode? artworkMode,
+    Value<String?> quadrantImages = const Value.absent(),
     int? artworkCount,
   }) => HomeItem(
     id: id ?? this.id,
@@ -20012,8 +20261,16 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
     kind: kind ?? this.kind,
     refId: refId.present ? refId.value : this.refId,
     label: label.present ? label.value : this.label,
+    queryType: queryType ?? this.queryType,
+    querySort: querySort ?? this.querySort,
+    queryInverted: queryInverted ?? this.queryInverted,
     query: query.present ? query.value : this.query,
     imageId: imageId.present ? imageId.value : this.imageId,
+    collapsed: collapsed ?? this.collapsed,
+    artworkMode: artworkMode ?? this.artworkMode,
+    quadrantImages: quadrantImages.present
+        ? quadrantImages.value
+        : this.quadrantImages,
     artworkCount: artworkCount ?? this.artworkCount,
   );
   HomeItem copyWithCompanion(HomeItemsCompanion data) {
@@ -20025,8 +20282,20 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
       kind: data.kind.present ? data.kind.value : this.kind,
       refId: data.refId.present ? data.refId.value : this.refId,
       label: data.label.present ? data.label.value : this.label,
+      queryType: data.queryType.present ? data.queryType.value : this.queryType,
+      querySort: data.querySort.present ? data.querySort.value : this.querySort,
+      queryInverted: data.queryInverted.present
+          ? data.queryInverted.value
+          : this.queryInverted,
       query: data.query.present ? data.query.value : this.query,
       imageId: data.imageId.present ? data.imageId.value : this.imageId,
+      collapsed: data.collapsed.present ? data.collapsed.value : this.collapsed,
+      artworkMode: data.artworkMode.present
+          ? data.artworkMode.value
+          : this.artworkMode,
+      quadrantImages: data.quadrantImages.present
+          ? data.quadrantImages.value
+          : this.quadrantImages,
       artworkCount: data.artworkCount.present
           ? data.artworkCount.value
           : this.artworkCount,
@@ -20043,8 +20312,14 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
           ..write('kind: $kind, ')
           ..write('refId: $refId, ')
           ..write('label: $label, ')
+          ..write('queryType: $queryType, ')
+          ..write('querySort: $querySort, ')
+          ..write('queryInverted: $queryInverted, ')
           ..write('query: $query, ')
           ..write('imageId: $imageId, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('artworkMode: $artworkMode, ')
+          ..write('quadrantImages: $quadrantImages, ')
           ..write('artworkCount: $artworkCount')
           ..write(')'))
         .toString();
@@ -20059,8 +20334,14 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
     kind,
     refId,
     label,
+    queryType,
+    querySort,
+    queryInverted,
     query,
     imageId,
+    collapsed,
+    artworkMode,
+    quadrantImages,
     artworkCount,
   );
   @override
@@ -20074,8 +20355,14 @@ class HomeItem extends DataClass implements Insertable<HomeItem> {
           other.kind == this.kind &&
           other.refId == this.refId &&
           other.label == this.label &&
+          other.queryType == this.queryType &&
+          other.querySort == this.querySort &&
+          other.queryInverted == this.queryInverted &&
           other.query == this.query &&
           other.imageId == this.imageId &&
+          other.collapsed == this.collapsed &&
+          other.artworkMode == this.artworkMode &&
+          other.quadrantImages == this.quadrantImages &&
           other.artworkCount == this.artworkCount);
 }
 
@@ -20087,8 +20374,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
   final Value<HomeItemKind> kind;
   final Value<int?> refId;
   final Value<String?> label;
+  final Value<HomeQueryType> queryType;
+  final Value<HomeQuerySort> querySort;
+  final Value<bool> queryInverted;
   final Value<String?> query;
   final Value<int?> imageId;
+  final Value<bool> collapsed;
+  final Value<HomeArtworkMode> artworkMode;
+  final Value<String?> quadrantImages;
   final Value<int> artworkCount;
   const HomeItemsCompanion({
     this.id = const Value.absent(),
@@ -20098,8 +20391,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
     this.kind = const Value.absent(),
     this.refId = const Value.absent(),
     this.label = const Value.absent(),
+    this.queryType = const Value.absent(),
+    this.querySort = const Value.absent(),
+    this.queryInverted = const Value.absent(),
     this.query = const Value.absent(),
     this.imageId = const Value.absent(),
+    this.collapsed = const Value.absent(),
+    this.artworkMode = const Value.absent(),
+    this.quadrantImages = const Value.absent(),
     this.artworkCount = const Value.absent(),
   });
   HomeItemsCompanion.insert({
@@ -20110,8 +20409,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
     required HomeItemKind kind,
     this.refId = const Value.absent(),
     this.label = const Value.absent(),
+    this.queryType = const Value.absent(),
+    this.querySort = const Value.absent(),
+    this.queryInverted = const Value.absent(),
     this.query = const Value.absent(),
     this.imageId = const Value.absent(),
+    this.collapsed = const Value.absent(),
+    this.artworkMode = const Value.absent(),
+    this.quadrantImages = const Value.absent(),
     this.artworkCount = const Value.absent(),
   }) : sectionId = Value(sectionId),
        position = Value(position),
@@ -20124,8 +20429,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
     Expression<String>? kind,
     Expression<int>? refId,
     Expression<String>? label,
+    Expression<String>? queryType,
+    Expression<String>? querySort,
+    Expression<bool>? queryInverted,
     Expression<String>? query,
     Expression<int>? imageId,
+    Expression<bool>? collapsed,
+    Expression<String>? artworkMode,
+    Expression<String>? quadrantImages,
     Expression<int>? artworkCount,
   }) {
     return RawValuesInsertable({
@@ -20136,8 +20447,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
       if (kind != null) 'kind': kind,
       if (refId != null) 'ref_id': refId,
       if (label != null) 'label': label,
+      if (queryType != null) 'query_type': queryType,
+      if (querySort != null) 'query_sort': querySort,
+      if (queryInverted != null) 'query_inverted': queryInverted,
       if (query != null) 'query': query,
       if (imageId != null) 'image_id': imageId,
+      if (collapsed != null) 'collapsed': collapsed,
+      if (artworkMode != null) 'artwork_mode': artworkMode,
+      if (quadrantImages != null) 'quadrant_images': quadrantImages,
       if (artworkCount != null) 'artwork_count': artworkCount,
     });
   }
@@ -20150,8 +20467,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
     Value<HomeItemKind>? kind,
     Value<int?>? refId,
     Value<String?>? label,
+    Value<HomeQueryType>? queryType,
+    Value<HomeQuerySort>? querySort,
+    Value<bool>? queryInverted,
     Value<String?>? query,
     Value<int?>? imageId,
+    Value<bool>? collapsed,
+    Value<HomeArtworkMode>? artworkMode,
+    Value<String?>? quadrantImages,
     Value<int>? artworkCount,
   }) {
     return HomeItemsCompanion(
@@ -20162,8 +20485,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
       kind: kind ?? this.kind,
       refId: refId ?? this.refId,
       label: label ?? this.label,
+      queryType: queryType ?? this.queryType,
+      querySort: querySort ?? this.querySort,
+      queryInverted: queryInverted ?? this.queryInverted,
       query: query ?? this.query,
       imageId: imageId ?? this.imageId,
+      collapsed: collapsed ?? this.collapsed,
+      artworkMode: artworkMode ?? this.artworkMode,
+      quadrantImages: quadrantImages ?? this.quadrantImages,
       artworkCount: artworkCount ?? this.artworkCount,
     );
   }
@@ -20194,11 +20523,35 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
     if (label.present) {
       map['label'] = Variable<String>(label.value);
     }
+    if (queryType.present) {
+      map['query_type'] = Variable<String>(
+        $HomeItemsTable.$converterqueryType.toSql(queryType.value),
+      );
+    }
+    if (querySort.present) {
+      map['query_sort'] = Variable<String>(
+        $HomeItemsTable.$converterquerySort.toSql(querySort.value),
+      );
+    }
+    if (queryInverted.present) {
+      map['query_inverted'] = Variable<bool>(queryInverted.value);
+    }
     if (query.present) {
       map['query'] = Variable<String>(query.value);
     }
     if (imageId.present) {
       map['image_id'] = Variable<int>(imageId.value);
+    }
+    if (collapsed.present) {
+      map['collapsed'] = Variable<bool>(collapsed.value);
+    }
+    if (artworkMode.present) {
+      map['artwork_mode'] = Variable<String>(
+        $HomeItemsTable.$converterartworkMode.toSql(artworkMode.value),
+      );
+    }
+    if (quadrantImages.present) {
+      map['quadrant_images'] = Variable<String>(quadrantImages.value);
     }
     if (artworkCount.present) {
       map['artwork_count'] = Variable<int>(artworkCount.value);
@@ -20216,8 +20569,14 @@ class HomeItemsCompanion extends UpdateCompanion<HomeItem> {
           ..write('kind: $kind, ')
           ..write('refId: $refId, ')
           ..write('label: $label, ')
+          ..write('queryType: $queryType, ')
+          ..write('querySort: $querySort, ')
+          ..write('queryInverted: $queryInverted, ')
           ..write('query: $query, ')
           ..write('imageId: $imageId, ')
+          ..write('collapsed: $collapsed, ')
+          ..write('artworkMode: $artworkMode, ')
+          ..write('quadrantImages: $quadrantImages, ')
           ..write('artworkCount: $artworkCount')
           ..write(')'))
         .toString();
@@ -39035,8 +39394,14 @@ typedef $$HomeItemsTableCreateCompanionBuilder = HomeItemsCompanion Function({
   required HomeItemKind kind,
   Value<int?> refId,
   Value<String?> label,
+  Value<HomeQueryType> queryType,
+  Value<HomeQuerySort> querySort,
+  Value<bool> queryInverted,
   Value<String?> query,
   Value<int?> imageId,
+  Value<bool> collapsed,
+  Value<HomeArtworkMode> artworkMode,
+  Value<String?> quadrantImages,
   Value<int> artworkCount,
 });
 typedef $$HomeItemsTableUpdateCompanionBuilder = HomeItemsCompanion Function({
@@ -39047,8 +39412,14 @@ typedef $$HomeItemsTableUpdateCompanionBuilder = HomeItemsCompanion Function({
   Value<HomeItemKind> kind,
   Value<int?> refId,
   Value<String?> label,
+  Value<HomeQueryType> queryType,
+  Value<HomeQuerySort> querySort,
+  Value<bool> queryInverted,
   Value<String?> query,
   Value<int?> imageId,
+  Value<bool> collapsed,
+  Value<HomeArtworkMode> artworkMode,
+  Value<String?> quadrantImages,
   Value<int> artworkCount,
 });
 
@@ -39143,8 +39514,41 @@ class $$HomeItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<HomeQueryType, HomeQueryType, String>
+  get queryType => $composableBuilder(
+    column: $table.queryType,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<HomeQuerySort, HomeQuerySort, String>
+  get querySort => $composableBuilder(
+    column: $table.querySort,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<bool> get queryInverted => $composableBuilder(
+    column: $table.queryInverted,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get query => $composableBuilder(
     column: $table.query,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<HomeArtworkMode, HomeArtworkMode, String>
+  get artworkMode => $composableBuilder(
+    column: $table.artworkMode,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get quadrantImages => $composableBuilder(
+    column: $table.quadrantImages,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -39257,8 +39661,38 @@ class $$HomeItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get queryType => $composableBuilder(
+    column: $table.queryType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get querySort => $composableBuilder(
+    column: $table.querySort,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get queryInverted => $composableBuilder(
+    column: $table.queryInverted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get query => $composableBuilder(
     column: $table.query,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get collapsed => $composableBuilder(
+    column: $table.collapsed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artworkMode => $composableBuilder(
+    column: $table.artworkMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quadrantImages => $composableBuilder(
+    column: $table.quadrantImages,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -39361,8 +39795,33 @@ class $$HomeItemsTableAnnotationComposer
   GeneratedColumn<String> get label =>
       $composableBuilder(column: $table.label, builder: (column) => column);
 
+  GeneratedColumnWithTypeConverter<HomeQueryType, String> get queryType =>
+      $composableBuilder(column: $table.queryType, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<HomeQuerySort, String> get querySort =>
+      $composableBuilder(column: $table.querySort, builder: (column) => column);
+
+  GeneratedColumn<bool> get queryInverted => $composableBuilder(
+    column: $table.queryInverted,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get query =>
       $composableBuilder(column: $table.query, builder: (column) => column);
+
+  GeneratedColumn<bool> get collapsed =>
+      $composableBuilder(column: $table.collapsed, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<HomeArtworkMode, String> get artworkMode =>
+      $composableBuilder(
+        column: $table.artworkMode,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get quadrantImages => $composableBuilder(
+    column: $table.quadrantImages,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get artworkCount => $composableBuilder(
     column: $table.artworkCount,
@@ -39474,8 +39933,14 @@ class $$HomeItemsTableTableManager
                 Value<HomeItemKind> kind = const Value.absent(),
                 Value<int?> refId = const Value.absent(),
                 Value<String?> label = const Value.absent(),
+                Value<HomeQueryType> queryType = const Value.absent(),
+                Value<HomeQuerySort> querySort = const Value.absent(),
+                Value<bool> queryInverted = const Value.absent(),
                 Value<String?> query = const Value.absent(),
                 Value<int?> imageId = const Value.absent(),
+                Value<bool> collapsed = const Value.absent(),
+                Value<HomeArtworkMode> artworkMode = const Value.absent(),
+                Value<String?> quadrantImages = const Value.absent(),
                 Value<int> artworkCount = const Value.absent(),
               }) => HomeItemsCompanion(
                 id: id,
@@ -39485,8 +39950,14 @@ class $$HomeItemsTableTableManager
                 kind: kind,
                 refId: refId,
                 label: label,
+                queryType: queryType,
+                querySort: querySort,
+                queryInverted: queryInverted,
                 query: query,
                 imageId: imageId,
+                collapsed: collapsed,
+                artworkMode: artworkMode,
+                quadrantImages: quadrantImages,
                 artworkCount: artworkCount,
               ),
           createCompanionCallback:
@@ -39498,8 +39969,14 @@ class $$HomeItemsTableTableManager
                 required HomeItemKind kind,
                 Value<int?> refId = const Value.absent(),
                 Value<String?> label = const Value.absent(),
+                Value<HomeQueryType> queryType = const Value.absent(),
+                Value<HomeQuerySort> querySort = const Value.absent(),
+                Value<bool> queryInverted = const Value.absent(),
                 Value<String?> query = const Value.absent(),
                 Value<int?> imageId = const Value.absent(),
+                Value<bool> collapsed = const Value.absent(),
+                Value<HomeArtworkMode> artworkMode = const Value.absent(),
+                Value<String?> quadrantImages = const Value.absent(),
                 Value<int> artworkCount = const Value.absent(),
               }) => HomeItemsCompanion.insert(
                 id: id,
@@ -39509,8 +39986,14 @@ class $$HomeItemsTableTableManager
                 kind: kind,
                 refId: refId,
                 label: label,
+                queryType: queryType,
+                querySort: querySort,
+                queryInverted: queryInverted,
                 query: query,
                 imageId: imageId,
+                collapsed: collapsed,
+                artworkMode: artworkMode,
+                quadrantImages: quadrantImages,
                 artworkCount: artworkCount,
               ),
           withReferenceMapper: (p0) => p0

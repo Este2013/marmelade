@@ -9,6 +9,7 @@ import '../../widgets/section_title.dart';
 import 'add_home_item.dart';
 import 'collection_overlay.dart';
 import 'home_actions.dart';
+import 'drag_scroll.dart';
 import 'home_drag.dart';
 import 'home_section.dart';
 
@@ -131,8 +132,15 @@ class _PageState extends ConsumerState<_Page> {
     // ReorderableDelayedDragStartListener below), so an ordinary click,
     // right-click and hover all keep working and nothing has to be armed
     // first.
-    return ReorderableListView.builder(
+    return DragScroll(
+      controller: _scroll,
+      // Only while an *item* is in flight. A section drag is the
+      // ReorderableListView's own, and it scrolls itself.
+      active: dragging != null,
+      child: ReorderableListView.builder(
       scrollController: _scroll,
+      // Dragging a section is the framework's own gesture and brings its own
+      // edge scrolling; DragScroll above only ever sees a HomeDrag.
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 48),
       buildDefaultDragHandles: false,
       itemCount: blocks.length,
@@ -151,6 +159,7 @@ class _PageState extends ConsumerState<_Page> {
           blocks[i],
           if (i == blocks.length - 1) NewSectionGap(active: dragging != null, onDrop: _newSectionWith),
         ],
+      ),
       ),
     );
   }
@@ -187,7 +196,16 @@ class _PageState extends ConsumerState<_Page> {
       if (!mounted) return;
       final chosen = await addHomeItem(context, ref, title: 'Add to "${section.title}"');
       if (chosen == null) return;
-      await repository.addItem(sectionId: section.id, kind: chosen.kind, refId: chosen.refId, label: chosen.label, query: chosen.query);
+      await repository.addItem(
+        sectionId: section.id,
+        kind: chosen.kind,
+        refId: chosen.refId,
+        label: chosen.label,
+        query: chosen.query,
+        queryType: chosen.queryType,
+        querySort: chosen.querySort,
+        queryInverted: chosen.queryInverted,
+      );
     }
   }
 
@@ -207,7 +225,7 @@ class _PageState extends ConsumerState<_Page> {
                   builder: (rowContext) => ListTile(
                     dense: true,
                     title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: item.subtitle == null ? null : Text(item.subtitle!),
+                    subtitle: item.displaySubtitle == null ? null : Text(item.displaySubtitle!),
                     trailing: IconButton(tooltip: 'Play ${item.title}', icon: const Icon(Icons.play_arrow), onPressed: () => widget.actions.play(item)),
                     onTap: () {
                       Navigator.of(context).pop();

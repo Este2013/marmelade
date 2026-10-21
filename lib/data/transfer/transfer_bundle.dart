@@ -1108,6 +1108,155 @@ class TransferOrigin {
 }
 
 /// Everything one machine knows, in portable form.
+/// One section of the home page, with its items.
+///
+/// Travels because it is hand-arranged and nothing else in the library
+/// records it: lose this and a machine that already has every album still
+/// opens on somebody else's blank page.
+class TransferHomeSection extends TransferEntity {
+  const TransferHomeSection({
+    required super.id,
+    required this.title,
+    required this.position,
+    this.layout = 'grid',
+    this.source = 'curated',
+    this.itemLimit = 20,
+    this.collapsed = false,
+    this.icon,
+    this.items = const [],
+  });
+
+  final String title;
+  final int position;
+  final String layout;
+  final String source;
+  final int itemLimit;
+  final bool collapsed;
+
+  /// Material icon code point, looked up in a fixed list on the far side.
+  final int? icon;
+
+  final List<TransferHomeItem> items;
+
+  factory TransferHomeSection.fromJson(Map<String, Object?> json) =>
+      TransferHomeSection(
+        id: _int(json['id'], 0),
+        title: _str(json['title'], 'Section'),
+        position: _int(json['position'], 0),
+        layout: _str(json['layout'], 'grid'),
+        source: _str(json['source'], 'curated'),
+        itemLimit: _int(json['itemLimit'], 20),
+        collapsed: _bool(json['collapsed']),
+        icon: json['icon'] is int ? json['icon']! as int : null,
+        items: _list(json['items'], TransferHomeItem.fromJson),
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'position': position,
+        'layout': layout,
+        'source': source,
+        'itemLimit': itemLimit,
+        'collapsed': collapsed,
+        if (icon != null) 'icon': icon,
+        'items': [for (final item in items) item.toJson()],
+      };
+}
+
+/// One tile on the home page.
+///
+/// [refId], [imageId] and [quadrantImageIds] are bundle-local ids, resolved
+/// against the rest of this bundle exactly as a playlist's entries are. The
+/// kind says which list to resolve [refId] in, because an album id and an
+/// artist id are the same number on two different shelves.
+class TransferHomeItem {
+  const TransferHomeItem({
+    required this.id,
+    required this.kind,
+    required this.position,
+    this.parentId,
+    this.refId,
+    this.label,
+    this.query,
+    this.queryType = 'album',
+    this.querySort = 'matched',
+    this.queryInverted = false,
+    this.imageId,
+    this.artworkMode = 'quadrant',
+    this.artworkCount = 4,
+    this.quadrantImageIds = const [],
+    this.collapsed = false,
+  });
+
+  final int id;
+  final String kind;
+  final int position;
+  final int? parentId;
+  final int? refId;
+  final String? label;
+  final String? query;
+  final String queryType;
+  final String querySort;
+
+  /// Whether [querySort] runs backwards. Absent from a bundle written before
+  /// reversing existed, which reads as false -- the only order those ever
+  /// had.
+  final bool queryInverted;
+
+  final int? imageId;
+  final String artworkMode;
+  final int artworkCount;
+
+  /// Four slots, with null for "whatever would have gone there".
+  final List<int?> quadrantImageIds;
+
+  final bool collapsed;
+
+  factory TransferHomeItem.fromJson(Map<String, Object?> json) =>
+      TransferHomeItem(
+        id: _int(json['id'], 0),
+        kind: _str(json['kind'], 'album'),
+        position: _int(json['position'], 0),
+        parentId: json['parentId'] is int ? json['parentId']! as int : null,
+        refId: json['refId'] is int ? json['refId']! as int : null,
+        label: _strOrNull(json['label']),
+        query: _strOrNull(json['query']),
+        queryType: _str(json['queryType'], 'album'),
+        querySort: _str(json['querySort'], 'matched'),
+        queryInverted: _bool(json['queryInverted']),
+        imageId: json['imageId'] is int ? json['imageId']! as int : null,
+        artworkMode: _str(json['artworkMode'], 'quadrant'),
+        artworkCount: _int(json['artworkCount'], 4),
+        quadrantImageIds: json['quadrantImageIds'] is List
+            ? [
+                for (final one in json['quadrantImageIds']! as List)
+                  one is int ? one : null,
+              ]
+            : const [],
+        collapsed: _bool(json['collapsed']),
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'kind': kind,
+        'position': position,
+        if (parentId != null) 'parentId': parentId,
+        if (refId != null) 'refId': refId,
+        if (label != null) 'label': label,
+        if (query != null) 'query': query,
+        'queryType': queryType,
+        'querySort': querySort,
+        'queryInverted': queryInverted,
+        if (imageId != null) 'imageId': imageId,
+        'artworkMode': artworkMode,
+        'artworkCount': artworkCount,
+        if (quadrantImageIds.isNotEmpty)
+          'quadrantImageIds': quadrantImageIds,
+        'collapsed': collapsed,
+      };
+}
+
 class TransferBundle {
   const TransferBundle({
     required this.origin,
@@ -1122,6 +1271,7 @@ class TransferBundle {
     this.images = const [],
     this.splitRules = const [],
     this.separators = const [],
+    this.home = const [],
   });
 
   final int schema;
@@ -1137,6 +1287,10 @@ class TransferBundle {
   final List<TransferImage> images;
   final List<TransferSplitRule> splitRules;
   final List<TransferSeparator> separators;
+
+  /// The home page, section by section. Empty when the exporter was told to
+  /// leave it out, or when there was none to send.
+  final List<TransferHomeSection> home;
 
   /// Reads a bundle. Throws [TransferFormatException] on anything that is not
   /// one, rather than half-importing a file that happened to be JSON.
@@ -1173,6 +1327,7 @@ class TransferBundle {
       images: _list(json['images'], TransferImage.fromJson),
       splitRules: _list(json['splitRules'], TransferSplitRule.fromJson),
       separators: _list(json['separators'], TransferSeparator.fromJson),
+      home: _list(json['home'], TransferHomeSection.fromJson),
     );
   }
 
@@ -1206,6 +1361,7 @@ class TransferBundle {
         'images': [for (final i in images) i.toJson()],
         'splitRules': [for (final r in splitRules) r.toJson()],
         'separators': [for (final s in separators) s.toJson()],
+        'home': [for (final s in home) s.toJson()],
       };
 
   /// Written into the file for a person reading it, and used by the UI to

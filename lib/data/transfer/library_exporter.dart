@@ -46,6 +46,7 @@ class LibraryExporter {
   Future<TransferBundle> buildBundle({
     required TransferOrigin origin,
     void Function(TransferProgress)? onProgress,
+    bool includeHome = true,
   }) async {
     void report(int completed, int total, String detail) => onProgress?.call(
           TransferProgress(
@@ -73,6 +74,8 @@ class LibraryExporter {
     final playlists = await _playlists();
 
     report(5, 7, 'artwork');
+    final home = includeHome ? await _home() : const <TransferHomeSection>[];
+
     final images = await _images(
       referenced: {
         for (final a in artists) ?a.imageId,
@@ -80,6 +83,15 @@ class LibraryExporter {
         for (final t in tracks) ?t.imageId,
         for (final t in tags) ?t.imageId,
         for (final pl in playlists) ?pl.imageId,
+        // A collection's own picture, and anything pinned to one of its
+        // quarters. These are often referenced nowhere else in the library,
+        // so leaving them out of this set is how a hand-chosen picture
+        // silently fails to travel.
+        for (final section in home)
+          for (final item in section.items) ...[
+            ?item.imageId,
+            for (final pinned in item.quadrantImageIds) ?pinned,
+          ],
       },
     );
 
@@ -101,7 +113,75 @@ class LibraryExporter {
       images: images,
       splitRules: rules,
       separators: separators,
+      home: home,
     );
+  }
+
+  /// The home page, section by section.
+  ///
+  /// References travel as the exporting machine's own row ids, like every
+  /// other cross-reference in a bundle: the importer resolves them against
+  /// the rest of the file, never against its own database.
+  Future<List<TransferHomeSection>> _home() async {
+    final sections = await db
+        .customSelect(
+          'SELECT id, title, position, layout, source, item_limit, '
+          'collapsed, icon FROM home_sections ORDER BY position, id',
+          readsFrom: {db.homeSections},
+        )
+        .get();
+    if (sections.isEmpty) return const [];
+
+    final items = await db
+        .customSelect(
+          'SELECT id, section_id, parent_id, position, kind, ref_id, label, '
+          'query, query_type, query_sort, query_inverted, image_id, '
+          'artwork_mode, artwork_count, quadrant_images, collapsed '
+          'FROM home_items ORDER BY position, id',
+          readsFrom: {db.homeItems},
+        )
+        .get();
+
+    final bySection = <int, List<TransferHomeItem>>{};
+    for (final row in items) {
+      final csv = row.read<String?>('quadrant_images');
+      bySection.putIfAbsent(row.read<int>('section_id'), () => []).add(
+            TransferHomeItem(
+              id: row.read<int>('id'),
+              kind: row.read<String>('kind'),
+              position: row.read<int>('position'),
+              parentId: row.read<int?>('parent_id'),
+              refId: row.read<int?>('ref_id'),
+              label: row.read<String?>('label'),
+              query: row.read<String?>('query'),
+              queryType: row.read<String>('query_type'),
+              querySort: row.read<String>('query_sort'),
+              queryInverted: row.read<bool>('query_inverted'),
+              imageId: row.read<int?>('image_id'),
+              artworkMode: row.read<String>('artwork_mode'),
+              artworkCount: row.read<int>('artwork_count'),
+              quadrantImageIds: csv == null || csv.isEmpty
+                  ? const []
+                  : [for (final part in csv.split(',')) int.tryParse(part)],
+              collapsed: row.read<bool>('collapsed'),
+            ),
+          );
+    }
+
+    return [
+      for (final row in sections)
+        TransferHomeSection(
+          id: row.read<int>('id'),
+          title: row.read<String>('title'),
+          position: row.read<int>('position'),
+          layout: row.read<String>('layout'),
+          source: row.read<String>('source'),
+          itemLimit: row.read<int>('item_limit'),
+          collapsed: row.read<bool>('collapsed'),
+          icon: row.read<int?>('icon'),
+          items: bySection[row.read<int>('id')] ?? const [],
+        ),
+    ];
   }
 
   /// Writes a bundle folder at [target], creating it if needed.
@@ -118,7 +198,11 @@ class LibraryExporter {
     void Function(TransferProgress)? onProgress,
   }) async {
     final started = DateTime.now();
-    final bundle = await buildBundle(origin: origin, onProgress: onProgress);
+    final bundle = await buildBundle(
+      origin: origin,
+      onProgress: onProgress,
+      includeHome: options.includeHome,
+    );
 
     await target.create(recursive: true);
 

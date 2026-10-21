@@ -86,7 +86,7 @@ void main() {
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 6);
+    expect(await versionOf(db), 11);
     expect(await hasTable(db, 'playlist_tags'), isTrue);
     expect(await hasTable(db, 'playlist_track_order'), isTrue);
     expect(await hasTable(db, 'home_sections'), isTrue);
@@ -146,7 +146,7 @@ void main() {
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 6);
+    expect(await versionOf(db), 11);
     expect(await hasTable(db, 'playlist_track_order'), isTrue);
 
     final rows = await db
@@ -179,7 +179,7 @@ void main() {
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 6);
+    expect(await versionOf(db), 11);
 
     final sections = await db
         .customSelect('SELECT title, source, layout FROM home_sections')
@@ -258,11 +258,21 @@ void main() {
         'ALTER TABLE home_sections DROP COLUMN collapsed',
       );
       await db.customStatement('ALTER TABLE home_sections DROP COLUMN icon');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_type');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_sort');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN artwork_mode');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN quadrant_images',
+      );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
       await db.customStatement('PRAGMA user_version = 4');
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 6);
+    expect(await versionOf(db), 11);
     final items =
         await db.customSelect('SELECT kind, label FROM home_items').get();
     expect(items.single.read<String>('kind'), 'collection');
@@ -282,11 +292,21 @@ void main() {
         'ALTER TABLE home_sections DROP COLUMN collapsed',
       );
       await db.customStatement('ALTER TABLE home_sections DROP COLUMN icon');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_type');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_sort');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN artwork_mode');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN quadrant_images',
+      );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
       await db.customStatement('PRAGMA user_version = 5');
     });
     addTearDown(db.close);
 
-    expect(await versionOf(db), 6);
+    expect(await versionOf(db), 11);
     expect(
       await columnsOf(db, 'home_sections'),
       containsAll(['collapsed', 'icon']),
@@ -303,6 +323,248 @@ void main() {
     expect(row.read<String>('title'), 'Mine');
     expect(row.read<bool>('collapsed'), isFalse);
     expect(row.read<int?>('icon'), isNull);
+  });
+
+  test('v6 pins an existing search to songs, not to the new default',
+      () async {
+    // A search written before v7 could only mean songs. Letting the column
+    // default turn it into an album search would change what somebody's home
+    // page shows, under them, without them touching it.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.query,
+              label: const Value('Old search'),
+              query: const Value('tag:hardcore'),
+            ),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 2000,
+              kind: HomeItemKind.album,
+              refId: const Value(1),
+            ),
+          );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_type');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_sort');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN artwork_mode');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN quadrant_images',
+      );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
+      await db.customStatement('PRAGMA user_version = 6');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 11);
+    final rows = await db
+        .customSelect('SELECT kind, query_type FROM home_items ORDER BY position')
+        .get();
+    expect(rows.first.read<String>('query_type'), 'track');
+    // Only searches are touched; the column on everything else is meaningless
+    // and left at whatever the default wrote.
+    expect(rows.last.read<String>('kind'), 'album');
+  });
+
+  test('v7 gains somewhere to store how a search is ordered', () async {
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.query,
+              query: const Value('tag:hardcore'),
+            ),
+          );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN query_sort');
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN artwork_mode');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN quadrant_images',
+      );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
+      await db.customStatement('PRAGMA user_version = 7');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 11);
+    // "As found" is what every search did before there was a choice.
+    final row = await db
+        .customSelect('SELECT query_sort FROM home_items')
+        .getSingle();
+    expect(row.read<String>('query_sort'), 'matched');
+  });
+
+  test('v8 moves a hand-picked collection picture to the whole tile',
+      () async {
+    // Before the mode existed, choosing a picture put it in the first
+    // quarter of a mosaic -- which is not what choosing a picture means, and
+    // is the bug this column was added to fix.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final imageId = await db.into(db.images).insert(
+            ImagesCompanion.insert(
+              sha256: 'abc',
+              storedPath: 'ab/abc.jpg',
+              mimeType: 'image/jpeg',
+              byteSize: 10,
+              kind: ImageKind.userProvided,
+            ),
+          );
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.collection,
+              label: const Value('Chosen'),
+              imageId: Value(imageId),
+            ),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 2000,
+              kind: HomeItemKind.collection,
+              label: const Value('Composed'),
+            ),
+          );
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN artwork_mode',
+      );
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN quadrant_images',
+      );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
+      await db.customStatement('PRAGMA user_version = 8');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 11);
+    final rows = await db
+        .customSelect(
+          'SELECT label, artwork_mode FROM home_items ORDER BY position',
+        )
+        .get();
+    expect(rows.first.read<String>('artwork_mode'), 'single');
+    // One that never had a picture keeps composing one.
+    expect(rows.last.read<String>('artwork_mode'), 'quadrant');
+  });
+
+  test('v9 gains somewhere to roll a search up', () async {
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.query,
+              query: const Value('tag:hardcore'),
+            ),
+          );
+      await db.customStatement('ALTER TABLE home_items DROP COLUMN collapsed');
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
+      await db.customStatement('PRAGMA user_version = 9');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 11);
+    // Open is what every block already was.
+    final row =
+        await db.customSelect('SELECT collapsed FROM home_items').getSingle();
+    expect(row.read<bool>('collapsed'), isFalse);
+  });
+
+  test('v10 keeps a Z-to-A search ordered Z to A', () async {
+    // v11 made the direction a flag, which left `nameDescending` saying the
+    // same thing twice. The value is gone, and an unrecognised sort reads
+    // back as "as found" -- so without the rewrite a search somebody put in
+    // reverse would quietly come back in whatever order the rule found
+    // things in, on a page they never touched.
+    final file = sqlite3.sqlite3.openInMemory();
+    addTearDown(file.close);
+
+    final db = await reopenAfter(file, (db) async {
+      final sectionId = await db.into(db.homeSections).insert(
+            HomeSectionsCompanion.insert(title: 'Mine', position: 1000),
+          );
+      // Written as raw SQL: the value no longer exists to be named in Dart,
+      // which is the whole situation being tested.
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 1000,
+              kind: HomeItemKind.query,
+              query: const Value('tag:hardcore'),
+            ),
+          );
+      await db.into(db.homeItems).insert(
+            HomeItemsCompanion.insert(
+              sectionId: sectionId,
+              position: 2000,
+              kind: HomeItemKind.query,
+              query: const Value('tag:ambient'),
+            ),
+          );
+      await db.customStatement(
+        "UPDATE home_items SET query_sort = 'nameDescending' "
+        "WHERE position = 1000",
+      );
+      await db.customStatement(
+        "UPDATE home_items SET query_sort = 'releaseYear' WHERE position = 2000",
+      );
+      await db.customStatement(
+        'ALTER TABLE home_items DROP COLUMN query_inverted',
+      );
+      await db.customStatement('PRAGMA user_version = 10');
+    });
+    addTearDown(db.close);
+
+    expect(await versionOf(db), 11);
+    final rows = await db
+        .customSelect(
+          'SELECT query_sort, query_inverted FROM home_items ORDER BY position',
+        )
+        .get();
+    expect(rows.first.read<String>('query_sort'), 'name');
+    expect(rows.first.read<bool>('query_inverted'), isTrue);
+    // Every other order is left alone, facing the way it always faced.
+    expect(rows.last.read<String>('query_sort'), 'releaseYear');
+    expect(rows.last.read<bool>('query_inverted'), isFalse);
   });
 
   test('the cascade view is rebuilt on an existing database', () async {

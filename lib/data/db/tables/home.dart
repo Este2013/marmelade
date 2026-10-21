@@ -80,6 +80,30 @@ class HomeItems extends Table {
   /// called. Always set for a collection, which has nothing else to be named by.
   TextColumn get label => text().nullable()();
 
+  /// What a [HomeItemKind.query] is looking for -- see [HomeQueryType].
+  ///
+  /// Albums by default: a search put on a home page is far more often "which
+  /// records are like this" than "which individual songs are", and a grid of
+  /// four hundred song tiles is not a thing anybody arranges on purpose.
+  TextColumn get queryType =>
+      textEnum<HomeQueryType>().withDefault(const Constant('album'))();
+
+  /// How a search orders what it found -- see [HomeQuerySort].
+  ///
+  /// `matched` by default, which is to say "leave it alone": the rule often
+  /// carries its own opinion about order, and overriding that unasked would
+  /// throw it away.
+  TextColumn get querySort =>
+      textEnum<HomeQuerySort>().withDefault(const Constant('matched'))();
+
+  /// Whether [querySort] runs backwards.
+  ///
+  /// A flag rather than a second value per order: every order has an obvious
+  /// direction and an opposite, and spelling both into [HomeQuerySort] would
+  /// double a menu to say what one button says. It applies to `matched` too,
+  /// where it reverses the order the rule itself found things in.
+  BoolColumn get queryInverted => boolean().withDefault(const Constant(false))();
+
   /// The smart query, for [HomeItemKind.query]. Stored as typed, in the same
   /// grammar as a smart playlist.
   TextColumn get query => text().nullable()();
@@ -88,6 +112,31 @@ class HomeItems extends Table {
   /// would otherwise compose or inherit.
   IntColumn get imageId =>
       integer().nullable().references(Images, #id, onDelete: KeyAction.setNull)();
+
+  /// Whether a block inside a collection is rolled up to its header.
+  ///
+  /// Only means anything for a search, which is the one kind that heads a
+  /// run of other things. Stored for the same reason a section's is: a
+  /// collection somebody folded down is the shape they chose for it.
+  BoolColumn get collapsed => boolean().withDefault(const Constant(false))();
+
+  /// Whether the tile quarters four pictures or shows one whole.
+  ///
+  /// Separate from [imageId], which only ever answers "which one": a picture
+  /// chosen by hand went into the first quarter before this existed, which is
+  /// not what choosing a picture means.
+  TextColumn get artworkMode =>
+      textEnum<HomeArtworkMode>().withDefault(const Constant('quadrant'))();
+
+  /// Pictures pinned to particular quarters, as image ids separated by
+  /// commas, with an empty slot meaning "whatever would have gone there".
+  ///
+  /// A text column rather than four nullable foreign keys or a side table:
+  /// there are at most four, they are an override on something that already
+  /// has an answer, and a dangling id is handled the same way every other
+  /// dangling reference on this page is -- by falling back rather than
+  /// failing.
+  TextColumn get quadrantImages => text().nullable()();
 
   /// How many of the contents' covers a collection tile composes when it has no
   /// [imageId] of its own: 1 for a single cover, 4 for a quartered mosaic.

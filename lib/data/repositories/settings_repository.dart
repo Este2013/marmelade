@@ -160,6 +160,7 @@ abstract final class SettingKeys {
   /// cloud client already syncs.
   static const syncFolder = 'transfer.syncFolder';
   static const syncIncludeArtwork = 'transfer.includeArtwork';
+  static const syncIncludeHome = 'transfer.includeHome';
   static const syncIncludeAudio = 'transfer.includeAudio';
   static const lastSyncAt = 'transfer.lastSyncAt';
 

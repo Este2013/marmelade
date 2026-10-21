@@ -104,6 +104,57 @@ void main() {
     test('probeFile returns null for a missing file', () {
       expect(ImageProbe.probeFile(File('nope.png')), isNull);
     });
+
+    test('leaves bytes that are already an image alone', () {
+      final clean = fakeJpeg(640, 480);
+      expect(identical(ImageProbe.trimToImage(clean), clean), isTrue);
+    });
+
+    test('recovers an image buried behind a tag description', () {
+      // The real shape of the bug: the metadata package leaves the tail of an
+      // APIC frame's UTF-16 description glued to the front of the picture, so
+      // a good JPEG arrives as "...o.v.e.r.." then FFD8. These exact bytes
+      // came off a file in the library.
+      final junk = Uint8List.fromList(
+        const [0x6F, 0x00, 0x76, 0x00, 0x65, 0x00, 0x72, 0x00, 0x00, 0x00],
+      );
+      final buried = Uint8List.fromList([...junk, ...fakeJpeg(1000, 1000)]);
+      expect(ImageProbe.probeBytes(buried), isNull, reason: 'not yet an image');
+
+      final info = ImageProbe.probeBytes(ImageProbe.trimToImage(buried)!);
+      expect(info?.mimeType, 'image/jpeg');
+      expect(info?.width, 1000);
+      expect(info?.height, 1000);
+    });
+
+    test('recovers a buried PNG too', () {
+      final buried = Uint8List.fromList([
+        ...'Cover (front)'.codeUnits,
+        0,
+        ...fakePng(500, 500),
+      ]);
+      final info = ImageProbe.probeBytes(ImageProbe.trimToImage(buried)!);
+      expect(info?.mimeType, 'image/png');
+      expect(info?.width, 500);
+    });
+
+    test('finds nothing in bytes that hold no image', () {
+      // Including text that happens to start like a BMP: a two-byte
+      // signature is not evidence, which is why BMP is not searched for.
+      expect(ImageProbe.trimToImage(Uint8List.fromList('xBMP cover'.codeUnits)),
+          isNull);
+      expect(ImageProbe.trimToImage(Uint8List.fromList(List.filled(512, 9))),
+          isNull);
+    });
+
+    test('does not search beyond its window', () {
+      final buried = Uint8List.fromList([
+        ...List.filled(2048, 0x41),
+        ...fakeJpeg(200, 200),
+      ]);
+      expect(ImageProbe.trimToImage(buried), isNull);
+      expect(ImageProbe.trimToImage(buried, searchWindow: 4096), isNotNull);
+    });
   });
 
   group('sidecar discovery', () {

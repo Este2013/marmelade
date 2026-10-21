@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marmelade/data/db/database.dart';
+import 'package:marmelade/data/repositories/home_repository.dart';
 import 'package:marmelade/data/repositories/settings_repository.dart';
 import 'package:marmelade/data/transfer/library_exporter.dart';
 import 'package:marmelade/data/transfer/library_importer.dart';
@@ -1133,6 +1134,291 @@ void main() {
       expect(await laptop.albumCount('Nightfall'), 1);
     });
   });
+
+  group('the home page', () {
+    /// Empties a machine's home page.
+    ///
+    /// A fresh database seeds "Recently played", so a destination is never
+    /// blank to begin with -- which is exactly why most of these tests say
+    /// what they expect *by name* rather than counting sections.
+    Future<void> clearHome(_Machine machine) =>
+        machine.db.delete(machine.db.homeSections).go();
+
+    /// A section on [machine] holding one collection, one album tile and one
+    /// search -- one of each thing that has to survive the trip.
+    Future<({int sectionId, int albumId})> arrange(_Machine machine) async {
+      await machine.db.delete(machine.db.homeSections).go();
+      final home = HomeRepository(machine.db);
+      final sectionId = await home.addSection(title: 'Pinned');
+      await home.setSectionIcon(sectionId, 0xe3af);
+      await home.setSectionCollapsed(sectionId, true);
+
+      final albumId = await machine.album('Antenna');
+      await home.addItem(
+        sectionId: sectionId,
+        kind: HomeItemKind.album,
+        refId: albumId,
+      );
+      final collectionId = await home.addItem(
+        sectionId: sectionId,
+        kind: HomeItemKind.collection,
+        label: 'Soundtracks',
+      );
+      await home.addItem(
+        sectionId: sectionId,
+        parentId: collectionId,
+        kind: HomeItemKind.album,
+        refId: albumId,
+      );
+      await home.addItem(
+        sectionId: sectionId,
+        kind: HomeItemKind.query,
+        label: 'Loud',
+        query: 'tag:hardcore',
+        queryType: HomeQueryType.artist,
+        querySort: HomeQuerySort.name,
+        queryInverted: true,
+      );
+      return (sectionId: sectionId, albumId: albumId);
+    }
+
+    test('travels, with its sections, tree and settings', () async {
+      // The whole point: a machine that already has every album still opens
+      // on a blank page unless the arrangement comes too.
+      await arrange(work);
+      await clearHome(home);
+      await home.album('Antenna');
+
+      await home.import(await work.export());
+
+      final page = await HomeRepository(home.db).watchHome().first;
+      final section = page.single;
+      expect(section.title, 'Pinned');
+      expect(section.collapsed, isTrue);
+      expect(section.icon, 0xe3af);
+
+      expect(
+        [for (final one in section.items) one.kind],
+        [HomeItemKind.album, HomeItemKind.collection, HomeItemKind.query],
+      );
+      // The nesting survived, and its child points at *this* machine's album.
+      final collection = section.items[1];
+      expect(collection.title, 'Soundtracks');
+      expect(collection.children.single.title, 'Antenna');
+      // And so does everything that makes a search what it is.
+      final search = section.items[2];
+      expect(search.label, 'Loud');
+      expect(search.query, 'tag:hardcore');
+      expect(search.queryType, HomeQueryType.artist);
+      expect(search.querySort, HomeQuerySort.name);
+      expect(search.queryInverted, isTrue);
+    });
+
+    test('a Z-to-A search from an older copy of the app arrives Z to A',
+        () async {
+      // That machine has no reversal flag and says `nameDescending` instead.
+      // Read as an ordinary sort it matches nothing and falls to "as found",
+      // which would silently reorder a page on the way in.
+      await arrange(work);
+      await clearHome(home);
+      await home.album('Antenna');
+
+      final json = (await work.export()).toJson();
+      final sections = (json['home']! as List).cast<Map<String, Object?>>();
+      for (final section in sections) {
+        for (final item in (section['items']! as List).cast<Map<String, Object?>>()) {
+          if (item['kind'] != 'query') continue;
+          item['querySort'] = 'nameDescending';
+          item.remove('queryInverted');
+        }
+      }
+
+      await home.import(TransferBundle.fromJson(json));
+
+      final page = await HomeRepository(home.db).watchHome().first;
+      final search = page.single.items.firstWhere(
+        (one) => one.kind == HomeItemKind.query,
+      );
+      expect(search.querySort, HomeQuerySort.name);
+      expect(search.queryInverted, isTrue);
+    });
+
+    test('a tile points at the importing machine’s own row, not the id '
+        'it had over there', () async {
+      // The id an album has on one machine means nothing on the other, which
+      // is the single thing most likely to go wrong here.
+      await arrange(work);
+      await clearHome(home);
+      // Give the destination a different id for the same album by making
+      // some other rows first.
+      for (var i = 0; i < 5; i++) {
+        await home.album('Filler $i');
+      }
+      final localId = await home.album('Antenna');
+
+      await home.import(await work.export());
+
+      final page = await HomeRepository(home.db).watchHome().first;
+      expect(page.single.items.first.refId, localId);
+    });
+
+    test('a tile whose target did not come across is dropped, not dangling',
+        () async {
+      // The usual way this happens: the bundle carries the album a tile
+      // points at, so that resolves -- but playlists are opt-out, and a
+      // playlist tile whose playlist was skipped points at nothing.
+      await arrange(work);
+      await clearHome(home);
+      final playlistId = await work.db.into(work.db.playlists).insert(
+            PlaylistsCompanion.insert(name: 'Mine', nameKey: 'mine'),
+          );
+      final section = (await HomeRepository(work.db).watchHome().first).single;
+      await HomeRepository(work.db).addItem(
+        sectionId: section.id,
+        kind: HomeItemKind.playlist,
+        refId: playlistId,
+      );
+
+      await home.import(
+        await work.export(),
+        options: const TransferImportOptions(importPlaylists: false),
+      );
+
+      final page = await HomeRepository(home.db).watchHome().first;
+      expect(
+        [for (final one in page.single.items) one.kind],
+        isNot(contains(HomeItemKind.playlist)),
+        reason: 'a tile that opens nothing is worse than no tile',
+      );
+      // Everything whose target did travel is still there.
+      expect(
+        [for (final one in page.single.items) one.kind],
+        containsAll([
+          HomeItemKind.album,
+          HomeItemKind.collection,
+          HomeItemKind.query,
+        ]),
+      );
+    });
+
+    test('left out when the exporter was told to leave it out', () async {
+      await arrange(work);
+
+      final bundle = await LibraryExporter(db: work.db)
+          .buildBundle(origin: work.origin, includeHome: false);
+
+      expect(bundle.home, isEmpty);
+    });
+
+    test('not imported when the importer was told not to', () async {
+      await arrange(work);
+      await clearHome(home);
+      await home.album('Antenna');
+
+      await home.import(
+        await work.export(),
+        options: const TransferImportOptions(importHome: false),
+      );
+
+      final page = await HomeRepository(home.db).watchHome().first;
+      expect(page, isEmpty);
+    });
+
+    test('a section this machine already has is left alone', () async {
+      // Keeping mine is the default everywhere in this importer, and an
+      // arrangement is somebody's work -- the bundle cannot know whose is
+      // newer.
+      await arrange(work);
+      await clearHome(home);
+      await home.album('Antenna');
+      final mine = HomeRepository(home.db);
+      final sectionId = await mine.addSection(title: 'Pinned');
+      await mine.addItem(
+        sectionId: sectionId,
+        kind: HomeItemKind.collection,
+        label: 'Mine alone',
+      );
+
+      final report = await home.import(await work.export());
+
+      final page = await mine.watchHome().first;
+      expect(page.single.items.single.title, 'Mine alone');
+      expect(report.homeSectionsSkipped, 1);
+    });
+
+    test('prefer theirs rebuilds a section of the same name', () async {
+      // "I did the real work over there", which is exactly what that policy
+      // is for.
+      await arrange(work);
+      await clearHome(home);
+      await home.album('Antenna');
+      final mine = HomeRepository(home.db);
+      final sectionId = await mine.addSection(title: 'Pinned');
+      await mine.addItem(
+        sectionId: sectionId,
+        kind: HomeItemKind.collection,
+        label: 'Mine alone',
+      );
+
+      await home.import(
+        await work.export(),
+        options: const TransferImportOptions(
+          conflicts: TransferConflictPolicy.preferTheirs,
+        ),
+      );
+
+      final page = await mine.watchHome().first;
+      expect(page, hasLength(1), reason: 'rebuilt, not duplicated');
+      expect(
+        [for (final one in page.single.items) one.title],
+        ['Antenna', 'Soundtracks', 'Loud'],
+      );
+    });
+
+    test('a section the bundle never mentions is never removed', () async {
+      // Deletions do not propagate here any more than anywhere else.
+      await arrange(work);
+      await home.album('Antenna');
+      final mine = HomeRepository(home.db);
+      await mine.addSection(title: 'Only here');
+
+      await home.import(await work.export());
+
+      final page = await mine.watchHome().first;
+      expect(
+        [for (final one in page) one.title],
+        containsAll(['Only here', 'Pinned']),
+      );
+    });
+
+    test('a collection’s own picture is listed for the artwork pass',
+        () async {
+      // Those images are often referenced nowhere else in the library, so
+      // the exporter has to ask for them by name or they never travel.
+      await arrange(work);
+      final imageId = await work.db.into(work.db.images).insert(
+            ImagesCompanion.insert(
+              sha256: 'abc123',
+              storedPath: 'ab/abc123.jpg',
+              mimeType: 'image/jpeg',
+              byteSize: 10,
+              kind: ImageKind.userProvided,
+            ),
+          );
+      final page = await HomeRepository(work.db).watchHome().first;
+      final collection = page.single.items
+          .firstWhere((one) => one.kind == HomeItemKind.collection);
+      await HomeRepository(work.db).setItemImage(collection.id, imageId);
+
+      final bundle = await work.export();
+
+      expect(
+        [for (final one in bundle.images) one.sha256],
+        contains('abc123'),
+      );
+    });
+  });
+
 
 }
 

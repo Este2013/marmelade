@@ -51,6 +51,7 @@ class TransferExportOptions {
   const TransferExportOptions({
     this.includeArtwork = true,
     this.includeAudio = false,
+    this.includeHome = true,
   });
 
   /// Copy the artwork store's files for every image the bundle references.
@@ -61,6 +62,15 @@ class TransferExportOptions {
   /// Copy the audio files themselves. Off by default: this turns a bundle of
   /// a few megabytes into one the size of the music.
   final bool includeAudio;
+
+  /// Send the home page: its sections, what is on them, and the pictures
+  /// chosen for collections.
+  ///
+  /// On by default and weightless -- a few kilobytes of JSON plus whatever
+  /// artwork was hand-picked -- but opt-out, because a home page is a
+  /// personal arrangement and sending somebody a bundle is not always the
+  /// same as syncing your own two machines.
+  final bool includeHome;
 }
 
 /// What an importer does when both machines have a value for the same field.
@@ -93,6 +103,7 @@ class TransferImportOptions {
     this.matching = TransferMatchMode.sameFiles,
     this.importPlaylists = true,
     this.importArtwork = true,
+    this.importHome = true,
     this.importPlayCounts = true,
     this.importAudio = true,
     this.audioDestination,
@@ -102,6 +113,12 @@ class TransferImportOptions {
   final TransferMatchMode matching;
   final bool importPlaylists;
   final bool importArtwork;
+
+  /// Take the bundle's home page. Under [TransferConflictPolicy.keepMine]
+  /// this only adds sections this machine does not already have by name;
+  /// under `preferTheirs` a section of the same name is rebuilt from the
+  /// bundle. Neither ever deletes a section the bundle does not mention.
+  final bool importHome;
 
   /// Play and skip counts merge by taking the larger of the two, which is the
   /// only honest option: they are counters, and neither side's history is
@@ -128,6 +145,7 @@ class TransferImportOptions {
     TransferMatchMode? matching,
     bool? importPlaylists,
     bool? importArtwork,
+    bool? importHome,
     bool? importPlayCounts,
     bool? importAudio,
     String? audioDestination,
@@ -137,6 +155,7 @@ class TransferImportOptions {
         matching: matching ?? this.matching,
         importPlaylists: importPlaylists ?? this.importPlaylists,
         importArtwork: importArtwork ?? this.importArtwork,
+        importHome: importHome ?? this.importHome,
         importPlayCounts: importPlayCounts ?? this.importPlayCounts,
         importAudio: importAudio ?? this.importAudio,
         audioDestination: audioDestination ?? this.audioDestination,
@@ -210,6 +229,19 @@ class TransferReport {
   int splitRulesAdded = 0;
   int separatorsAdded = 0;
 
+  int homeSectionsAdded = 0;
+  int homeSectionsUpdated = 0;
+
+  /// Sections this machine already had, left exactly as they were. Counted
+  /// rather than silently passed over: "your home page is unchanged" is a
+  /// result, and one somebody may not have expected.
+  int homeSectionsSkipped = 0;
+
+  int homeItemsAdded = 0;
+
+  /// Tiles pointing at something this machine does not have.
+  int homeItemsSkipped = 0;
+
   /// Fields where both sides had a different value and the local one was
   /// kept. Surfaced so "nothing happened" is never a silent outcome.
   int conflictsKept = 0;
@@ -249,7 +281,10 @@ class TransferReport {
       artworkAttached +
       lyricsAdded +
       splitRulesAdded +
-      separatorsAdded;
+      separatorsAdded +
+      homeSectionsAdded +
+      homeSectionsUpdated +
+      homeItemsAdded;
 
   bool get changedNothing => changeCount == 0;
 

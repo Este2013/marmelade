@@ -222,7 +222,6 @@ class _SmartQueryFieldState extends ConsumerState<SmartQueryField> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final text = widget.controller.text;
-    final query = SmartQuery.parse(text);
     final suggestions = _suggestions;
     // A bare Text defaults to the ambient DefaultTextStyle (bodyMedium), but a
     // TextField's own input text defaults to the theme's titleMedium -- two
