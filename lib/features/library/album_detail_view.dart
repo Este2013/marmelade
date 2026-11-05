@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -408,13 +409,15 @@ class _AlbumHeader extends ConsumerWidget {
                           tooltip: album.isFavorite
                               ? 'Remove from favourites'
                               : 'Favourite',
-                          onPressed: () => ref
-                              .read(databaseProvider)
-                              .customStatement(
-                                'UPDATE albums SET is_favorite = '
-                                'NOT is_favorite WHERE id = ?',
-                                [album.id],
-                              ),
+                          onPressed: () {
+                            final db = ref.read(databaseProvider);
+                            db.customUpdate(
+                              'UPDATE albums SET is_favorite = '
+                              'NOT is_favorite WHERE id = ?1',
+                              variables: [Variable(album.id)],
+                              updates: {db.albums},
+                            );
+                          },
                           icon: Icon(
                             album.isFavorite
                                 ? Icons.favorite

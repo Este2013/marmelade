@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Variable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -672,9 +673,10 @@ class _RowActions extends ConsumerWidget {
         IconButton(
           visualDensity: VisualDensity.compact,
           tooltip: track.isFavorite ? 'Remove from favourites' : 'Favourite',
-          onPressed: () => db.customStatement(
-            'UPDATE tracks SET is_favorite = NOT is_favorite WHERE id = ?',
-            [track.id],
+          onPressed: () => db.customUpdate(
+            'UPDATE tracks SET is_favorite = NOT is_favorite WHERE id = ?1',
+            variables: [Variable(track.id)],
+            updates: {db.tracks},
           ),
           icon: Icon(
             track.isFavorite ? Icons.favorite : Icons.favorite_border,

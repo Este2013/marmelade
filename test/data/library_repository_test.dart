@@ -145,4 +145,66 @@ void main() {
       );
     });
   });
+
+  group('the favourite toggle', () {
+    // The toggle button writes with a bare `customStatement`, which runs the
+    // SQL but tells drift nothing about which table changed -- a watcher
+    // never learns to re-run, and the heart never fills in no matter how
+    // long you wait. `customUpdate` with an explicit `updates:` set is what
+    // actually notifies watchTracks' own stream; this pins that down so the
+    // button can't quietly regress back to the former.
+    test('a customUpdate with updates: {tracks} reaches a live watcher',
+        () async {
+      final artistId = await artist('Lamp');
+      final id = await track('Shunkashuto', artistId: artistId);
+
+      final seen = <bool>[];
+      final sub = repository
+          .watchTracks(trackId: id)
+          .listen((rows) => seen.add(rows.single.isFavorite));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      expect(seen, [false]);
+
+      await db.customUpdate(
+        'UPDATE tracks SET is_favorite = NOT is_favorite WHERE id = ?1',
+        variables: [Variable(id)],
+        updates: {db.tracks},
+      );
+      await pumpEventQueue();
+
+      expect(seen, [false, true]);
+    });
+
+    test('a bare customStatement does not -- the bug this guards against',
+        () async {
+      final artistId = await artist('Lamp');
+      final id = await track('Shunkashuto', artistId: artistId);
+
+      final seen = <bool>[];
+      final sub = repository
+          .watchTracks(trackId: id)
+          .listen((rows) => seen.add(rows.single.isFavorite));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await db.customStatement(
+        'UPDATE tracks SET is_favorite = NOT is_favorite WHERE id = ?',
+        [id],
+      );
+      await pumpEventQueue();
+
+      // The row really did change -- a plain, uncached read proves that.
+      // Not repository.watchTracks(...).first for this: drift shares a
+      // cached fetcher across equivalent watch queries, and reusing the
+      // very query that was never invalidated would read the same stale
+      // cache rather than the database.
+      expect(seen, [false], reason: 'no second emission reached the watcher');
+      final fresh = await db.customSelect(
+        'SELECT is_favorite FROM tracks WHERE id = ?1',
+        variables: [Variable(id)],
+      ).getSingle();
+      expect(fresh.read<int>('is_favorite'), 1);
+    });
+  });
 }

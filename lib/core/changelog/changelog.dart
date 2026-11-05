@@ -98,6 +98,18 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.5.1',
+    date: '2026-11-05',
+    headline: 'The favourite heart, actually filling in.',
+    changes: [
+      Change.fixed(
+        "Favouriting a song or album wrote the change to the database but "
+        "never told the list on screen -- the heart stayed empty, and it "
+        "looked like nothing had happened at all.",
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.5.0',
     date: '2026-10-21',
     headline: 'A home page you arrange yourself.',
