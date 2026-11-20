@@ -98,6 +98,29 @@ class ReleaseNotes {
 /// Newest first.
 const changelog = <ReleaseNotes>[
   ReleaseNotes(
+    version: '0.5.2',
+    date: '2026-11-20',
+    headline: 'OTOTOY links, and a page for every album artist.',
+    changes: [
+      Change.added(
+        "OTOTOY links. An artist's OTOTOY page is recognised, with its own "
+        "icon, and the picture picker can fetch their picture from it. An "
+        "artist OTOTOY has no photo of keeps what the site itself shows for "
+        "them: one of their release covers.",
+      ),
+      Change.fixed(
+        "Clicking an album's artist opened 'Unknown artist' whenever that "
+        "artist was only ever the album's artist and never credited on a "
+        "track -- a label putting out a compilation of smaller artists, say. "
+        "They get their own page now, with their releases on it.",
+      ),
+      Change.changed(
+        "Built with Flutter 3.50 (beta), up from 3.45: about six months of "
+        "engine and framework updates.",
+      ),
+    ],
+  ),
+  ReleaseNotes(
     version: '0.5.1',
     date: '2026-11-05',
     headline: 'The favourite heart, actually filling in.',
