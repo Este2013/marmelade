@@ -21,7 +21,7 @@ jobs:
           # Pinned, not "latest beta". This project needs a beta SDK for Dart
           # native assets, and a moving channel would mean a build that breaks
           # on a day nobody touched the code.
-          flutter-version: 3.45.0-0.1.pre
+          flutter-version: 3.50.0-0.4.pre
           channel: beta
           cache: true
 
