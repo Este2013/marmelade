@@ -31,6 +31,24 @@ void main() {
       expect(inferLinkKind('https://apple.com/mac'), LinkKind.website);
     });
 
+    test('OTOTOY is recognised from any of its pages', () {
+      // Artists live at /_/default/a/<id> and releases at /_/default/p/<id>.
+      // The kind is about the site, so the path makes no difference.
+      expect(
+        inferLinkKind('https://ototoy.jp/_/default/a/319470'),
+        LinkKind.ototoy,
+      );
+      expect(
+        inferLinkKind('https://ototoy.jp/_/default/p/4426877'),
+        LinkKind.ototoy,
+      );
+      expect(inferLinkKind('https://www.ototoy.jp/features/'), LinkKind.ototoy);
+      expect(inferLinkKind('ototoy.jp/_/default/a/319470'), LinkKind.ototoy);
+      expect(linkKindLabel(LinkKind.ototoy), 'OTOTOY');
+      // A different site that merely ends the same way is not OTOTOY.
+      expect(inferLinkKind('https://notototoy.jp/a/1'), LinkKind.website);
+    });
+
     test('an unrecognised domain is a plain website, not an error', () {
       expect(inferLinkKind('https://lukhash.com'), LinkKind.website);
     });
@@ -68,6 +86,8 @@ void main() {
     test('a kind with no guessable pattern offers nothing', () {
       expect(linkKindSuggestion(LinkKind.spotify, 'LukHash'), isNull);
       expect(linkKindSuggestion(LinkKind.niconico, 'LukHash'), isNull);
+      // Addressed by a numeric id (/_/default/a/319470), never by name.
+      expect(linkKindSuggestion(LinkKind.ototoy, 'MIMI'), isNull);
     });
 
     test('an empty name has no slug to build from', () {
@@ -82,6 +102,7 @@ void main() {
 
     test('a kind with no guessable pattern has no hint either', () {
       expect(linkKindHint(LinkKind.spotify), isNull);
+      expect(linkKindHint(LinkKind.ototoy), isNull);
     });
   });
 }

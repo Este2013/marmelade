@@ -408,4 +408,75 @@ void main() {
       );
     });
   });
+
+  /// OTOTOY declares everything the generic reader needs, so there is no
+  /// site-specific code behind these -- they pin what that relies on, as seen
+  /// on the real pages. An artist page says `profile`, which is not a release
+  /// and so is taken at its word, and names its picture on the image host. The
+  /// page also carries an apple-touch-icon, which is the site's own brick logo
+  /// and must never beat the picture the page actually offers.
+  group('an OTOTOY artist page', () {
+    String artistPage(String ogImage) => page(
+          '<meta name="description" content="MIMI のハイレゾ音楽配信と音楽記事はOTOTOYで！">'
+          '<link rel="apple-touch-icon" href="/images/apple-touch-icons/128x128.png"/>'
+          '<meta property="og:type" content="profile"/>'
+          '<meta property="og:title" content="MIMI on OTOTOY Music Store"/>'
+          '<meta property="og:image" content="$ogImage"/>',
+        );
+
+    ({LinkArtworkService service, List<String> requested}) ototoy(String html) {
+      final requested = <String>[];
+      final client = MockClient((request) async {
+        requested.add(request.url.toString());
+        if (request.url.host == 'ototoy.jp') {
+          return http.Response(html, 200, headers: {
+            'content-type': 'text/html; charset=UTF-8',
+          });
+        }
+        if (request.url.host == 'imgs.ototoy.jp') {
+          return http.Response.bytes(imageBytes, 200, headers: {
+            'content-type': 'image/jpeg',
+          });
+        }
+        return http.Response('gone', 404);
+      });
+      return (service: LinkArtworkService(client: client), requested: requested);
+    }
+
+    const pageUrl = 'https://ototoy.jp/_/default/a/319470';
+
+    test("fetches the artist's own portrait, not the site's brick icon",
+        () async {
+      const portrait =
+          'https://imgs.ototoy.jp/imgs/them/0319/00000003.319470.1787465209.817orig.jpg';
+      final harness = ototoy(artistPage(portrait));
+
+      final result = await harness.service.fetch(pageUrl);
+
+      final found = result as LinkArtworkFound;
+      expect(found.from.toString(), portrait);
+      expect(found.bytes, imageBytes);
+      expect(found.describe(), contains('ototoy.jp/_/default/a/319470'));
+      // The page and the picture, and nothing else: no second page is asked
+      // for, and the touch icon is never downloaded.
+      expect(harness.requested, [pageUrl, portrait]);
+    });
+
+    test('an artist with no photo gets the sleeve OTOTOY chose, without a hop',
+        () async {
+      // Artists without a portrait are served one of their release covers
+      // under /imgs/jacket/ instead -- never a placeholder or the site logo
+      // (checked across a spread of real artist ids). `profile` is not a
+      // release type, so this must not go looking for a better page.
+      const sleeve =
+          'https://imgs.ototoy.jp/imgs/jacket/0169/00000003.1540603954.2391orig.jpg';
+      final harness = ototoy(artistPage(sleeve));
+
+      final result = await harness.service
+          .fetch('https://ototoy.jp/_/default/a/319469');
+
+      expect((result as LinkArtworkFound).from.toString(), sleeve);
+      expect(harness.requested, ['https://ototoy.jp/_/default/a/319469', sleeve]);
+    });
+  });
 }

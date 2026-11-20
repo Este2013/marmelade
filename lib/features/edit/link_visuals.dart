@@ -15,6 +15,7 @@ String linkKindLabel(LinkKind kind) => switch (kind) {
       LinkKind.soundcloud => 'SoundCloud',
       LinkKind.spotify => 'Spotify',
       LinkKind.appleMusic => 'Apple Music',
+      LinkKind.ototoy => 'OTOTOY',
       LinkKind.niconico => 'Niconico',
       LinkKind.pixiv => 'Pixiv',
       LinkKind.musicbrainz => 'MusicBrainz',
@@ -172,6 +173,7 @@ LinkKind inferLinkKind(String url) {
     _ when has('soundcloud.com') => LinkKind.soundcloud,
     _ when has('spotify.com') => LinkKind.spotify,
     _ when has('music.apple.com') => LinkKind.appleMusic,
+    _ when has('ototoy.jp') => LinkKind.ototoy,
     _ when has('nicovideo.jp') => LinkKind.niconico,
     _ when has('pixiv.net') => LinkKind.pixiv,
     _ when has('musicbrainz.org') => LinkKind.musicbrainz,
@@ -199,8 +201,8 @@ String? linkKindHint(LinkKind kind) => switch (kind) {
 /// this kind actually use.
 ///
 /// Only offered where that pattern is a guessable slug -- Spotify, Apple
-/// Music, Niconico and Pixiv address artists by an opaque id, not a name, so
-/// nothing here would be more than a wrong guess dressed as an answer.
+/// Music, OTOTOY, Niconico and Pixiv address artists by an opaque id, not a
+/// name, so nothing here would be more than a wrong guess dressed as an answer.
 /// Everything this returns is still a guess to check, not a fetched fact: no
 /// request is made, and the field stays editable before it is saved.
 String? linkKindSuggestion(LinkKind kind, String artistName) {

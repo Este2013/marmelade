@@ -290,6 +290,16 @@ void main() {
     });
   });
 
+  test('every kind that expects a favicon has one bundled', () {
+    // A kind added without its image falls back to the generic link glyph and
+    // looks like any unrecognised site -- nothing else would ever fail.
+    for (final kind in LinkKind.values) {
+      final asset = _asset(kind);
+      if (asset == null) continue;
+      expect(File(asset).existsSync(), isTrue, reason: '${kind.name}: $asset');
+    }
+  });
+
   test('the fallback icon is chosen per kind, not one for all', () {
     expect(fallbackLinkIcon(LinkKind.website), Icons.open_in_browser);
     expect(fallbackLinkIcon(LinkKind.other), Icons.link);

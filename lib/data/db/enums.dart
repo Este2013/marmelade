@@ -59,6 +59,7 @@ enum LinkKind {
   soundcloud,
   spotify,
   appleMusic,
+  ototoy,
   niconico,
   pixiv,
   musicbrainz,
