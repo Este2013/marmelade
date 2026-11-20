@@ -148,6 +148,7 @@ void main() {
           tester,
           overrides: [
             artistsProvider.overrideWith((ref) => Stream.value(const [artist])),
+            artistByIdProvider(2).overrideWith((ref) => Stream.value(artist)),
             artistTracksProvider(2).overrideWith((ref) => Stream.value(tracks)),
             artistAlbumsProvider(2)
                 .overrideWith((ref) => Stream.value(const <AlbumCard>[])),

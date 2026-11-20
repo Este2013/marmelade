@@ -207,4 +207,42 @@ void main() {
       expect(fresh.read<int>('is_favorite'), 1);
     });
   });
+
+  group('watchArtists', () {
+    test(
+        'an artist credited only at album level still resolves by id, '
+        'just not in the default (track-having) list', () async {
+      // A label-curated compilation: the album's own artist is the label,
+      // but every track is credited to someone else. This is the shape a
+      // user hit where opening the label's page fell back to "Unknown
+      // artist" -- the page looked the id up in the default artist list,
+      // which hides anyone with no track_credits of their own.
+      final label = await artist('Society Recordings');
+      final contributor = await artist('A Smaller Artist');
+      final albumId = await db.into(db.albums).insert(
+            AlbumsCompanion.insert(
+              title: 'Society Vol. 2',
+              nameKey: 'society vol. 2',
+              albumArtistId: Value(label),
+            ),
+          );
+      await db.into(db.albumCredits).insert(
+            AlbumCreditsCompanion.insert(albumId: albumId, artistId: label),
+          );
+      await track('Only Song', albumId: albumId, artistId: contributor);
+
+      final defaultList = await repository.watchArtists().first;
+      expect(
+        defaultList.map((a) => a.id),
+        isNot(contains(label)),
+        reason: 'the default list intentionally hides artists with no '
+            'track credits -- this is not the bug',
+      );
+
+      final byId =
+          await repository.watchArtists(ids: [label], withTracksOnly: false).first;
+      expect(byId.map((a) => a.id), [label]);
+      expect(byId.single.name, 'Society Recordings');
+    });
+  });
 }

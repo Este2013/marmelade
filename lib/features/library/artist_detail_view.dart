@@ -47,8 +47,7 @@ class ArtistDetailView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tracks = ref.watch(artistTracksProvider(artistId));
     final albums = ref.watch(artistAlbumsProvider(artistId));
-    final artists = ref.watch(artistsProvider);
-    final artist = artists.value?.where((a) => a.id == artistId).firstOrNull;
+    final artist = ref.watch(artistByIdProvider(artistId)).value;
 
     return tracks.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -114,11 +113,7 @@ class ArtistDetailChrome extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final artist = ref
-        .watch(artistsProvider)
-        .value
-        ?.where((a) => a.id == artistId)
-        .firstOrNull;
+    final artist = ref.watch(artistByIdProvider(artistId)).value;
     // Taken over from the page once its own title row has scrolled away.
     final collapsed = ref.watch(detailHeaderCollapsedProvider) && artist != null;
 

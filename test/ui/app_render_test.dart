@@ -629,6 +629,16 @@ void main() {
         albumsProvider.overrideWith((ref) => Stream.value(albums)),
         allTracksProvider.overrideWith((ref) => Stream.value(tracks)),
         artistsProvider.overrideWith((ref) => Stream.value(_artists)),
+        // Same reason as trackRowProvider above: a single-artist lookup that
+        // hit the real (here, unseeded) repository instead of this file's
+        // canned fixture list found nothing and left the detail page on its
+        // "Unknown artist" fallback -- not a timing issue, just the wrong
+        // data source.
+        artistByIdProvider.overrideWith(
+          (ref, artistId) => Stream.value(
+            _artists.where((a) => a.id == artistId).firstOrNull,
+          ),
+        ),
         taggedProvider.overrideWith((ref) => Stream.value(const <TagCard>[])),
         // Same reason as every other stream in this scope: a real one works
         // until the test tears down, then the fake clock never drains its

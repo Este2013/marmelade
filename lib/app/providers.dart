@@ -1115,6 +1115,18 @@ final artistsProvider = StreamProvider<List<ArtistCard>>((ref) {
   );
 });
 
+/// One artist by id, even one absent from [artistsProvider] -- an
+/// album-artist-only label, say, never itself credited on a track. A page
+/// that was opened by this id must be able to find the thing it was asked to
+/// open; see [tagArtistsProvider] for the same withTracksOnly: false reasoning.
+final artistByIdProvider =
+    StreamProvider.family<ArtistCard?, int>((ref, artistId) {
+  return ref
+      .watch(libraryRepositoryProvider)
+      .watchArtists(ids: [artistId], withTracksOnly: false)
+      .map((artists) => artists.isEmpty ? null : artists.first);
+});
+
 /// How an artist's own track list is sorted.
 final artistTrackSortProvider =
     NotifierProvider<ViewSetting<LibrarySort>, LibrarySort>(
